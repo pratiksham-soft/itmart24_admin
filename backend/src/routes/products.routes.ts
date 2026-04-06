@@ -1,0 +1,1306 @@
+import { Router } from "express";
+import { firestore } from "../config/firebase";
+import admin from "firebase-admin";
+import { syncProductWithShopify } from "../services/shopifyProductSync";
+import { enrichProductsWithVendors } from "../utils/enrichProductsWithVendors";
+import {
+  importShopifyProductsToFirestore,
+} from "../services/shopifyProductImport";
+import {
+  createProductsSyncLog,
+  getProductsSyncLogs,
+} from "../services/productsSyncLogs.service";
+import {
+  completeProductsSyncProgress,
+  failProductsSyncProgress,
+  getProductsSyncProgress,
+  isProductsSyncRunning,
+  startProductsSyncProgress,
+  updateProductsSyncProgress,
+} from "../services/productsSyncProgress.service";
+
+type FirestoreProductData = {
+  vendorId: string;
+  status: string;
+
+  // 🆕 unified schema (optional for backward compatibility)
+  source?: "vendor" | "shopify";
+
+  lifecycleStatus?: string;
+  shopifyStatus?: "active" | "draft" | "archived";
+
+  ownership?: {
+    claimed: boolean;
+    claimedByVendorId: string | null;
+    claimedAt: admin.firestore.Timestamp | null;
+  };
+
+  product?: {
+    title: string;
+    handle: string | null;
+    descriptionHtml: string;
+    category: string;
+    productType: string;
+    vendor: string;
+    tags: string[];
+    published: boolean;
+    shopifyProductURL: string;
+  };
+
+  vendor?: {
+    basic?: {
+      productName?: string;
+      category?: string;
+      subCategoryName?: string;
+      description?: string;
+      keywords?: string[];
+      demoLink?: string | null;
+    };
+    features?: {
+      name: string;
+      description: string;
+    }[];
+    pricing?: {
+      selectedPlan?: string;
+      price?: number;
+      affiliateUrl?: string;
+      plans?: any[];
+    };
+    media?: {
+      thumbnailUrl?: string;
+      shopifyFileId?: string;
+      width?: number | null;
+      height?: number | null;
+    };
+    metadata?: any;
+    verification?: any;
+  };
+
+  shopify?: {
+    productId?: number;
+    graphqlId?: string | null;
+    handle?: string | null;
+    shopifyStatus?: "active" | "draft";
+    syncAction?: string;
+    syncedAt?: admin.firestore.Timestamp;
+    lastError?: string;
+  };
+
+  [key: string]: any;
+};
+
+type FirestoreProduct = FirestoreProductData & {
+  id: string;
+};
+
+const router = Router();
+
+type FirestoreTimestampLike =
+  | admin.firestore.Timestamp
+  | {
+      _seconds?: number;
+      _nanoseconds?: number;
+    }
+  | string
+  | number
+  | null
+  | undefined;
+
+const normalizeFirestoreValue = (value: unknown): unknown => {
+  if (value instanceof admin.firestore.Timestamp) {
+    return value.toDate().toISOString();
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((item) => normalizeFirestoreValue(item));
+  }
+
+  if (value && typeof value === "object") {
+    return Object.entries(value as Record<string, unknown>).reduce<Record<string, unknown>>(
+      (accumulator, [key, nestedValue]) => {
+        accumulator[key] = normalizeFirestoreValue(nestedValue);
+        return accumulator;
+      },
+      {}
+    );
+  }
+
+  return value;
+};
+
+const toFirestoreTimestamp = (
+  value: FirestoreTimestampLike
+) => {
+  if (value instanceof admin.firestore.Timestamp) {
+    return value;
+  }
+
+  if (
+    value &&
+    typeof value === "object" &&
+    typeof value._seconds === "number"
+  ) {
+    return admin.firestore.Timestamp.fromMillis(
+      value._seconds * 1000 +
+        Math.round((value._nanoseconds ?? 0) / 1000000)
+    );
+  }
+
+  if (typeof value === "string" || typeof value === "number") {
+    const date = new Date(value);
+
+    if (!Number.isNaN(date.getTime())) {
+      return admin.firestore.Timestamp.fromDate(date);
+    }
+  }
+
+  return value;
+};
+
+const sanitizeUpdatePayload = (
+  value: unknown,
+  path: string[] = []
+): unknown => {
+  if (Array.isArray(value)) {
+    return value.map((item, index) =>
+      sanitizeUpdatePayload(item, [...path, String(index)])
+    );
+  }
+
+  if (value && typeof value === "object") {
+    return Object.entries(value as Record<string, unknown>).reduce<Record<string, unknown>>(
+      (accumulator, [key, nestedValue]) => {
+        if (
+          path.length === 0 &&
+          [
+            "id",
+            "createdAt",
+            "updatedAt",
+            "businessName",
+            "claimedByBusinessName",
+            "vendorResolved",
+          ].includes(key)
+        ) {
+          return accumulator;
+        }
+
+        if (nestedValue === undefined) {
+          return accumulator;
+        }
+
+        accumulator[key] = sanitizeUpdatePayload(
+          nestedValue,
+          [...path, key]
+        );
+
+        return accumulator;
+      },
+      {}
+    );
+  }
+
+  const currentKey = path[path.length - 1] ?? "";
+  if (/At$/i.test(currentKey)) {
+    return toFirestoreTimestamp(value as FirestoreTimestampLike);
+  }
+
+  return value;
+};
+
+const mergeDeep = (target: unknown, source: unknown): unknown => {
+  if (Array.isArray(source)) {
+    return source.map((item) => mergeDeep(undefined, item));
+  }
+
+  if (source && typeof source === "object") {
+    const sourceRecord = source as Record<string, unknown>;
+    const targetRecord =
+      target && typeof target === "object" && !Array.isArray(target)
+        ? (target as Record<string, unknown>)
+        : {};
+
+    return Object.entries(sourceRecord).reduce<Record<string, unknown>>(
+      (accumulator, [key, value]) => {
+        accumulator[key] = mergeDeep(targetRecord[key], value);
+        return accumulator;
+      },
+      { ...targetRecord }
+    );
+  }
+
+  return source === undefined ? target : source;
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  Boolean(value) && typeof value === "object" && !Array.isArray(value);
+
+/**
+ * GET /api/products/pending
+ * Fetch all pending products
+ */
+router.get("/pending", async (_req, res) => {
+  try {
+    const snapshot = await firestore
+      .collection("products")
+      .where("lifecycleStatus", "==", "pending")
+      .where("ownership.claimed", "!=", true)
+      .orderBy("ownership.claimed")
+      .orderBy("createdAt", "desc")
+      .get();
+
+    const products: FirestoreProduct[] = snapshot.docs.map((doc) => {
+      const data = doc.data() as FirestoreProductData;
+
+      return {
+        id: doc.id,
+        ...data,
+      };
+    });
+
+
+    const enrichedProducts = await enrichProductsWithVendors(products);
+
+    const normalizedProducts = enrichedProducts.map((product: any) => ({
+      id: product.id,
+      vendorId: product.vendorId,
+
+      // ✅ ALWAYS SHOW BUSINESS NAME
+      businessName: product.vendorResolved.businessName,
+
+      status: product.lifecycleStatus,
+
+      shopifyProductURL: product.shopify?.shopifyProductURL ?? null,
+      vendor: {
+        basic: {
+          subCategoryName: product.vendor?.basic?.subCategoryName ?? "-",
+        },
+      },
+
+      // ✅ ALWAYS SHOW PRODUCT NAME
+      basic: {
+        productName:
+          product.vendor?.basic?.productName ??
+          product.shopify?.product?.title ??
+          "Unnamed Product",
+
+        category:
+          product.vendor?.basic?.category ??
+          product.shopify?.product?.category ??
+          "—",
+
+        description:
+          product.vendor?.basic?.description ??
+          product.shopify?.product?.descriptionHtml ??
+          "",
+      },
+
+      pricing: {
+        selectedPlan:
+          product.vendor?.pricing?.selectedPlan ??
+          product.shopify?.shopifyData?.metafields?.plan ??
+          "default",
+
+        price: Number(
+          product.vendor?.pricing?.price ??
+          product.shopify?.shopifyData?.variants?.[0]?.price ??
+          0
+        ),
+      },
+    }));
+    /* ================= RESPONSE ================= */
+
+    res.json({
+      success: true,
+      count: normalizedProducts.length,
+      data: normalizedProducts,
+    });
+  } catch (error: any) {
+    console.error("Firestore error:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Unknown Firestore error",
+    });
+  }
+});
+
+
+/**
+ * GET /api/products/claimed
+ * Fetch claimed + pending products
+ */
+router.get("/claimed", async (_req, res) => {
+  try {
+    const snapshot = await firestore
+      .collection("products")
+      .where("ownership.claimed", "==", true)
+      .where("lifecycleStatus", "==", "pending")
+      .orderBy("createdAt", "desc")
+      .get();
+
+    const products: FirestoreProduct[] = snapshot.docs.map((doc) => {
+      const data = doc.data() as FirestoreProductData;
+
+      return {
+        id: doc.id,
+        ...data,
+      };
+    });
+
+    const enrichedProducts = await enrichProductsWithVendors(products);
+
+    const normalizedProducts = enrichedProducts.map((product: any) => ({
+      id: product.id,
+      vendorId: product.vendorId,
+
+      businessName: product.vendorResolved.businessName,
+
+      status: product.lifecycleStatus,
+
+      shopifyProductURL: product.shopify?.shopifyProductURL ?? null,
+
+      vendor: {
+        basic: {
+          subCategoryName: product.vendor?.basic?.subCategoryName ?? "-",
+        },
+      },
+
+      basic: {
+        productName:
+          product.vendor?.basic?.productName ??
+          product.shopify?.product?.title ??
+          "Unnamed Product",
+
+        category:
+          product.vendor?.basic?.category ??
+          product.shopify?.product?.category ??
+          "—",
+
+        description:
+          product.vendor?.basic?.description ??
+          product.shopify?.product?.descriptionHtml ??
+          "",
+      },
+
+      pricing: {
+        selectedPlan:
+          product.vendor?.pricing?.selectedPlan ??
+          product.shopify?.shopifyData?.metafields?.plan ??
+          "default",
+
+        price: Number(
+          product.vendor?.pricing?.price ??
+          product.shopify?.shopifyData?.variants?.[0]?.price ??
+          0
+        ),
+      },
+    }));
+
+    res.json({
+      success: true,
+      count: normalizedProducts.length,
+      data: normalizedProducts,
+    });
+  } catch (error: any) {
+    console.error("Claimed products error:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to fetch claimed products",
+    });
+  }
+});
+
+
+/**
+ * GET /api/products/active
+ * Fetch all active products
+ */
+router.get("/active", async (req, res) => {
+  try {
+    const PAGE_SIZE = 25;
+    const shouldFetchAll = req.query.all === "true";
+    const cursor = req.query.cursor as string | undefined;
+
+    let query = firestore
+      .collection("products")
+      .where("lifecycleStatus", "==", "active")
+      .where("shopify.shopifyStatus", "==", "active")
+      .orderBy("createdAt", "desc");
+
+    if (!shouldFetchAll) {
+      query = query.limit(PAGE_SIZE);
+    }
+
+    if (!shouldFetchAll && cursor) {
+      const cursorDate = admin.firestore.Timestamp.fromMillis(
+        Number(cursor)
+      );
+
+      query = query.startAfter(cursorDate);
+    }
+
+    const snapshot = await query.get();
+
+    const products: FirestoreProduct[] = snapshot.docs.map((doc) => {
+      const data = doc.data() as FirestoreProductData;
+
+      return {
+        id: doc.id,
+        ...data,
+      };
+    });
+
+    const enrichedProducts = await enrichProductsWithVendors(products);
+
+    const normalizedProducts = enrichedProducts.map((product: any) => ({
+      id: product.id,
+      vendorId: product.vendorId,
+
+      // ✅ ALWAYS SHOW BUSINESS NAME
+      businessName: product.vendorResolved.businessName,
+
+      status: product.lifecycleStatus,
+
+      shopifyProductURL: product.shopify?.shopifyProductURL ?? null,
+
+      vendor: {
+        basic: {
+          subCategoryName: product.vendor?.basic?.subCategoryName ?? "-",
+        },
+      },
+
+      // ✅ ALWAYS SHOW PRODUCT NAME
+      basic: {
+        productName:
+          product.vendor?.basic?.productName ??
+          product.shopify?.product?.title ??
+          "Unnamed Product",
+
+        category:
+          product.vendor?.basic?.category ??
+          product.shopify?.product?.category ??
+          "—",
+
+        description:
+          product.vendor?.basic?.description ??
+          product.shopify?.product?.descriptionHtml ??
+          "",
+      },
+
+      pricing: {
+        selectedPlan:
+          product.vendor?.pricing?.selectedPlan ??
+          product.shopify?.shopifyData?.metafields?.plan ??
+          "default",
+
+        price: Number(
+          product.vendor?.pricing?.price ??
+          product.shopify?.shopifyData?.variants?.[0]?.price ??
+          0
+        ),
+      },
+    }));
+
+
+    /* ================= RESPONSE ================= */
+
+    const lastDoc = snapshot.docs[snapshot.docs.length - 1];
+
+    res.json({
+      success: true,
+      count: normalizedProducts.length,
+      data: normalizedProducts,
+      nextCursor: shouldFetchAll
+        ? null
+        : lastDoc
+        ? lastDoc.get("createdAt").toMillis()
+        : null,
+      hasMore: shouldFetchAll ? false : snapshot.docs.length === PAGE_SIZE,
+    });
+
+  } catch (error: any) {
+    console.error("Active products error:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to fetch active products",
+    });
+  }
+});
+
+
+/**
+ * GET /api/products/rejected
+ * Fetch rejected products
+ */
+router.get("/rejected", async (_req, res) => {
+  try {
+    const snapshot = await firestore
+      .collection("products")
+      .where("lifecycleStatus", "==", "rejected")
+      .orderBy("createdAt", "desc")
+      .get();
+
+    const products: FirestoreProduct[] = snapshot.docs.map((doc) => {
+      const data = doc.data() as FirestoreProductData;
+
+      return {
+        id: doc.id,
+        ...data,
+      };
+    });
+
+
+    const enrichedProducts = await enrichProductsWithVendors(products);
+
+    const normalizedProducts = enrichedProducts.map((product: any) => ({
+      id: product.id,
+      vendorId: product.vendorId,
+
+      // ✅ ALWAYS SHOW BUSINESS NAME
+      businessName: product.vendorResolved.businessName,
+
+      status: product.lifecycleStatus,
+
+      shopifyProductURL: product.shopify?.shopifyProductURL ?? null,
+
+      vendor: {
+        basic: {
+          subCategoryName: product.vendor?.basic?.subCategoryName ?? "-",
+        },
+      },
+
+      // ✅ ALWAYS SHOW PRODUCT NAME
+      basic: {
+        productName:
+          product.vendor?.basic?.productName ??
+          product.shopify?.product?.title ??
+          "Unnamed Product",
+
+        category:
+          product.vendor?.basic?.category ??
+          product.shopify?.product?.category ??
+          "—",
+
+        description:
+          product.vendor?.basic?.description ??
+          product.shopify?.product?.descriptionHtml ??
+          "",
+      },
+
+      pricing: {
+        selectedPlan:
+          product.vendor?.pricing?.selectedPlan ??
+          product.shopify?.shopifyData?.metafields?.plan ??
+          "default",
+
+        price: Number(
+          product.vendor?.pricing?.price ??
+          product.shopify?.shopifyData?.variants?.[0]?.price ??
+          0
+        ),
+      },
+    }));
+
+    /* ================= RESPONSE ================= */
+
+    res.json({
+      success: true,
+      count: normalizedProducts.length,
+      data: normalizedProducts,
+    });
+  } catch (error: any) {
+    console.error("Rejected products error:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to fetch rejected products",
+    });
+  }
+});
+
+
+/**
+ * GET /api/products/on-hold
+ * Fetch on-hold products
+ */
+router.get("/on-hold", async (_req, res) => {
+  try {
+    const snapshot = await firestore
+      .collection("products")
+      .where("lifecycleStatus", "==", "on-hold")
+      .orderBy("createdAt", "desc")
+      .get();
+
+    const products: FirestoreProduct[] = snapshot.docs.map((doc) => {
+      const data = doc.data() as FirestoreProductData;
+
+      return {
+        id: doc.id,
+        ...data,
+      };
+    });
+
+
+    const enrichedProducts = await enrichProductsWithVendors(products);
+    const normalizedProducts = enrichedProducts.map((product: any) => ({
+      id: product.id,
+      vendorId: product.vendorId,
+
+      // ✅ ALWAYS SHOW BUSINESS NAME
+      businessName: product.vendorResolved.businessName,
+
+      status: product.lifecycleStatus,
+
+      shopifyProductURL: product.shopify?.shopifyProductURL ?? null,
+
+      vendor: {
+        basic: {
+          subCategoryName: product.vendor?.basic?.subCategoryName ?? "-",
+        },
+      },
+
+      // ✅ ALWAYS SHOW PRODUCT NAME
+      basic: {
+        productName:
+          product.vendor?.basic?.productName ??
+          product.shopify?.product?.title ??
+          "Unnamed Product",
+
+        category:
+          product.vendor?.basic?.category ??
+          product.shopify?.product?.category ??
+          "—",
+
+        description:
+          product.vendor?.basic?.description ??
+          product.shopify?.product?.descriptionHtml ??
+          "",
+      },
+
+      pricing: {
+        selectedPlan:
+          product.vendor?.pricing?.selectedPlan ??
+          product.shopify?.shopifyData?.metafields?.plan ??
+          "default",
+
+        price: Number(
+          product.vendor?.pricing?.price ??
+          product.shopify?.shopifyData?.variants?.[0]?.price ??
+          0
+        ),
+      },
+    }));
+
+    /* ================= RESPONSE ================= */
+
+    res.json({
+      success: true,
+      count: normalizedProducts.length,
+      data: normalizedProducts,
+    });
+  } catch (error: any) {
+    console.error("On-hold products error:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to fetch on-hold products",
+    });
+  }
+});
+
+
+
+/**
+ * POST /api/products/:id/decision
+ * Approve or reject a product
+ */
+router.post("/:id/decision", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { decision } = req.body; // "approve" | "reject"
+
+    if (!["approve", "reject"].includes(decision)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid decision",
+      });
+    }
+
+    const productRef = firestore.collection("products").doc(id);
+
+    const updatePayload: any = {
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    };
+
+    if (decision === "approve") {
+
+      updatePayload.lifecycleStatus = "active";
+
+      // Shopify product will be created via /status route
+      updatePayload["shopify.shopifyStatus"] = "draft";
+
+      updatePayload.approvedAt =
+        admin.firestore.FieldValue.serverTimestamp();
+      updatePayload["verification.isProductActive"] = true;
+      updatePayload["verification.productVerified"] = true;
+    }
+
+    if (decision === "reject") {
+      updatePayload.status = "rejected";
+
+      updatePayload.lifecycleStatus = "rejected";
+      updatePayload["shopify.shopifyStatus"] = "draft";
+
+      updatePayload.rejectedAt = admin.firestore.FieldValue.serverTimestamp();
+      updatePayload["verification.isProductActive"] = false;
+    }
+
+    await productRef.update(updatePayload);
+
+    res.json({
+      success: true,
+      message: `Product ${decision}d successfully`,
+    });
+  } catch (error: any) {
+    console.error("Decision error:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Decision failed",
+    });
+  }
+});
+
+
+/**
+ * POST /api/products/:id/status
+ * Update product status (admin)
+ */
+router.post("/:id/status", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { lifecycleStatus } = req.body;
+    console.log("STATUS API HIT:", id, lifecycleStatus);
+
+    const allowedLifecycleStatuses = [
+      "pending",
+      "active",
+      "rejected",
+      "on-hold",
+    ];
+
+    if (!allowedLifecycleStatuses.includes(lifecycleStatus)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid lifecycleStatus value",
+      });
+    }
+
+    const productRef = firestore
+      .collection("products")
+      .doc(id);
+
+    const productSnap = await productRef.get();
+
+    if (!productSnap.exists) {
+      return res.status(404).json({
+        success: false,
+        message: "Product not found",
+      });
+    }
+
+    const baseProduct: FirestoreProduct = {
+      id: productSnap.id,
+      ...(productSnap.data() as FirestoreProductData),
+    };
+
+    const previousLifecycleStatus =
+  baseProduct.lifecycleStatus ?? "pending";
+
+  const shouldSyncWithShopify =
+  lifecycleStatus === "active" ||
+  previousLifecycleStatus === "active";
+
+
+    const shopifyApiStatus: "active" | "draft" =
+  lifecycleStatus === "active" ? "active" : "draft";
+
+    /* ================= ACTIVE (SHOPIFY FIRST) ================= */
+    
+     if (shouldSyncWithShopify){
+      try {
+
+        console.log("Attempting Shopify sync for product:", id);
+        if (baseProduct.shopify?.productId) {
+          console.log(
+            "Shopify product already exists, skipping CREATE",
+            baseProduct.shopify.productId
+          );
+        }
+
+        const normalizedProduct = {
+          ...baseProduct,
+
+          basic: {
+            productName:
+              baseProduct.vendor?.basic?.productName ?? "",
+            category:
+              baseProduct.vendor?.basic?.category ?? "",
+            description:
+              baseProduct.vendor?.basic?.description ?? "",
+          },
+
+          features: baseProduct.vendor?.features ?? [],
+
+          pricing: baseProduct.vendor?.pricing ?? {},
+
+          media: baseProduct.vendor?.media ?? {},
+        };
+
+
+
+        const shopifyResult =
+          await syncProductWithShopify({
+            product: {
+              ...normalizedProduct,
+              shopify: {
+                ...normalizedProduct.shopify,
+                productId:
+                  normalizedProduct.shopify?.productId ?? null,
+              },
+            },
+            shopifyApiStatus,
+          });
+
+        await productRef.update({
+          lifecycleStatus,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+
+        await productRef.update({
+          // lifecycleStatus: "active",
+
+          source: baseProduct.source ?? "vendor",
+
+          ownership: {
+            claimed: true,
+            claimedByVendorId: baseProduct.vendorId,
+            claimedAt:
+              baseProduct.ownership?.claimedAt ??
+              admin.firestore.FieldValue.serverTimestamp(),
+          },
+
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          "verification.isProductActive": true,
+          "verification.productVerified": true,
+
+          shopify: {
+            ...baseProduct.shopify,
+
+            productId:
+              baseProduct.shopify?.productId ??
+              shopifyResult.shopifyProductId,
+
+            graphqlId:
+              baseProduct.shopify?.graphqlId ??
+              shopifyResult.shopifyGraphqlId ??
+              null,
+
+            handle:
+              baseProduct.shopify?.handle ??
+              shopifyResult.handle ??
+              null,
+              
+
+            shopifyProductURL:
+              (baseProduct.shopify?.handle ?? shopifyResult.handle)
+                ? `https://${process.env.SHOPIFY_STORE_DOMAIN}/products/${baseProduct.shopify?.handle ?? shopifyResult.handle
+                }`
+                : null,
+
+            shopifyStatus: "active",
+            syncAction: shopifyResult.action,
+            syncedAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+        });
+
+        await productRef.update({
+          "shopify.lastError": admin.firestore.FieldValue.delete(),
+        });
+
+        console.log("Shopify sync SUCCESS:", shopifyResult);
+
+        console.log("Sending SUCCESS response");
+
+        return res.json({
+          success: true,
+          message: "Product activated successfully",
+        });
+      } catch (err: any) {
+        console.log("Shopify sync FAILED (caught):", err.message);
+        console.error(
+          "Shopify activation failed:",
+          err.message
+        );
+
+        await productRef.update({
+          "shopify.lastError": err.message,
+        });
+
+        console.log("Sending FAILURE response");
+        return res.status(400).json({
+          success: false,
+          message: err.message,
+        });
+      }
+    }
+
+    /* ================= NON-ACTIVE ================= */
+
+    const shopifyResult = await syncProductWithShopify({
+      product: baseProduct,
+      shopifyApiStatus,
+    });
+
+await productRef.update({
+  lifecycleStatus,
+  "shopify.shopifyStatus":
+    shopifyApiStatus === "active" ? "active" : "draft",
+  "shopify.syncAction": shopifyResult.action,
+  updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+});
+
+    // 🔑 Shopify sync only when product already exists OR needs unlisting
+    // try {
+    //   const refreshedSnap = await productRef.get();
+    //   const refreshedProduct = {
+    //     id: refreshedSnap.id,
+    //     ...(refreshedSnap.data() as FirestoreProductData),
+    //   };
+
+    //   await syncProductWithShopify({
+    //     product: refreshedProduct,
+    //     shopifyApiStatus,
+    //   });
+    // } catch (err) {
+    //   console.error("Shopify sync failed:", err);
+    // }
+
+
+    console.log("Sending SUCCESS response");
+    return res.json({
+      success: true,
+      message: `Product lifecycle updated to ${lifecycleStatus}`,
+    });
+  } catch (error: any) {
+    console.error("Status update error:", error);
+    console.log("Sending FAILURE response");
+    res.status(500).json({
+      success: false,
+      message:
+        error.message ||
+        "Status update failed",
+    });
+  }
+});
+
+
+/**
+ * GET /api/products/import/shopify/status
+ * Fetch the live Shopify import progress
+ */
+router.get("/import/shopify/status", async (_req, res) => {
+  res.json({
+    success: true,
+    data: getProductsSyncProgress(),
+  });
+});
+
+/**
+ * GET /api/products/import/shopify/logs
+ * Fetch persisted Shopify import logs
+ */
+router.get("/import/shopify/logs", async (_req, res) => {
+  try {
+    const logs = await getProductsSyncLogs();
+
+    res.json({
+      success: true,
+      data: logs,
+    });
+  } catch (error: any) {
+    console.error(
+      "Products sync logs fetch error:",
+      error
+    );
+    res.status(500).json({
+      success: false,
+      message:
+        error.message ||
+        "Failed to fetch sync logs",
+    });
+  }
+});
+
+/**
+ * POST /api/products/import/shopify
+ * Import existing Shopify products into Firestore
+ */
+router.post("/import/shopify", async (_req, res) => {
+  if (isProductsSyncRunning()) {
+    res.status(409).json({
+      success: false,
+      message:
+        "A Shopify sync is already running. Please wait for it to finish.",
+      progress: getProductsSyncProgress(),
+    });
+    return;
+  }
+
+  startProductsSyncProgress();
+
+  try {
+    const result =
+      await importShopifyProductsToFirestore({
+        onProgress: async (progress) => {
+          updateProductsSyncProgress({
+            status: "running",
+            totalProducts: progress.totalProducts,
+            processedProducts:
+              progress.processedProducts,
+            imported: progress.imported,
+            skipped: progress.skipped,
+            message: progress.message,
+          });
+        },
+      });
+
+    completeProductsSyncProgress(
+      "Shopify sync completed."
+    );
+
+    const log = await createProductsSyncLog({
+      imported: result.imported,
+      skipped: result.skipped,
+      status: "success",
+      message: "Shopify products imported",
+    });
+
+    res.json({
+      success: true,
+      message: "Shopify products imported",
+      data: result,
+      log,
+    });
+  } catch (error: any) {
+    console.error("Shopify import error:", error);
+    const failedProgress =
+      failProductsSyncProgress(
+        error.message || "Shopify import failed"
+      );
+    let log = null;
+
+    try {
+      log = await createProductsSyncLog({
+        imported: failedProgress.imported,
+        skipped: failedProgress.skipped,
+        status: "error",
+        message:
+          error.message || "Shopify import failed",
+      });
+    } catch (logError) {
+      console.error(
+        "Products sync log save error:",
+        logError
+      );
+    }
+
+    res.status(500).json({
+      success: false,
+      message:
+        error.message || "Shopify import failed",
+      log,
+      progress: failedProgress,
+    });
+  }
+});
+
+router.patch("/:id", async (req, res) => {
+  try {
+    if (!req.body || typeof req.body !== "object") {
+      res.status(400).json({
+        success: false,
+        message: "Invalid product payload",
+      });
+      return;
+    }
+
+    const productRef = firestore.collection("products").doc(req.params.id);
+    const existingProduct = await productRef.get();
+
+    if (!existingProduct.exists) {
+      res.status(404).json({
+        success: false,
+        message: "Product not found",
+      });
+      return;
+    }
+
+    const existingProductData =
+      existingProduct.data() as FirestoreProductData;
+    const sanitizedPayload = sanitizeUpdatePayload(
+      req.body
+    ) as Record<string, unknown>;
+
+    const mergedProduct = {
+      id: existingProduct.id,
+      ...(mergeDeep(existingProductData, sanitizedPayload) as Record<string, unknown>),
+    } as FirestoreProduct;
+
+    const [enrichedProductForSync] = await enrichProductsWithVendors([mergedProduct]);
+    const desiredShopifyStatus =
+      enrichedProductForSync?.shopify?.shopifyStatus === "active" ||
+      enrichedProductForSync?.lifecycleStatus === "active"
+        ? "active"
+        : "draft";
+
+    const shouldSyncShopify =
+      Boolean(enrichedProductForSync?.shopify?.productId) ||
+      desiredShopifyStatus === "active";
+
+    let shopifySyncResult:
+      | Awaited<ReturnType<typeof syncProductWithShopify>>
+      | null = null;
+
+    if (shouldSyncShopify) {
+      shopifySyncResult = await syncProductWithShopify({
+        product: enrichedProductForSync,
+        shopifyApiStatus: desiredShopifyStatus,
+      });
+    }
+
+    const nextHandle =
+      shopifySyncResult?.handle ??
+      enrichedProductForSync?.shopify?.handle ??
+      enrichedProductForSync?.shopify?.identifiers?.handle ??
+      null;
+
+    const nextShopifyState = shouldSyncShopify
+      ? {
+          ...(isRecord(existingProductData.shopify) ? existingProductData.shopify : {}),
+          ...(isRecord(enrichedProductForSync?.shopify) ? enrichedProductForSync.shopify : {}),
+          ...(shopifySyncResult?.shopifyProductId
+            ? { productId: shopifySyncResult.shopifyProductId }
+            : {}),
+          ...(shopifySyncResult?.shopifyGraphqlId
+            ? { graphqlId: shopifySyncResult.shopifyGraphqlId }
+            : {}),
+          ...(nextHandle ? { handle: nextHandle } : {}),
+          shopifyStatus: desiredShopifyStatus,
+          syncAction: shopifySyncResult?.action ?? "updated",
+          syncedAt: admin.firestore.FieldValue.serverTimestamp(),
+          ...(nextHandle
+            ? {
+                shopifyProductURL: `https://${process.env.SHOPIFY_STORE_DOMAIN}/products/${nextHandle}`,
+              }
+            : {}),
+        }
+      : null;
+
+    await productRef.set(
+      {
+        ...sanitizedPayload,
+        ...(nextShopifyState ? { shopify: nextShopifyState } : {}),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+    if (shouldSyncShopify) {
+      await productRef.update({
+        "shopify.lastError": admin.firestore.FieldValue.delete(),
+      });
+    }
+
+    const updatedSnapshot = await productRef.get();
+    const updatedProduct: FirestoreProduct = {
+      id: updatedSnapshot.id,
+      ...(updatedSnapshot.data() as FirestoreProductData),
+    };
+
+    const [enrichedProduct] = await enrichProductsWithVendors([updatedProduct]);
+    const normalizedProduct = normalizeFirestoreValue(
+      enrichedProduct ?? updatedProduct
+    ) as Record<string, unknown>;
+
+    res.json({
+      success: true,
+      message:
+        shouldSyncShopify && shopifySyncResult
+          ? `Product updated successfully and Shopify ${shopifySyncResult.action}`
+          : "Product updated successfully",
+      data: {
+        ...normalizedProduct,
+        businessName:
+          enrichedProduct?.vendorResolved?.businessName ?? null,
+        claimedByBusinessName:
+          enrichedProduct?.vendorResolved?.claimedByBusinessName ?? null,
+      },
+    });
+  } catch (error: any) {
+    console.error("Failed to update product:", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to update product",
+    });
+  }
+});
+
+router.get("/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const snapshot = await firestore
+      .collection("products")
+      .doc(id)
+      .get();
+
+    if (!snapshot.exists) {
+      return res.status(404).json({
+        success: false,
+        message: "Product not found",
+      });
+    }
+
+    const product: FirestoreProduct = {
+      id: snapshot.id,
+      ...(snapshot.data() as FirestoreProductData),
+    };
+
+    const [enrichedProduct] =
+      await enrichProductsWithVendors([product]);
+
+    res.json({
+      success: true,
+      data: {
+        ...enrichedProduct,
+        businessName:
+          enrichedProduct?.vendorResolved
+            ?.businessName ?? null,
+      },
+    });
+  } catch (error: any) {
+    console.error(
+      "Product details error:",
+      error
+    );
+    res.status(500).json({
+      success: false,
+      message:
+        error.message ||
+        "Failed to fetch product details",
+    });
+  }
+});
+
+
+export default router;
+
+
+
