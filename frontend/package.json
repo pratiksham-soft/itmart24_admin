@@ -5,10 +5,13 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "start": "vite",
+    "staging": "set APP_ENV=development&& vite",
+    "staging:build": "set APP_ENV=development&& tsc -b && vite build",
     "build": "tsc -b && vite build",
+    "production": "set APP_ENV=production&& tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview",
-    "start": "react-scripts start"
+    "preview": "vite preview"
   },
   "dependencies": {
     "@fullcalendar/core": "^6.1.15",
@@ -22,6 +25,7 @@
     "apexcharts": "^4.1.0",
     "axios": "^1.13.4",
     "clsx": "^2.1.1",
+    "firebase": "^12.11.0",
     "flatpickr": "^4.6.13",
     "react": "^18.2.0",
     "react-apexcharts": "^1.7.0",

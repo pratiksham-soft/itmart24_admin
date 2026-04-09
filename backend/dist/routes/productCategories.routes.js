@@ -3,6 +3,11 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const firebaseAdmin_1 = require("../config/firebaseAdmin");
 const router = (0, express_1.Router)();
+const CATEGORY_CACHE_TTL_MS = 5 * 60 * 1000;
+let cachedCategoryTree = null;
+let cachedCategoryTreeFetchedAt = 0;
+const isCategoryCacheFresh = () => cachedCategoryTree !== null &&
+    Date.now() - cachedCategoryTreeFetchedAt < CATEGORY_CACHE_TTL_MS;
 const generateSlug = (name) => {
     return name
         .toLowerCase()
@@ -116,6 +121,9 @@ router.post("/sub-sub-category", async (req, res) => {
  */
 router.get("/", async (req, res) => {
     try {
+        if (isCategoryCacheFresh()) {
+            return res.json(cachedCategoryTree);
+        }
         // 1️⃣ Fetch all main categories
         const mainSnapshot = await firebaseAdmin_1.firestore
             .collection("product_categories")
@@ -159,10 +167,15 @@ router.get("/", async (req, res) => {
                 }));
             }));
         }));
+        cachedCategoryTree = mains;
+        cachedCategoryTreeFetchedAt = Date.now();
         return res.json(mains);
     }
     catch (error) {
         console.error("Error fetching categories:", error);
+        if (cachedCategoryTree) {
+            return res.json(cachedCategoryTree);
+        }
         return res.status(500).json({ message: "Fetch failed" });
     }
 });

@@ -5,8 +5,12 @@
   "main": "index.js",
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
+    "staging": "set APP_ENV=development&& ts-node-dev --respawn --transpile-only src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
+    "production": "set NODE_ENV=production&& set APP_ENV=production&& npm run build&& node dist/server.js",
+    "copy:staging-data": "ts-node src/scripts/copyFirestoreCollections.ts",
+    "shopify:refresh-seo-copy": "ts-node src/scripts/refreshShopifyProductSeoCopy.ts",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],

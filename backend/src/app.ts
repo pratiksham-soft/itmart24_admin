@@ -4,6 +4,7 @@ import productsRoutes from "./routes/products.routes";
 import subscriptionPlansRoutes from "./routes/subscriptionPlans.routes";
 import productCategoriesRoutes from "./routes/productCategories.routes";
 import vendorsRoutes from "./routes/vendors.routes";
+import shopifyRoutes from "./routes/shopify.routes";
 
 
 
@@ -12,6 +13,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 app.use("/api/products", productsRoutes);
+app.use("/api/shopify", shopifyRoutes);
 app.use("/api/vendors", vendorsRoutes);
 app.use("/api/subscription-plans", subscriptionPlansRoutes);
 app.use("/api/product-categories", productCategoriesRoutes);

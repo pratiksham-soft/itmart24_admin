@@ -2,9 +2,13 @@
   "name": "itmart24-admin",
   "private": true,
   "scripts": {
-    "start": "concurrently \"npm run dev --prefix backend\" \"npm run dev --prefix frontend\"",
+    "start": "concurrently \"npm run staging --prefix backend\" \"npm run staging --prefix frontend\"",
+    "staging": "npm start",
     "backend": "npm run dev --prefix backend",
-    "frontend": "npm start --prefix frontend"
+    "frontend": "npm run start --prefix frontend",
+    "backend:production": "npm run production --prefix backend",
+    "frontend:production": "npm run production --prefix frontend",
+    "build": "npm run build --prefix frontend && npm run build --prefix backend"
   },
   "devDependencies": {
     "concurrently": "^8.2.0"

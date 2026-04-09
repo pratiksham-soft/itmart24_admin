@@ -54,6 +54,14 @@ const navItems: NavItem[] = [
     path: "/profile",
   },
   {
+    icon: <BoxCubeIcon />,
+    name: "Shopify",
+    subItems: [
+      { name: "Shopify Products", path: "/shopify/products" },
+      { name: "Shopify Collections", path: "/shopify/collections" },
+    ],
+  },
+  {
   icon: <PlugInIcon />,
   name: "Master",
    subItems: [

@@ -2,6 +2,14 @@ import { Router, Request, Response } from "express";
 import { firestore } from "../config/firebaseAdmin";
 
 const router = Router();
+const CATEGORY_CACHE_TTL_MS = 5 * 60 * 1000;
+
+let cachedCategoryTree: any[] | null = null;
+let cachedCategoryTreeFetchedAt = 0;
+
+const isCategoryCacheFresh = () =>
+  cachedCategoryTree !== null &&
+  Date.now() - cachedCategoryTreeFetchedAt < CATEGORY_CACHE_TTL_MS;
 
 const generateSlug = (name: string) => {
   return name
@@ -129,6 +137,9 @@ router.post("/sub-sub-category", async (req: Request, res: Response) => {
  */
 router.get("/", async (req: Request, res: Response) => {
   try {
+    if (isCategoryCacheFresh()) {
+      return res.json(cachedCategoryTree);
+    }
     // 1️⃣ Fetch all main categories
     const mainSnapshot = await firestore
       .collection("product_categories")
@@ -185,9 +196,17 @@ router.get("/", async (req: Request, res: Response) => {
       })
     );
 
+    cachedCategoryTree = mains;
+    cachedCategoryTreeFetchedAt = Date.now();
+
     return res.json(mains);
   } catch (error) {
     console.error("Error fetching categories:", error);
+
+    if (cachedCategoryTree) {
+      return res.json(cachedCategoryTree);
+    }
+
     return res.status(500).json({ message: "Fetch failed" });
   }
 });

@@ -1,7 +1,9 @@
-backend/.env
-backend/firebase-service-account.json
+backend/.env*
+frontend/.env*
+backend/firebase-service-account*.json
 .env
 *.json
+!app.environment.json
 !package.json
 !package-lock.json
 !tsconfig.json

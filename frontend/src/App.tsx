@@ -27,6 +27,8 @@ import Sync from "./pages/Master/Sync";
 import ManagePlans from "./pages/Master/ManagePlans/ManagePlans";
 import ProductCategoryMaster from "./pages/Master/ProductMaster/ProductCategoryMaster";
 import Vendors from "./pages/Vendors/Vendors";
+import ShopifyProducts from "./pages/Shopify/ShopifyProducts";
+import ShopifyCollections from "./pages/Shopify/ShopifyCollections";
 
 
 export default function App() {
@@ -57,6 +59,13 @@ export default function App() {
             <Route path="/products/on-hold" element={<OnHoldProducts />} />
             <Route path="/products/claimed" element={<ClaimedProducts />} />
             <Route path="/vendors" element={<Vendors />} />
+
+            {/* Shopify */}
+            <Route path="/shopify/products" element={<ShopifyProducts />} />
+            <Route
+              path="/shopify/collections"
+              element={<ShopifyCollections />}
+            />
 
             {/* Master */}
             <Route path="master/sync" element={<Sync />} />

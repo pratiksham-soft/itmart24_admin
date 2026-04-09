@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import axios from "axios";
 import {
     TrashBinIcon,
@@ -45,6 +45,7 @@ const ProductCategoryMaster = () => {
     const [saving, setSaving] = useState(false);
     const [expandedMain, setExpandedMain] = useState<string | null>(null);
     const [expandedSub, setExpandedSub] = useState<string | null>(null);
+    const hasFetchedCategories = useRef(false);
 
 
     const API_BASE = "/api/product-categories";
@@ -62,6 +63,11 @@ const ProductCategoryMaster = () => {
     };
 
     useEffect(() => {
+        if (hasFetchedCategories.current) {
+            return;
+        }
+
+        hasFetchedCategories.current = true;
         fetchCategories();
     }, []);
 
