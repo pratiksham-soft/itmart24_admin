@@ -11,6 +11,7 @@ const enrichProductsWithVendors_1 = require("../utils/enrichProductsWithVendors"
 const shopifyProductImport_1 = require("../services/shopifyProductImport");
 const productsSyncLogs_service_1 = require("../services/productsSyncLogs.service");
 const productsSyncProgress_service_1 = require("../services/productsSyncProgress.service");
+const firestoreExport_service_1 = require("../services/firestoreExport.service");
 const router = (0, express_1.Router)();
 const normalizeFirestoreValue = (value) => {
     if (value instanceof firebase_admin_1.default.firestore.Timestamp) {
@@ -92,6 +93,76 @@ const mergeDeep = (target, source) => {
     return source === undefined ? target : source;
 };
 const isRecord = (value) => Boolean(value) && typeof value === "object" && !Array.isArray(value);
+const parseBooleanFlag = (value, fallback = false) => {
+    if (typeof value === "boolean") {
+        return value;
+    }
+    return fallback;
+};
+/**
+ * GET /api/products/firestore-export/collections
+ * Fetch root Firestore collections for export selection
+ */
+router.get("/firestore-export/collections", async (_req, res) => {
+    try {
+        const collections = await (0, firestoreExport_service_1.listFirestoreRootCollections)();
+        res.json({
+            success: true,
+            data: collections,
+        });
+    }
+    catch (error) {
+        console.error("Firestore export collections error:", error);
+        res.status(500).json({
+            success: false,
+            message: error.message ||
+                "Failed to load Firestore collections",
+        });
+    }
+});
+/**
+ * POST /api/products/firestore-export
+ * Export selected Firestore collections as JSON
+ */
+router.post("/firestore-export", async (req, res) => {
+    try {
+        const collections = Array.isArray(req.body?.collections)
+            ? req.body.collections
+            : [];
+        const options = req.body?.options ?? {};
+        const exportPayload = await (0, firestoreExport_service_1.buildFirestoreExport)(collections, {
+            schema: parseBooleanFlag(options.schema, false),
+            structure: parseBooleanFlag(options.structure, false),
+            dataFields: parseBooleanFlag(options.dataFields, false),
+            values: parseBooleanFlag(options.values, false),
+            topDocuments: parseBooleanFlag(options.topDocuments, false),
+        }, {
+            fromDate: typeof req.body?.fromDate ===
+                "string"
+                ? req.body.fromDate
+                : null,
+            toDate: typeof req.body?.toDate ===
+                "string"
+                ? req.body.toDate
+                : null,
+        });
+        const fileStamp = new Date()
+            .toISOString()
+            .replace(/[:.]/g, "-");
+        const filename = `firestore-export-${fileStamp}.json`;
+        res.setHeader("Content-Type", "application/json; charset=utf-8");
+        res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+        res.send(JSON.stringify(exportPayload, null, 2));
+    }
+    catch (error) {
+        console.error("Firestore export error:", error);
+        res.status(400).json({
+            success: false,
+            message: error.message ||
+                "Failed to export Firestore data",
+        });
+    }
+});
 /**
  * GET /api/products/pending
  * Fetch all pending products

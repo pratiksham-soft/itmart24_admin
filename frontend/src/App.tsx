@@ -29,6 +29,7 @@ import ProductCategoryMaster from "./pages/Master/ProductMaster/ProductCategoryM
 import Vendors from "./pages/Vendors/Vendors";
 import ShopifyProducts from "./pages/Shopify/ShopifyProducts";
 import ShopifyCollections from "./pages/Shopify/ShopifyCollections";
+import Support from "./pages/Support/Support";
 
 
 export default function App() {
@@ -58,6 +59,7 @@ export default function App() {
             <Route path="/products/rejected" element={<RejectedProducts />} />
             <Route path="/products/on-hold" element={<OnHoldProducts />} />
             <Route path="/products/claimed" element={<ClaimedProducts />} />
+            <Route path="/support" element={<Support />} />
             <Route path="/vendors" element={<Vendors />} />
 
             {/* Shopify */}

@@ -1,4 +1,4 @@
 {
-  "environment": "development",
-  "environment2": "production"
+  "environment1": "production",
+  "environment": "development"
 }

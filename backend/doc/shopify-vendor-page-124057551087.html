@@ -1,0 +1,1141 @@
+<style>
+  .main-page-title.page-title {
+    display: none !important;
+  }
+
+  .page-width.page-width--narrow.section-template--21833919725807__main-padding {
+    max-width: 100% !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+  }
+
+  .page-width.page-width--narrow.section-template--21833919725807__main-padding > .rte {
+    max-width: none !important;
+    margin: 0 !important;
+  }
+
+  .vendor-pricing-page {
+    --vp-bg: #081120;
+    --vp-bg-soft: #0f1a30;
+    --vp-surface: rgba(10, 18, 34, 0.88);
+    --vp-surface-strong: #14233f;
+    --vp-surface-muted: rgba(148, 163, 184, 0.08);
+    --vp-border: rgba(148, 163, 184, 0.18);
+    --vp-border-strong: rgba(96, 165, 250, 0.34);
+    --vp-text: #edf4ff;
+    --vp-muted: #9eb2d1;
+    --vp-primary: #60a5fa;
+    --vp-primary-strong: #2563eb;
+    --vp-secondary: #22d3ee;
+    --vp-success: #34d399;
+    --vp-shadow: 0 28px 80px rgba(2, 6, 23, 0.42);
+    --vp-radius-xl: 28px;
+    --vp-radius-lg: 22px;
+    --vp-radius-md: 16px;
+    position: relative;
+    overflow: hidden;
+    width: 100vw;
+    margin-left: calc(50% - 50vw);
+    margin-right: calc(50% - 50vw);
+    padding: 40px 0 72px;
+    color: var(--vp-text);
+    font-family: Aptos, "Segoe UI Variable Text", "Segoe UI", sans-serif;
+    background:
+      radial-gradient(circle at top left, rgba(34, 211, 238, 0.14), transparent 34%),
+      radial-gradient(circle at top right, rgba(96, 165, 250, 0.12), transparent 30%),
+      linear-gradient(180deg, var(--vp-bg) 0%, #050b17 100%);
+  }
+
+  .vendor-pricing-page * {
+    box-sizing: border-box;
+  }
+
+  .vendor-pricing-page::before,
+  .vendor-pricing-page::after {
+    content: "";
+    position: absolute;
+    border-radius: 999px;
+    pointer-events: none;
+    filter: blur(18px);
+  }
+
+  .vendor-pricing-page::before {
+    top: -120px;
+    left: -90px;
+    width: 280px;
+    height: 280px;
+    background: rgba(37, 99, 235, 0.22);
+  }
+
+  .vendor-pricing-page::after {
+    right: -120px;
+    bottom: 140px;
+    width: 260px;
+    height: 260px;
+    background: rgba(34, 211, 238, 0.16);
+  }
+
+  .vendor-pricing-page a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  .vendor-pricing-page__shell {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    max-width: none;
+    margin: 0 auto;
+    padding: 0 28px;
+  }
+
+  .vendor-pricing-page__hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1.45fr) minmax(300px, 0.95fr);
+    gap: 28px;
+    align-items: stretch;
+    margin-bottom: 30px;
+  }
+
+  .vendor-pricing-page__hero-main,
+  .vendor-pricing-page__hero-side,
+  .vendor-pricing-page__plans,
+  .vendor-pricing-page__policy {
+    border: 1px solid var(--vp-border);
+    background:
+      linear-gradient(180deg, rgba(20, 35, 63, 0.9), rgba(6, 11, 23, 0.94));
+    box-shadow: var(--vp-shadow);
+    backdrop-filter: blur(12px);
+  }
+
+  .vendor-pricing-page__hero-main {
+    border-radius: 32px;
+    padding: 34px;
+  }
+
+  .vendor-pricing-page__eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 14px;
+    border-radius: 999px;
+    border: 1px solid rgba(96, 165, 250, 0.24);
+    background: rgba(96, 165, 250, 0.1);
+    color: #dbeafe;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .vendor-pricing-page__eyebrow-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    background: linear-gradient(135deg, var(--vp-secondary), var(--vp-primary));
+    box-shadow: 0 0 0 6px rgba(34, 211, 238, 0.08);
+  }
+
+  .vendor-pricing-page__hero h1 {
+    margin: 18px 0 14px;
+    font-size: clamp(34px, 5vw, 56px);
+    line-height: 1.04;
+    letter-spacing: -0.03em;
+    color: #ffffff;
+  }
+
+  .vendor-pricing-page__hero p {
+    margin: 0;
+    max-width: 720px;
+    font-size: 16px;
+    line-height: 1.75;
+    color: var(--vp-muted);
+  }
+
+  .vendor-pricing-page__hero-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    margin-top: 26px;
+  }
+
+  .vendor-pricing-page__button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 50px;
+    padding: 0 22px;
+    border-radius: 14px;
+    font-size: 14px;
+    font-weight: 800;
+    transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  }
+
+  .vendor-pricing-page__button:hover {
+    transform: translateY(-2px);
+  }
+
+  .vendor-pricing-page__button--primary {
+    color: #ffffff;
+    background: linear-gradient(135deg, var(--vp-primary-strong), var(--vp-secondary));
+    box-shadow: 0 18px 34px rgba(37, 99, 235, 0.28);
+  }
+
+  .vendor-pricing-page__button--secondary {
+    color: #e2e8f0;
+    border: 1px solid rgba(148, 163, 184, 0.22);
+    background: rgba(15, 23, 42, 0.72);
+  }
+
+  .vendor-pricing-page__proofs {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 14px;
+    margin-top: 26px;
+  }
+
+  .vendor-pricing-page__proof {
+    padding: 16px 18px;
+    border-radius: 18px;
+    border: 1px solid rgba(148, 163, 184, 0.14);
+    background: rgba(148, 163, 184, 0.05);
+  }
+
+  .vendor-pricing-page__proof-label {
+    display: block;
+    margin-bottom: 6px;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #8fb3e5;
+  }
+
+  .vendor-pricing-page__proof strong {
+    display: block;
+    margin-bottom: 6px;
+    font-size: 18px;
+    font-weight: 800;
+    color: #ffffff;
+  }
+
+  .vendor-pricing-page__proof span {
+    display: block;
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--vp-muted);
+  }
+
+  .vendor-pricing-page__hero-side {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 24px;
+    border-radius: 28px;
+    padding: 28px;
+  }
+
+  .vendor-pricing-page__side-label {
+    margin: 0 0 12px;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #93c5fd;
+  }
+
+  .vendor-pricing-page__side-title {
+    margin: 0 0 12px;
+    font-size: 28px;
+    line-height: 1.15;
+    letter-spacing: -0.03em;
+    color: #ffffff;
+  }
+
+  .vendor-pricing-page__side-copy {
+    margin: 0;
+    font-size: 15px;
+    line-height: 1.75;
+    color: var(--vp-muted);
+  }
+
+  .vendor-pricing-page__side-list {
+    display: grid;
+    gap: 12px;
+    margin-top: 22px;
+  }
+
+  .vendor-pricing-page__side-item {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    padding: 14px 16px;
+    border-radius: 18px;
+    background: rgba(148, 163, 184, 0.06);
+    border: 1px solid rgba(148, 163, 184, 0.14);
+  }
+
+  .vendor-pricing-page__side-icon {
+    flex: 0 0 34px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    border-radius: 12px;
+    background: linear-gradient(135deg, rgba(96, 165, 250, 0.22), rgba(34, 211, 238, 0.2));
+    color: #dbeafe;
+    font-size: 14px;
+    font-weight: 800;
+  }
+
+  .vendor-pricing-page__side-item strong {
+    display: block;
+    margin-bottom: 4px;
+    font-size: 14px;
+    font-weight: 800;
+    color: #ffffff;
+  }
+
+  .vendor-pricing-page__side-item span {
+    display: block;
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--vp-muted);
+  }
+
+  .vendor-pricing-page__plans {
+    border-radius: 30px;
+    padding: 30px;
+  }
+
+  .vendor-pricing-page__section-head {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 18px;
+    margin-bottom: 26px;
+  }
+
+  .vendor-pricing-page__section-head h2 {
+    margin: 0 0 8px;
+    font-size: clamp(28px, 3.5vw, 38px);
+    line-height: 1.08;
+    letter-spacing: -0.03em;
+    color: #ffffff;
+  }
+
+  .vendor-pricing-page__section-head p {
+    margin: 0;
+    max-width: 720px;
+    font-size: 15px;
+    line-height: 1.75;
+    color: var(--vp-muted);
+  }
+
+  .vendor-pricing-page__section-note {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    border-radius: 999px;
+    background: rgba(52, 211, 153, 0.09);
+    border: 1px solid rgba(52, 211, 153, 0.22);
+    color: #bbf7d0;
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  .vendor-pricing-page__grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 22px;
+  }
+
+  .vendor-pricing-page__plan {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    min-height: 100%;
+    padding: 24px;
+    border-radius: 24px;
+    border: 1px solid rgba(148, 163, 184, 0.16);
+    background:
+      linear-gradient(180deg, rgba(17, 28, 49, 0.92), rgba(8, 15, 30, 0.96));
+    box-shadow: 0 18px 48px rgba(2, 6, 23, 0.28);
+  }
+
+  .vendor-pricing-page__plan--popular,
+  .vendor-pricing-page__plan--premium {
+    border-color: var(--vp-border-strong);
+  }
+
+  .vendor-pricing-page__plan--popular {
+    background:
+      radial-gradient(circle at top right, rgba(34, 211, 238, 0.1), transparent 32%),
+      linear-gradient(180deg, rgba(21, 36, 63, 0.96), rgba(8, 15, 30, 0.98));
+    box-shadow: 0 24px 54px rgba(37, 99, 235, 0.2);
+  }
+
+  .vendor-pricing-page__plan--premium {
+    background:
+      radial-gradient(circle at top right, rgba(96, 165, 250, 0.12), transparent 34%),
+      linear-gradient(180deg, rgba(18, 30, 54, 0.96), rgba(8, 15, 30, 0.98));
+  }
+
+  .vendor-pricing-page__plan-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 14px;
+    margin-bottom: 18px;
+  }
+
+  .vendor-pricing-page__plan-kicker {
+    display: inline-flex;
+    align-items: center;
+    padding: 7px 11px;
+    border-radius: 999px;
+    border: 1px solid rgba(148, 163, 184, 0.15);
+    background: rgba(148, 163, 184, 0.08);
+    color: #dbeafe;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .vendor-pricing-page__plan-badge {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8px 12px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 800;
+    background: rgba(148, 163, 184, 0.08);
+    border: 1px solid rgba(148, 163, 184, 0.15);
+    color: #e2e8f0;
+  }
+
+  .vendor-pricing-page__plan-badge--popular {
+    background: rgba(96, 165, 250, 0.14);
+    border-color: rgba(96, 165, 250, 0.3);
+    color: #dbeafe;
+  }
+
+  .vendor-pricing-page__plan-badge--premium {
+    background: rgba(34, 211, 238, 0.12);
+    border-color: rgba(34, 211, 238, 0.26);
+    color: #cffafe;
+  }
+
+  .vendor-pricing-page__plan h3 {
+    margin: 0 0 8px;
+    font-size: 28px;
+    line-height: 1.1;
+    letter-spacing: -0.03em;
+    color: #ffffff;
+  }
+
+  .vendor-pricing-page__plan-copy {
+    margin: 0 0 18px;
+    font-size: 14px;
+    line-height: 1.7;
+    color: var(--vp-muted);
+  }
+
+  .vendor-pricing-page__toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px;
+    margin-bottom: 18px;
+    border-radius: 999px;
+    border: 1px solid rgba(148, 163, 184, 0.18);
+    background: rgba(4, 10, 22, 0.72);
+  }
+
+  .vendor-pricing-page__toggle button {
+    border: 0;
+    padding: 8px 14px;
+    border-radius: 999px;
+    background: transparent;
+    color: #cbd5e1;
+    font-size: 13px;
+    font-weight: 800;
+    cursor: pointer;
+    transition: background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+  }
+
+  .vendor-pricing-page__toggle button.is-active {
+    color: #ffffff;
+    background: linear-gradient(135deg, var(--vp-primary-strong), var(--vp-secondary));
+    box-shadow: 0 10px 22px rgba(37, 99, 235, 0.24);
+  }
+
+  .vendor-pricing-page__pricing {
+    padding: 18px;
+    margin-bottom: 16px;
+    border-radius: 20px;
+    border: 1px solid rgba(148, 163, 184, 0.14);
+    background: rgba(4, 10, 22, 0.58);
+  }
+
+  .vendor-pricing-page__pricing [data-price-mode] {
+    display: none;
+  }
+
+  .vendor-pricing-page__pricing[data-current-mode="monthly"] [data-price-mode="monthly"],
+  .vendor-pricing-page__pricing[data-current-mode="yearly"] [data-price-mode="yearly"] {
+    display: block;
+  }
+
+  .vendor-pricing-page__price-label {
+    display: inline-block;
+    margin-bottom: 8px;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #8fb3e5;
+  }
+
+  .vendor-pricing-page__price-row {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .vendor-pricing-page__compare-price {
+    color: rgba(203, 213, 225, 0.72);
+    font-size: 18px;
+    font-weight: 700;
+    text-decoration: line-through;
+    text-decoration-thickness: 2px;
+    text-decoration-color: rgba(251, 113, 133, 0.9);
+  }
+
+  .vendor-pricing-page__main-price {
+    color: #ffffff;
+    font-size: clamp(34px, 4vw, 46px);
+    line-height: 1;
+    letter-spacing: -0.04em;
+    font-weight: 900;
+  }
+
+  .vendor-pricing-page__price-term {
+    color: var(--vp-muted);
+    font-size: 14px;
+    font-weight: 700;
+  }
+
+  .vendor-pricing-page__price-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 12px;
+  }
+
+  .vendor-pricing-page__meta-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 6px 10px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+
+  .vendor-pricing-page__meta-pill--discount {
+    color: #dbeafe;
+    background: rgba(96, 165, 250, 0.12);
+    border: 1px solid rgba(96, 165, 250, 0.22);
+  }
+
+  .vendor-pricing-page__meta-pill--savings {
+    color: #bbf7d0;
+    background: rgba(52, 211, 153, 0.1);
+    border: 1px solid rgba(52, 211, 153, 0.2);
+  }
+
+  .vendor-pricing-page__features {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    gap: 12px;
+  }
+
+  .vendor-pricing-page__features--collapsible {
+    max-height: 276px;
+    overflow: hidden;
+    transition: max-height 0.28s ease;
+  }
+
+  .vendor-pricing-page__features--expanded {
+    max-height: 1400px;
+  }
+
+  .vendor-pricing-page__features li {
+    position: relative;
+    padding: 0 0 0 34px;
+    font-size: 14px;
+    line-height: 1.7;
+    color: #dbe6f5;
+  }
+
+  .vendor-pricing-page__features li::before {
+    content: "";
+    position: absolute;
+    top: 4px;
+    left: 0;
+    width: 20px;
+    height: 20px;
+    border-radius: 999px;
+    background:
+      linear-gradient(135deg, rgba(96, 165, 250, 0.2), rgba(34, 211, 238, 0.2));
+    border: 1px solid rgba(96, 165, 250, 0.28);
+    box-shadow: inset 0 0 0 5px rgba(191, 219, 254, 0.15);
+  }
+
+  .vendor-pricing-page__features li::after {
+    content: "";
+    position: absolute;
+    top: 11px;
+    left: 7px;
+    width: 7px;
+    height: 4px;
+    border-left: 2px solid #bfdbfe;
+    border-bottom: 2px solid #bfdbfe;
+    transform: rotate(-45deg);
+  }
+
+  .vendor-pricing-page__more {
+    align-self: flex-start;
+    margin-top: 14px;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: #7dd3fc;
+    font-size: 13px;
+    font-weight: 800;
+    cursor: pointer;
+  }
+
+  .vendor-pricing-page__cta {
+    margin-top: 22px;
+  }
+
+  .vendor-pricing-page__cta .vendor-pricing-page__button {
+    width: 100%;
+  }
+
+  .vendor-pricing-page__cta .vendor-pricing-page__button--secondary {
+    border-color: rgba(96, 165, 250, 0.3);
+  }
+
+  .vendor-pricing-page__policy {
+    margin-top: 28px;
+    border-radius: 28px;
+    padding: 30px;
+  }
+
+  .vendor-pricing-page__policy-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 18px;
+    margin-top: 22px;
+  }
+
+  .vendor-pricing-page__policy-card {
+    padding: 22px 20px;
+    border-radius: 22px;
+    border: 1px solid rgba(148, 163, 184, 0.14);
+    background: rgba(148, 163, 184, 0.05);
+  }
+
+  .vendor-pricing-page__policy-card strong {
+    display: block;
+    margin-bottom: 10px;
+    font-size: 18px;
+    line-height: 1.2;
+    color: #ffffff;
+  }
+
+  .vendor-pricing-page__policy-card p {
+    margin: 0;
+    font-size: 14px;
+    line-height: 1.7;
+    color: var(--vp-muted);
+  }
+
+  @media (max-width: 1080px) {
+    .vendor-pricing-page__hero,
+    .vendor-pricing-page__grid,
+    .vendor-pricing-page__policy-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .vendor-pricing-page__proofs {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  @media (max-width: 767px) {
+    .vendor-pricing-page {
+      padding: 24px 0 56px;
+    }
+
+    .vendor-pricing-page__shell {
+      padding: 0 14px;
+    }
+
+    .vendor-pricing-page__hero-main,
+    .vendor-pricing-page__hero-side,
+    .vendor-pricing-page__plans,
+    .vendor-pricing-page__policy,
+    .vendor-pricing-page__plan {
+      padding: 22px;
+    }
+
+    .vendor-pricing-page__hero-actions {
+      flex-direction: column;
+    }
+
+    .vendor-pricing-page__button {
+      width: 100%;
+    }
+
+    .vendor-pricing-page__section-head {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+
+    .vendor-pricing-page__section-note {
+      white-space: normal;
+    }
+
+    .vendor-pricing-page__plan-top {
+      flex-direction: column;
+      align-items: flex-start;
+    }
+  }
+</style>
+
+<div class="vendor-pricing-page" data-page-id="124057551087">
+  <div class="vendor-pricing-page__shell">
+    <section class="vendor-pricing-page__hero">
+      <div class="vendor-pricing-page__hero-main">
+        <span class="vendor-pricing-page__eyebrow">
+          <span class="vendor-pricing-page__eyebrow-dot"></span>
+          Vendor Plans
+        </span>
+        <h1>Grow your vendor presence with trust, visibility, and measurable demand.</h1>
+        <p>
+          Choose the plan that matches your stage of growth on IT-Mart24. Start with a clean marketplace presence, then unlock verification, branded visibility, AI discovery eligibility, and deeper performance analytics as your catalog scales.
+        </p>
+
+        <div class="vendor-pricing-page__hero-actions">
+          <a
+            class="vendor-pricing-page__button vendor-pricing-page__button--primary"
+            href="https://vendor.itmart24.com"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Vendor Login
+          </a>
+          <a
+            class="vendor-pricing-page__button vendor-pricing-page__button--secondary"
+            href="https://vendor.itmart24.com"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Sign Up
+          </a>
+        </div>
+
+        <div class="vendor-pricing-page__proofs">
+          <div class="vendor-pricing-page__proof">
+            <span class="vendor-pricing-page__proof-label">Marketplace Fit</span>
+            <strong>4 plan levels</strong>
+            <span>Choose the right balance of visibility, trust signals, analytics, and scale support.</span>
+          </div>
+          <div class="vendor-pricing-page__proof">
+            <span class="vendor-pricing-page__proof-label">Built For Growth</span>
+            <strong>From launch to enterprise</strong>
+            <span>Move from basic listing access to branded discovery, AI eligibility, and premium support.</span>
+          </div>
+          <div class="vendor-pricing-page__proof">
+            <span class="vendor-pricing-page__proof-label">Conversion Focused</span>
+            <strong>Trust-first presentation</strong>
+            <span>Verification badges, comparison visibility, analytics, and profile branding help buyers convert with confidence.</span>
+          </div>
+        </div>
+      </div>
+
+      <aside class="vendor-pricing-page__hero-side">
+        <div>
+          <p class="vendor-pricing-page__side-label">What paid plans unlock</p>
+          <h2 class="vendor-pricing-page__side-title">Enterprise-grade visibility without changing your core workflow.</h2>
+          <p class="vendor-pricing-page__side-copy">
+            Your vendor portal stays the same. The plan you choose determines how strongly IT-Mart24 can position your products across discovery, trust, comparisons, and vendor-brand presentation.
+          </p>
+        </div>
+
+        <div class="vendor-pricing-page__side-list">
+          <div class="vendor-pricing-page__side-item">
+            <span class="vendor-pricing-page__side-icon">01</span>
+            <div>
+              <strong>Increase buyer confidence</strong>
+              <span>Verification badges and official-link trust markers make your listing feel safer and more credible.</span>
+            </div>
+          </div>
+          <div class="vendor-pricing-page__side-item">
+            <span class="vendor-pricing-page__side-icon">02</span>
+            <div>
+              <strong>Improve qualified discovery</strong>
+              <span>Enhanced cards, comparison eligibility, featured visibility, and AI-ready positioning strengthen reach.</span>
+            </div>
+          </div>
+          <div class="vendor-pricing-page__side-item">
+            <span class="vendor-pricing-page__side-icon">03</span>
+            <div>
+              <strong>Track meaningful outcomes</strong>
+              <span>Analytics move from basic awareness to deeper product, lead, and conversion insights at higher tiers.</span>
+            </div>
+          </div>
+        </div>
+      </aside>
+    </section>
+
+    <section class="vendor-pricing-page__plans">
+      <div class="vendor-pricing-page__section-head">
+        <div>
+          <h2>Choose the plan that matches your growth stage.</h2>
+          <p>
+            Every plan keeps your vendor portal access simple. Paid tiers add stronger discovery, more visible trust signals, richer analytics, and better buyer-facing presentation.
+          </p>
+        </div>
+      </div>
+
+      <div class="vendor-pricing-page__grid">
+        <article class="vendor-pricing-page__plan">
+          <div class="vendor-pricing-page__plan-top">
+            <div>
+              <span class="vendor-pricing-page__plan-kicker">For Getting Started</span>
+            </div>
+            <span class="vendor-pricing-page__plan-badge">Completely Free</span>
+          </div>
+
+          <h3>Free Plan</h3>
+          <p class="vendor-pricing-page__plan-copy">
+            Build a basic marketplace presence and send buyers directly to your official product destination.
+          </p>
+
+          <div class="vendor-pricing-page__pricing">
+            <span class="vendor-pricing-page__price-label">Monthly access</span>
+            <div class="vendor-pricing-page__price-row">
+              <span class="vendor-pricing-page__main-price">$0</span>
+              <span class="vendor-pricing-page__price-term">/ month</span>
+            </div>
+            <div class="vendor-pricing-page__price-meta">
+              <span class="vendor-pricing-page__meta-pill vendor-pricing-page__meta-pill--discount">No commitment</span>
+            </div>
+          </div>
+
+          <ul class="vendor-pricing-page__features">
+            <li>Dedicated product page with thumbnail image, description, screenshots, and a clean public listing.</li>
+            <li>Keyword support to improve discovery across relevant IT-Mart24 search and category experiences.</li>
+            <li>Structured feature list for buyers evaluating your product quickly.</li>
+            <li>Basic listing in relevant searches without boosted or sponsored priority.</li>
+            <li>Community support and Help Center access for vendor guidance.</li>
+            <li>Direct product link routing users to your official website.</li>
+          </ul>
+
+          <div class="vendor-pricing-page__cta">
+            <a
+              class="vendor-pricing-page__button vendor-pricing-page__button--secondary"
+              href="https://vendor.itmart24.com"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Get Started
+            </a>
+          </div>
+        </article>
+
+        <article class="vendor-pricing-page__plan">
+          <div class="vendor-pricing-page__plan-top">
+            <div>
+              <span class="vendor-pricing-page__plan-kicker">For Early Traction</span>
+            </div>
+            <span class="vendor-pricing-page__plan-badge">Starter Access</span>
+          </div>
+
+          <h3>Starter Plan</h3>
+          <p class="vendor-pricing-page__plan-copy">
+            Add early-stage visibility signals and lightweight performance insight for newly launched products.
+          </p>
+
+          <div class="vendor-pricing-page__pricing">
+            <span class="vendor-pricing-page__price-label">Monthly billing</span>
+            <div class="vendor-pricing-page__price-row">
+              <span class="vendor-pricing-page__main-price">$0</span>
+              <span class="vendor-pricing-page__price-term">/ month</span>
+            </div>
+            <div class="vendor-pricing-page__price-meta">
+              <span class="vendor-pricing-page__meta-pill vendor-pricing-page__meta-pill--discount">Entry visibility boost</span>
+              <span class="vendor-pricing-page__meta-pill vendor-pricing-page__meta-pill--discount">Affiliate link required</span>
+            </div>
+          </div>
+
+          <ul class="vendor-pricing-page__features">
+            <li>Everything included in the Free Plan.</li>
+            <li>Basic analytics for listing views and outbound clicks.</li>
+            <li>New Arrival tagging for short-term launch visibility.</li>
+          </ul>
+
+          <div class="vendor-pricing-page__cta">
+            <a
+              class="vendor-pricing-page__button vendor-pricing-page__button--secondary"
+              href="https://vendor.itmart24.com"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Get Started
+            </a>
+          </div>
+        </article>
+
+        <article class="vendor-pricing-page__plan vendor-pricing-page__plan--popular">
+          <div class="vendor-pricing-page__plan-top">
+            <div>
+              <span class="vendor-pricing-page__plan-kicker">For Growing Vendors</span>
+            </div>
+            <span class="vendor-pricing-page__plan-badge vendor-pricing-page__plan-badge--popular">Most Popular</span>
+          </div>
+
+          <h3>Business Plan</h3>
+          <p class="vendor-pricing-page__plan-copy">
+            Add stronger trust signals, richer profile branding, faster updates, and broader comparison visibility for buyers evaluating your products.
+          </p>
+
+          <div class="vendor-pricing-page__toggle" data-toggle-for="business-pricing">
+            <button type="button" class="is-active" data-mode-btn="monthly">Monthly</button>
+            <button type="button" data-mode-btn="yearly">Yearly</button>
+          </div>
+
+          <div class="vendor-pricing-page__pricing" id="business-pricing" data-current-mode="monthly">
+            <div data-price-mode="monthly">
+              <span class="vendor-pricing-page__price-label">Monthly billing</span>
+              <div class="vendor-pricing-page__price-row">
+                <span class="vendor-pricing-page__compare-price">$28.60</span>
+                <span class="vendor-pricing-page__main-price">$22</span>
+                <span class="vendor-pricing-page__price-term">/ month</span>
+              </div>
+              <div class="vendor-pricing-page__price-meta">
+                <span class="vendor-pricing-page__meta-pill vendor-pricing-page__meta-pill--discount">30% above current plan price</span>
+              </div>
+            </div>
+            <div data-price-mode="yearly">
+              <span class="vendor-pricing-page__price-label">Annual billing</span>
+              <div class="vendor-pricing-page__price-row">
+                <span class="vendor-pricing-page__compare-price">$286</span>
+                <span class="vendor-pricing-page__main-price">$220</span>
+                <span class="vendor-pricing-page__price-term">/ year</span>
+              </div>
+              <div class="vendor-pricing-page__price-meta">
+                <span class="vendor-pricing-page__meta-pill vendor-pricing-page__meta-pill--discount">30% above current plan price</span>
+                <span class="vendor-pricing-page__meta-pill vendor-pricing-page__meta-pill--savings">Save $66</span>
+              </div>
+            </div>
+          </div>
+
+          <ul class="vendor-pricing-page__features vendor-pricing-page__features--collapsible" data-collapsible-list>
+            <li>Everything included in the Starter Plan.</li>
+            <li>Verified Product Badge confirming that product ownership, details, and live URL were reviewed by IT-Mart24.</li>
+            <li>Vendor Verified Link Badge to reinforce that buyers are visiting the official vendor-owned domain.</li>
+            <li>Refund Clarity Badge that makes refund availability and conditions easier to understand.</li>
+            <li>Support Response SLA Badge showing your declared support responsiveness.</li>
+            <li>Enhanced product card layout across search, category, and comparison views.</li>
+            <li>Comparison table and Top 10 list eligibility for stronger buyer-side visibility.</li>
+            <li>Priority indexing and faster product updates across the platform.</li>
+            <li>Vendor profile branding with banner and brand color customization.</li>
+            <li>Public review reply capability on product listings.</li>
+            <li>Profile analytics and product performance breakdown for better decision making.</li>
+          </ul>
+
+          <button class="vendor-pricing-page__more" type="button" data-collapsible-toggle>View all features</button>
+
+          <div class="vendor-pricing-page__cta">
+            <a
+              class="vendor-pricing-page__button vendor-pricing-page__button--primary"
+              href="https://vendor.itmart24.com"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Get Started
+            </a>
+          </div>
+        </article>
+        <article class="vendor-pricing-page__plan vendor-pricing-page__plan--premium">
+          <div class="vendor-pricing-page__plan-top">
+            <div>
+              <span class="vendor-pricing-page__plan-kicker">For Maximum Reach</span>
+            </div>
+            <span class="vendor-pricing-page__plan-badge vendor-pricing-page__plan-badge--premium">Enterprise</span>
+          </div>
+
+          <h3>Enterprise Plan</h3>
+          <p class="vendor-pricing-page__plan-copy">
+            Reach buyers with premium visibility, AI-ready placement, advanced analytics, and priority support designed for larger growth goals.
+          </p>
+
+          <div class="vendor-pricing-page__toggle" data-toggle-for="enterprise-pricing">
+            <button type="button" class="is-active" data-mode-btn="monthly">Monthly</button>
+            <button type="button" data-mode-btn="yearly">Yearly</button>
+          </div>
+
+          <div class="vendor-pricing-page__pricing" id="enterprise-pricing" data-current-mode="monthly">
+            <div data-price-mode="monthly">
+              <span class="vendor-pricing-page__price-label">Monthly billing</span>
+              <div class="vendor-pricing-page__price-row">
+                <span class="vendor-pricing-page__compare-price">$84.50</span>
+                <span class="vendor-pricing-page__main-price">$65</span>
+                <span class="vendor-pricing-page__price-term">/ month</span>
+              </div>
+              <div class="vendor-pricing-page__price-meta">
+                <span class="vendor-pricing-page__meta-pill vendor-pricing-page__meta-pill--discount">30% above current plan price</span>
+              </div>
+            </div>
+            <div data-price-mode="yearly">
+              <span class="vendor-pricing-page__price-label">Annual billing</span>
+              <div class="vendor-pricing-page__price-row">
+                <span class="vendor-pricing-page__compare-price">$845</span>
+                <span class="vendor-pricing-page__main-price">$650</span>
+                <span class="vendor-pricing-page__price-term">/ year</span>
+              </div>
+              <div class="vendor-pricing-page__price-meta">
+                <span class="vendor-pricing-page__meta-pill vendor-pricing-page__meta-pill--discount">30% above current plan price</span>
+                <span class="vendor-pricing-page__meta-pill vendor-pricing-page__meta-pill--savings">Save $195</span>
+              </div>
+            </div>
+          </div>
+
+          <ul class="vendor-pricing-page__features vendor-pricing-page__features--collapsible" data-collapsible-list>
+            <li>Everything included in the Business Plan.</li>
+            <li>AI recommendation eligibility for future-facing discovery surfaces.</li>
+            <li>Vendor intro video placement on the vendor profile page.</li>
+            <li>Featured vendor and category spotlight eligibility for higher platform prominence.</li>
+            <li>SEO-optimized vendor page structure for stronger search readiness.</li>
+            <li>Additional external link allowance from the vendor profile.</li>
+            <li>Priority issue resolution for higher support responsiveness.</li>
+            <li>Trust score indicators based on verification and vendor activity history.</li>
+            <li>Conversion, lead, and contact analytics tied to IT-Mart24 traffic sources.</li>
+          </ul>
+
+          <button class="vendor-pricing-page__more" type="button" data-collapsible-toggle>View all features</button>
+
+          <div class="vendor-pricing-page__cta">
+            <a
+              class="vendor-pricing-page__button vendor-pricing-page__button--secondary"
+              href="https://vendor.itmart24.com"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Get Started
+            </a>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="vendor-pricing-page__policy">
+      <div class="vendor-pricing-page__section-head">
+        <div>
+          <h2>Plan guidance at a glance.</h2>
+          <p>
+            Use this as a quick planning framework when deciding how much visibility, trust building, and analytics support your vendor team needs right now.
+          </p>
+        </div>
+      </div>
+
+      <div class="vendor-pricing-page__policy-grid">
+        <div class="vendor-pricing-page__policy-card">
+          <strong>Free Plan</strong>
+          <p>Best when you need a clean marketplace listing and direct traffic to your official product website with no upfront commitment.</p>
+        </div>
+        <div class="vendor-pricing-page__policy-card">
+          <strong>Starter Plan</strong>
+          <p>Best when you want a launch-stage presence with early traction signals such as basic listing analytics and New Arrival visibility.</p>
+        </div>
+        <div class="vendor-pricing-page__policy-card">
+          <strong>Business Plan</strong>
+          <p>Best when trust badges, faster indexing, branded profile presentation, and comparison visibility can materially improve buyer conversion.</p>
+        </div>
+        <div class="vendor-pricing-page__policy-card">
+          <strong>Enterprise Plan</strong>
+          <p>Best when you need premium exposure, AI discovery eligibility, deeper analytics, stronger SEO posture, and higher-priority support.</p>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<script>
+  (function () {
+    var root = document.querySelector('.vendor-pricing-page[data-page-id="124057551087"]');
+
+    if (!root) {
+      return;
+    }
+
+    root.querySelectorAll('[data-collapsible-toggle]').forEach(function (button) {
+      button.addEventListener('click', function () {
+        var list = button.previousElementSibling;
+
+        if (!list || !list.hasAttribute('data-collapsible-list')) {
+          return;
+        }
+
+        var expanded = list.classList.toggle('vendor-pricing-page__features--expanded');
+        button.textContent = expanded ? 'Hide features' : 'View all features';
+      });
+    });
+
+    root.querySelectorAll('.vendor-pricing-page__toggle').forEach(function (toggle) {
+      var targetId = toggle.getAttribute('data-toggle-for');
+      var pricingBox = targetId ? root.querySelector('#' + targetId) : null;
+      var buttons = toggle.querySelectorAll('[data-mode-btn]');
+
+      if (!pricingBox || !buttons.length) {
+        return;
+      }
+
+      buttons.forEach(function (button) {
+        button.addEventListener('click', function () {
+          var mode = button.getAttribute('data-mode-btn');
+
+          if (!mode) {
+            return;
+          }
+
+          pricingBox.setAttribute('data-current-mode', mode);
+
+          buttons.forEach(function (item) {
+            item.classList.remove('is-active');
+          });
+
+          button.classList.add('is-active');
+        });
+      });
+    });
+  })();
+</script>

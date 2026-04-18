@@ -1,4 +1,7 @@
+import fs from "fs";
+import path from "path";
 import { Router } from "express";
+import csv from "csv-parser";
 import { shopifyGraphQL, shopifyRest } from "../services/shopifyHttp";
 
 const router = Router();
@@ -7,18 +10,94 @@ const SHOPIFY_PAGE_LIMIT = 250;
 const SHOPIFY_PRODUCTS_CACHE_TTL_MS = 60 * 1000;
 const SHOPIFY_COLLECTIONS_CACHE_TTL_MS = 60 * 1000;
 const SHOPIFY_GRAPHQL_PAGE_SIZE = 100;
+const SHOPIFY_ADMIN_LIST_PAGE_SIZE = 25;
+const SHOPIFY_ADMIN_LIST_MAX_PAGE_SIZE = 100;
+const CATEGORY_COLLECTIONS_CSV_PATH = path.join(
+  __dirname,
+  "../../imports/category-collections.csv"
+);
 
-type ShopifyProductsResponse = {
-  success: true;
-  count: number;
-  data: Array<Record<string, unknown>>;
+type ShopifyProductListItem = {
+  id: string;
+  shopifyProductId: number | null;
+  title: string;
+  handle: string | null;
+  vendor: string;
+  editableCollectionIds: number[];
+  collectionNames: string[];
+  tags: string[];
+  productUrl: string | null;
+  updatedAt: string | null;
 };
 
-type ShopifyCollectionsResponse = {
+type ShopifyCollectionListItem = ShopifyCollectionSummary & {
+  productCount: number;
+};
+
+type CategoryCollectionCsvRow = {
+  top_category?: string;
+  subcategory?: string;
+  final_category?: string;
+  collection_title?: string;
+  collection_handle?: string;
+};
+
+type CollectionCategoryReportRow = {
+  topCategory: string;
+  parentCategory: string;
+  finalCategory: string;
+  collectionName: string;
+  collectionHandle: string;
+  collectionType: "custom" | "smart" | "missing";
+  liveCollectionFound: boolean;
+  productCount: number;
+  published: boolean;
+  updatedAt: string | null;
+  collectionUrl: string | null;
+};
+
+type ProductCategoryPath = {
+  topCategory: string;
+  parentCategory: string;
+  finalCategory: string;
+  collectionName: string;
+  collectionHandle: string;
+};
+
+type CategoryFilterSelection = {
+  topCategory: string;
+  parentCategory: string;
+  finalCategory: string;
+};
+
+type ProductCategoryReportRow = {
+  id: string;
+  shopifyProductId: number | null;
+  title: string;
+  handle: string | null;
+  vendor: string;
+  productUrl: string | null;
+  collectionNames: string[];
+  collectionHandles: string[];
+  topCategories: string[];
+  parentCategories: string[];
+  finalCategories: string[];
+  matchedCategoryPaths: ProductCategoryPath[];
+  tags: string[];
+  updatedAt: string | null;
+};
+
+type ShopifyListResponse<T> = {
   success: true;
   count: number;
-  data: Array<Record<string, unknown>>;
+  data: T[];
+  page?: number;
+  pageSize?: number;
+  totalPages?: number;
 };
+
+type ShopifyProductsResponse = ShopifyListResponse<ShopifyProductListItem>;
+type ShopifyCollectionsResponse = ShopifyListResponse<ShopifyCollectionListItem>;
 
 type ShopifyMetafieldDefinition = {
   id: string;
@@ -39,6 +118,7 @@ let cachedShopifyProductsResponse: ShopifyProductsResponse | null = null;
 let cachedShopifyProductsFetchedAt = 0;
 let cachedShopifyCollectionsResponse: ShopifyCollectionsResponse | null = null;
 let cachedShopifyCollectionsFetchedAt = 0;
+let cachedCategoryCollectionRows: CategoryCollectionCsvRow[] | null = null;
 
 const isShopifyProductsCacheFresh = () =>
   cachedShopifyProductsResponse !== null &&
@@ -120,6 +200,9 @@ type ShopifyCollectionSummary = {
   collectionUrl: string | null;
 };
 
+const normalizeWhitespace = (value: string | null | undefined) =>
+  typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
+
 const toSortableTime = (value: string | null) =>
   value ? new Date(value).getTime() : 0;
 
@@ -127,7 +210,16 @@ const getStoreDomain = () =>
   process.env.SHOPIFY_STORE_DOMAIN || DEFAULT_STORE_DOMAIN;
 
 const normalizeCollectionKey = (value: string | null | undefined) =>
-  typeof value === "string" ? value.trim().toLowerCase() : "";
+  normalizeWhitespace(value).toLowerCase();
+
+const csvEscape = (
+  value: string | number | boolean | null | undefined
+) => {
+  const stringValue =
+    value === null || value === undefined ? "" : String(value);
+
+  return `"${stringValue.replace(/"/g, '""')}"`;
+};
 
 const getGraphQlErrorMessage = (
   errors?: Array<{ message?: string }> | null,
@@ -327,6 +419,859 @@ const extractProductCollectionNames = (
     left.localeCompare(right)
   );
 };
+
+const readCategoryCollectionRows = async () => {
+  if (cachedCategoryCollectionRows) {
+    return cachedCategoryCollectionRows;
+  }
+
+  const rows = await new Promise<CategoryCollectionCsvRow[]>(
+    (resolve, reject) => {
+      const nextRows: CategoryCollectionCsvRow[] = [];
+
+      fs.createReadStream(CATEGORY_COLLECTIONS_CSV_PATH)
+        .pipe(
+          csv({
+            mapHeaders: ({ header }) =>
+              header
+                .replace(/^\uFEFF/, "")
+                .replace(/^"(.*)"$/, "$1"),
+          })
+        )
+        .on("data", (row: CategoryCollectionCsvRow) => {
+          nextRows.push(row);
+        })
+        .on("end", () => resolve(nextRows))
+        .on("error", reject);
+    }
+  );
+
+  cachedCategoryCollectionRows = rows;
+  return rows;
+};
+
+const parseCategoryFilters = (query: Record<string, unknown>) => ({
+  topCategory:
+    typeof query.topCategory === "string"
+      ? normalizeWhitespace(query.topCategory)
+      : "",
+  parentCategory:
+    typeof query.parentCategory === "string"
+      ? normalizeWhitespace(query.parentCategory)
+      : "",
+  finalCategory:
+    typeof query.finalCategory === "string"
+      ? normalizeWhitespace(query.finalCategory)
+      : "",
+});
+
+const parsePositiveIntegerQuery = (
+  value: unknown,
+  fallback: number,
+  max?: number
+) => {
+  const parsedValue = Number.parseInt(
+    typeof value === "string" ? value : "",
+    10
+  );
+
+  if (!Number.isFinite(parsedValue) || parsedValue < 1) {
+    return fallback;
+  }
+
+  if (typeof max === "number") {
+    return Math.min(parsedValue, max);
+  }
+
+  return parsedValue;
+};
+
+const paginateItems = <T>(
+  items: T[],
+  pageQuery: unknown,
+  pageSizeQuery: unknown
+) => {
+  const pageSize = parsePositiveIntegerQuery(
+    pageSizeQuery,
+    SHOPIFY_ADMIN_LIST_PAGE_SIZE,
+    SHOPIFY_ADMIN_LIST_MAX_PAGE_SIZE
+  );
+  const totalPages = Math.max(1, Math.ceil(items.length / pageSize));
+  const page = Math.min(
+    parsePositiveIntegerQuery(pageQuery, 1),
+    totalPages
+  );
+  const startIndex = (page - 1) * pageSize;
+
+  return {
+    count: items.length,
+    page,
+    pageSize,
+    totalPages,
+    data: items.slice(startIndex, startIndex + pageSize),
+  };
+};
+
+const filterShopifyProductsBySearch = (
+  products: ShopifyProductListItem[],
+  searchQuery: string
+) => {
+  const normalizedQuery = searchQuery.trim().toLowerCase();
+
+  if (!normalizedQuery) {
+    return products;
+  }
+
+  return products.filter((product) =>
+    [
+      product.title,
+      product.vendor,
+      product.handle ?? "",
+      product.shopifyProductId?.toString() ?? "",
+      product.collectionNames.join(" "),
+      product.tags.join(" "),
+    ].some((value) => value.toLowerCase().includes(normalizedQuery))
+  );
+};
+
+const filterShopifyCollectionsBySearch = (
+  collections: ShopifyCollectionListItem[],
+  searchQuery: string
+) => {
+  const normalizedQuery = searchQuery.trim().toLowerCase();
+
+  if (!normalizedQuery) {
+    return collections;
+  }
+
+  return collections.filter((collection) =>
+    [
+      collection.title,
+      collection.type,
+      collection.handle ?? "",
+      collection.sortOrder,
+      collection.id.toString(),
+    ].some((value) => value.toLowerCase().includes(normalizedQuery))
+  );
+};
+
+const ensureAllShopifyProductsData = async () => {
+  if (isShopifyProductsCacheFresh() && cachedShopifyProductsResponse) {
+    return cachedShopifyProductsResponse.data;
+  }
+
+  const [shopifyProducts, productMemberships, allCollections] =
+    await Promise.all([
+      fetchAllShopifyResources<ShopifyProduct>(
+        "/products.json",
+        "products"
+      ),
+      fetchAllShopifyProductMemberships(),
+      fetchAllShopifyCollectionsSummary(),
+    ]);
+  const storeDomain = getStoreDomain();
+  const productMembershipMap = new Map<string, ShopifyProductMembership>();
+  const collectionById = new Map<number, ShopifyCollectionSummary>();
+  const smartCollectionIdsByTitle = new Map<string, number[]>();
+
+  allCollections.forEach((collection) => {
+    collectionById.set(collection.id, collection);
+
+    if (collection.type === "smart") {
+      const normalizedTitle = normalizeCollectionKey(collection.title);
+
+      if (!normalizedTitle) {
+        return;
+      }
+
+      const existingTitleIds =
+        smartCollectionIdsByTitle.get(normalizedTitle) ?? [];
+      smartCollectionIdsByTitle.set(normalizedTitle, [
+        ...existingTitleIds,
+        collection.id,
+      ]);
+    }
+  });
+
+  productMemberships.forEach((product) => {
+    const productId =
+      product.legacyResourceId !== undefined &&
+      product.legacyResourceId !== null
+        ? String(product.legacyResourceId)
+        : "";
+
+    if (!productId) {
+      return;
+    }
+
+    productMembershipMap.set(productId, product);
+  });
+
+  const data = shopifyProducts
+    .map((product) => {
+      const productMembership = productMembershipMap.get(String(product.id));
+      const tags = product.tags
+        ? product.tags
+            .split(",")
+            .map((tag) => tag.trim())
+            .filter(Boolean)
+        : [];
+
+      return {
+        id: String(product.id),
+        shopifyProductId: product.id,
+        title: product.title ?? "Untitled Product",
+        handle: product.handle ?? null,
+        vendor: product.vendor?.trim() || "Unknown Vendor",
+        editableCollectionIds: productMembership
+          ? [
+              ...new Set([
+                  ...(Array.isArray(productMembership.collections?.nodes)
+                    ? productMembership.collections.nodes
+                        .map((collection) =>
+                          Number(collection.legacyResourceId)
+                        )
+                        .filter(
+                          (collectionId) =>
+                            !Number.isNaN(collectionId) &&
+                            collectionById.has(collectionId)
+                        )
+                    : []),
+                  ...parseListMetafield(productMembership.metafield?.value)
+                    .flatMap(
+                      (collectionName) =>
+                        smartCollectionIdsByTitle.get(
+                          normalizeCollectionKey(collectionName)
+                        ) ?? []
+                    )
+                    .filter((collectionId) => collectionById.has(collectionId)),
+                ]),
+            ].sort((left, right) => left - right)
+          : [],
+        collectionNames: productMembership
+          ? extractProductCollectionNames(productMembership)
+          : [],
+        tags,
+        productUrl: product.handle
+          ? `https://${storeDomain}/products/${product.handle}`
+          : null,
+        updatedAt: product.updated_at ?? null,
+      } satisfies ShopifyProductListItem;
+    })
+    .sort(
+      (left, right) =>
+        toSortableTime(right.updatedAt) -
+        toSortableTime(left.updatedAt)
+    );
+
+  cachedShopifyProductsResponse = {
+    success: true,
+    count: data.length,
+    data,
+  };
+  cachedShopifyProductsFetchedAt = Date.now();
+
+  return data;
+};
+
+const ensureAllShopifyCollectionsData = async () => {
+  if (isShopifyCollectionsCacheFresh() && cachedShopifyCollectionsResponse) {
+    return cachedShopifyCollectionsResponse.data;
+  }
+
+  const [collections, productMemberships] =
+    await Promise.all([
+      fetchAllShopifyCollectionsSummary(),
+      fetchAllShopifyProductMemberships(),
+    ]);
+
+  const collectionLookup = new Map<string, Set<number>>();
+  const smartCollectionTitleLookup = new Map<string, Set<number>>();
+  const collectionCounts = new Map<number, number>();
+
+  collections.forEach((collection) => {
+    collectionCounts.set(collection.id, 0);
+    addCollectionLookupValue(collectionLookup, collection.title, collection.id);
+    addCollectionLookupValue(collectionLookup, collection.handle, collection.id);
+
+    if (collection.type === "smart") {
+      addCollectionLookupValue(
+        smartCollectionTitleLookup,
+        collection.title,
+        collection.id
+      );
+    }
+  });
+
+  productMemberships.forEach((product) => {
+    const matchedCollectionIds = new Set<number>();
+
+    const defaultCollections = Array.isArray(product.collections?.nodes)
+      ? product.collections.nodes
+      : [];
+
+    defaultCollections.forEach((collection) => {
+      const resourceId = Number(collection.legacyResourceId);
+
+      if (!Number.isNaN(resourceId) && collectionCounts.has(resourceId)) {
+        matchedCollectionIds.add(resourceId);
+      }
+
+      const byTitle = collectionLookup.get(
+        normalizeCollectionKey(collection.title)
+      );
+      const byHandle = collectionLookup.get(
+        normalizeCollectionKey(collection.handle)
+      );
+
+      byTitle?.forEach((collectionId) =>
+        matchedCollectionIds.add(collectionId)
+      );
+      byHandle?.forEach((collectionId) =>
+        matchedCollectionIds.add(collectionId)
+      );
+    });
+
+    parseListMetafield(product.metafield?.value).forEach((collectionName) => {
+      const matchedIds = smartCollectionTitleLookup.get(
+        normalizeCollectionKey(collectionName)
+      );
+
+      matchedIds?.forEach((collectionId) =>
+        matchedCollectionIds.add(collectionId)
+      );
+    });
+
+    matchedCollectionIds.forEach((collectionId) => {
+      collectionCounts.set(
+        collectionId,
+        (collectionCounts.get(collectionId) ?? 0) + 1
+      );
+    });
+  });
+
+  const data = collections
+    .map((collection) => ({
+      ...collection,
+      productCount: collectionCounts.get(collection.id) ?? 0,
+    }))
+    .sort(
+      (left, right) =>
+        toSortableTime(right.updatedAt) -
+        toSortableTime(left.updatedAt)
+    );
+
+  cachedShopifyCollectionsResponse = {
+    success: true,
+    count: data.length,
+    data,
+  };
+  cachedShopifyCollectionsFetchedAt = Date.now();
+
+  return data;
+};
+
+const createUniqueList = (values: string[]) => {
+  const uniqueValues = new Set<string>();
+
+  values.forEach((value) => {
+    const normalizedValue = normalizeWhitespace(value);
+
+    if (normalizedValue) {
+      uniqueValues.add(normalizedValue);
+    }
+  });
+
+  return Array.from(uniqueValues.values()).sort((left, right) =>
+    left.localeCompare(right)
+  );
+};
+
+const buildCategoryPaths = (csvRows: CategoryCollectionCsvRow[]) => {
+  const uniquePaths = new Map<string, ProductCategoryPath>();
+
+  csvRows.forEach((row) => {
+    const path = {
+      topCategory: normalizeWhitespace(row.top_category),
+      parentCategory: normalizeWhitespace(row.subcategory),
+      finalCategory: normalizeWhitespace(row.final_category),
+      collectionName:
+        normalizeWhitespace(row.collection_title) ||
+        normalizeWhitespace(row.final_category),
+      collectionHandle: normalizeWhitespace(row.collection_handle),
+    } satisfies ProductCategoryPath;
+
+    if (!path.collectionHandle || !path.collectionName) {
+      return;
+    }
+
+    uniquePaths.set(
+      [
+        normalizeCollectionKey(path.topCategory),
+        normalizeCollectionKey(path.parentCategory),
+        normalizeCollectionKey(path.finalCategory),
+        normalizeCollectionKey(path.collectionHandle),
+      ].join("|"),
+      path
+    );
+  });
+
+  return Array.from(uniquePaths.values());
+};
+
+const matchesCategoryFilters = (
+  path: Pick<ProductCategoryPath, "topCategory" | "parentCategory" | "finalCategory">,
+  filters: CategoryFilterSelection
+) => {
+  if (
+    filters.topCategory &&
+    normalizeCollectionKey(path.topCategory) !==
+      normalizeCollectionKey(filters.topCategory)
+  ) {
+    return false;
+  }
+
+  if (
+    filters.parentCategory &&
+    normalizeCollectionKey(path.parentCategory) !==
+      normalizeCollectionKey(filters.parentCategory)
+  ) {
+    return false;
+  }
+
+  if (
+    filters.finalCategory &&
+    normalizeCollectionKey(path.finalCategory) !==
+      normalizeCollectionKey(filters.finalCategory)
+  ) {
+    return false;
+  }
+
+  return true;
+};
+
+const hasActiveCategoryFilters = (filters: CategoryFilterSelection) =>
+  Boolean(filters.topCategory || filters.parentCategory || filters.finalCategory);
+
+const buildCategoryPathLookups = (paths: ProductCategoryPath[]) => {
+  const pathsByHandle = new Map<string, ProductCategoryPath[]>();
+  const pathsByTitle = new Map<string, ProductCategoryPath[]>();
+
+  paths.forEach((path) => {
+    const handleKey = normalizeCollectionKey(path.collectionHandle);
+    const titleKey = normalizeCollectionKey(path.collectionName);
+
+    pathsByHandle.set(handleKey, [...(pathsByHandle.get(handleKey) ?? []), path]);
+    pathsByTitle.set(titleKey, [...(pathsByTitle.get(titleKey) ?? []), path]);
+  });
+
+  return { pathsByHandle, pathsByTitle };
+};
+
+const filterShopifyCollectionsByCategory = (
+  collections: ShopifyCollectionListItem[],
+  filters: CategoryFilterSelection,
+  allCategoryPaths: ProductCategoryPath[]
+) => {
+  if (!hasActiveCategoryFilters(filters)) {
+    return collections;
+  }
+
+  const { pathsByHandle, pathsByTitle } = buildCategoryPathLookups(
+    allCategoryPaths.filter((path) => matchesCategoryFilters(path, filters))
+  );
+
+  return collections.filter((collection) => {
+    const handleMatches = pathsByHandle.get(
+      normalizeCollectionKey(collection.handle)
+    );
+    const titleMatches = pathsByTitle.get(
+      normalizeCollectionKey(collection.title)
+    );
+
+    return Boolean(
+      (handleMatches && handleMatches.length > 0) ||
+        (titleMatches && titleMatches.length > 0)
+    );
+  });
+};
+
+const getMatchedProductCategoryPaths = (
+  product: ShopifyProductListItem,
+  collectionsById: Map<number, ShopifyCollectionListItem>,
+  pathLookups: ReturnType<typeof buildCategoryPathLookups>
+) => {
+  const matchedPathMap = new Map<string, ProductCategoryPath>();
+  const matchedCollections = product.editableCollectionIds
+    .map((collectionId) => collectionsById.get(collectionId))
+    .filter(
+      (collection): collection is ShopifyCollectionListItem => Boolean(collection)
+    );
+
+  matchedCollections.forEach((collection) => {
+    const paths = pathLookups.pathsByHandle.get(
+      normalizeCollectionKey(collection.handle)
+    );
+
+    paths?.forEach((path) => {
+      matchedPathMap.set(
+        `${path.collectionHandle}|${path.topCategory}|${path.parentCategory}|${path.finalCategory}`,
+        path
+      );
+    });
+  });
+
+  product.collectionNames.forEach((collectionName) => {
+    const titleKey = normalizeCollectionKey(collectionName);
+    const pathsByTitle = pathLookups.pathsByTitle.get(titleKey) ?? [];
+
+    if (pathsByTitle.length !== 1) {
+      return;
+    }
+
+    const [path] = pathsByTitle;
+    matchedPathMap.set(
+      `${path.collectionHandle}|${path.topCategory}|${path.parentCategory}|${path.finalCategory}`,
+      path
+    );
+  });
+
+  return Array.from(matchedPathMap.values()).sort((left, right) => {
+    const topCompare = left.topCategory.localeCompare(right.topCategory);
+
+    if (topCompare !== 0) {
+      return topCompare;
+    }
+
+    const parentCompare = left.parentCategory.localeCompare(right.parentCategory);
+
+    if (parentCompare !== 0) {
+      return parentCompare;
+    }
+
+    return left.finalCategory.localeCompare(right.finalCategory);
+  });
+};
+
+const filterShopifyProductsByCategory = (
+  products: ShopifyProductListItem[],
+  collections: ShopifyCollectionListItem[],
+  filters: CategoryFilterSelection,
+  allCategoryPaths: ProductCategoryPath[]
+) => {
+  if (!hasActiveCategoryFilters(filters)) {
+    return products;
+  }
+
+  const filteredPaths = allCategoryPaths.filter((path) =>
+    matchesCategoryFilters(path, filters)
+  );
+  const pathLookups = buildCategoryPathLookups(filteredPaths);
+  const collectionsById = new Map<number, ShopifyCollectionListItem>();
+
+  collections.forEach((collection) => {
+    collectionsById.set(collection.id, collection);
+  });
+
+  return products.filter(
+    (product) =>
+      getMatchedProductCategoryPaths(product, collectionsById, pathLookups).length > 0
+  );
+};
+
+const buildCollectionCategoryReport = async (
+  searchQuery = "",
+  filters: CategoryFilterSelection = {
+    topCategory: "",
+    parentCategory: "",
+    finalCategory: "",
+  }
+) => {
+  const [csvRows, liveCollections] = await Promise.all([
+    readCategoryCollectionRows(),
+    ensureAllShopifyCollectionsData(),
+  ]);
+
+  const allCategoryPaths = buildCategoryPaths(csvRows);
+  const liveCollectionsByHandle = new Map<string, ShopifyCollectionListItem>();
+  const liveCollectionsByTitle = new Map<string, ShopifyCollectionListItem>();
+
+  liveCollections.forEach((collection) => {
+    const handleKey = normalizeCollectionKey(collection.handle);
+    const titleKey = normalizeCollectionKey(collection.title);
+
+    if (handleKey) {
+      liveCollectionsByHandle.set(handleKey, collection);
+    }
+
+    if (titleKey) {
+      liveCollectionsByTitle.set(titleKey, collection);
+    }
+  });
+
+  const normalizedSearchQuery = searchQuery.trim().toLowerCase();
+
+  const rows = allCategoryPaths
+    .filter((path) => matchesCategoryFilters(path, filters))
+    .map((path) => {
+      const liveCollection =
+        liveCollectionsByHandle.get(normalizeCollectionKey(path.collectionHandle)) ??
+        liveCollectionsByTitle.get(normalizeCollectionKey(path.collectionName));
+
+      return {
+        topCategory: path.topCategory,
+        parentCategory: path.parentCategory,
+        finalCategory: path.finalCategory,
+        collectionName: path.collectionName,
+        collectionHandle: path.collectionHandle,
+        collectionType: liveCollection?.type ?? "missing",
+        liveCollectionFound: Boolean(liveCollection),
+        productCount: liveCollection?.productCount ?? 0,
+        published: liveCollection?.published ?? false,
+        updatedAt: liveCollection?.updatedAt ?? null,
+        collectionUrl: liveCollection?.collectionUrl ?? null,
+      } satisfies CollectionCategoryReportRow;
+    })
+    .filter((row) => {
+      if (!normalizedSearchQuery) {
+        return true;
+      }
+
+      return [
+        row.collectionName,
+        row.collectionHandle,
+        row.collectionType,
+        row.topCategory,
+        row.parentCategory,
+        row.finalCategory,
+      ].some((value) => value.toLowerCase().includes(normalizedSearchQuery));
+    })
+    .filter((row): row is CollectionCategoryReportRow => Boolean(row))
+    .sort((left, right) => {
+      if (right.productCount !== left.productCount) {
+        return right.productCount - left.productCount;
+      }
+
+      return left.collectionName.localeCompare(right.collectionName);
+    });
+
+  const summary = {
+    generatedAt: new Date().toISOString(),
+    rowCount: rows.length,
+    collectionsWithProducts: rows.filter((row) => row.productCount > 0).length,
+    missingCollections: rows.filter((row) => !row.liveCollectionFound).length,
+  };
+
+  return { rows, summary };
+};
+
+const buildProductCategoryReport = async (
+  searchQuery = "",
+  filters: CategoryFilterSelection = {
+    topCategory: "",
+    parentCategory: "",
+    finalCategory: "",
+  }
+) => {
+  const [csvRows, products, collections] = await Promise.all([
+    readCategoryCollectionRows(),
+    ensureAllShopifyProductsData(),
+    ensureAllShopifyCollectionsData(),
+  ]);
+
+  const allCategoryPaths = buildCategoryPaths(csvRows);
+  const filteredProducts = filterShopifyProductsByCategory(
+    filterShopifyProductsBySearch(products, searchQuery),
+    collections,
+    filters,
+    allCategoryPaths
+  );
+  const collectionsById = new Map<number, ShopifyCollectionListItem>();
+  const pathLookups = buildCategoryPathLookups(allCategoryPaths);
+
+  collections.forEach((collection) => {
+    collectionsById.set(collection.id, collection);
+  });
+
+  const rows = filteredProducts
+    .map((product) => {
+      const matchedCollections = product.editableCollectionIds
+        .map((collectionId) => collectionsById.get(collectionId))
+        .filter(
+          (collection): collection is ShopifyCollectionListItem =>
+            Boolean(collection)
+        );
+      const matchedCategoryPaths = getMatchedProductCategoryPaths(
+        product,
+        collectionsById,
+        pathLookups
+      );
+
+      return {
+        id: product.id,
+        shopifyProductId: product.shopifyProductId,
+        title: product.title,
+        handle: product.handle,
+        vendor: product.vendor,
+        productUrl: product.productUrl,
+        collectionNames: createUniqueList(product.collectionNames),
+        collectionHandles: createUniqueList(
+          matchedCollections
+            .map((collection) => collection.handle ?? "")
+            .filter(Boolean)
+        ),
+        topCategories: createUniqueList(
+          matchedCategoryPaths.map((path) => path.topCategory)
+        ),
+        parentCategories: createUniqueList(
+          matchedCategoryPaths.map((path) => path.parentCategory)
+        ),
+        finalCategories: createUniqueList(
+          matchedCategoryPaths.map((path) => path.finalCategory)
+        ),
+        matchedCategoryPaths,
+        tags: createUniqueList(product.tags),
+        updatedAt: product.updatedAt,
+      } satisfies ProductCategoryReportRow;
+    })
+    .sort((left, right) => left.title.localeCompare(right.title));
+
+  const summary = {
+    generatedAt: new Date().toISOString(),
+    rowCount: rows.length,
+    productsWithMappedCategories: rows.filter(
+      (row) => row.matchedCategoryPaths.length > 0
+    ).length,
+    productsWithoutMappedCategories: rows.filter(
+      (row) => row.matchedCategoryPaths.length === 0
+    ).length,
+  };
+
+  return { rows, summary };
+};
+
+const wrapPdfLine = (value: string, maxLength = 96) => {
+  const normalizedValue = normalizeWhitespace(value).replace(
+    /[^\x20-\x7E]/g,
+    "?"
+  );
+
+  if (normalizedValue.length <= maxLength) {
+    return [normalizedValue];
+  }
+
+  const words = normalizedValue.split(" ");
+  const lines: string[] = [];
+  let currentLine = "";
+
+  words.forEach((word) => {
+    const nextLine = currentLine ? `${currentLine} ${word}` : word;
+
+    if (nextLine.length <= maxLength) {
+      currentLine = nextLine;
+      return;
+    }
+
+    if (currentLine) {
+      lines.push(currentLine);
+    }
+
+    currentLine = word;
+  });
+
+  if (currentLine) {
+    lines.push(currentLine);
+  }
+
+  return lines;
+};
+
+const escapePdfText = (value: string) =>
+  value.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
+
+const buildPdfBuffer = (lines: string[]) => {
+  const linesPerPage = 48;
+  const pages = [];
+
+  for (let index = 0; index < lines.length; index += linesPerPage) {
+    pages.push(lines.slice(index, index + linesPerPage));
+  }
+
+  if (pages.length === 0) {
+    pages.push(["No data"]);
+  }
+
+  const fontObjectId = 3 + pages.length * 2;
+  const objects: string[] = [];
+  const pageObjectIds: number[] = [];
+
+  objects.push("<< /Type /Catalog /Pages 2 0 R >>");
+  objects.push("");
+
+  pages.forEach((pageLines, pageIndex) => {
+    const pageObjectId = 3 + pageIndex * 2;
+    const contentObjectId = pageObjectId + 1;
+    const textLines = pageLines.flatMap((line) => wrapPdfLine(line));
+    const contentStream = [
+      "BT",
+      "/F1 10 Tf",
+      "14 TL",
+      "40 760 Td",
+      ...textLines.map((line, index) =>
+        `${index === 0 ? "" : "T* " }(${escapePdfText(line)}) Tj`.trim()
+      ),
+      "ET",
+    ].join("\n");
+
+    pageObjectIds.push(pageObjectId);
+    objects[pageObjectId - 1] =
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 ${fontObjectId} 0 R >> >> /Contents ${contentObjectId} 0 R >>`;
+    objects[contentObjectId - 1] =
+      `<< /Length ${Buffer.byteLength(contentStream, "utf8")} >>\nstream\n${contentStream}\nendstream`;
+  });
+
+  objects[1] = `<< /Type /Pages /Kids [${pageObjectIds
+    .map((pageObjectId) => `${pageObjectId} 0 R`)
+    .join(" ")}] /Count ${pageObjectIds.length} >>`;
+  objects[fontObjectId - 1] = "<< /Type /Font /Subtype /Type1 /BaseFont /Courier >>";
+
+  let pdf = "%PDF-1.4\n";
+  const offsets = [0];
+
+  objects.forEach((object, index) => {
+    offsets.push(Buffer.byteLength(pdf, "utf8"));
+    pdf += `${index + 1} 0 obj\n${object}\nendobj\n`;
+  });
+
+  const xrefOffset = Buffer.byteLength(pdf, "utf8");
+  pdf += `xref\n0 ${objects.length + 1}\n`;
+  pdf += "0000000000 65535 f \n";
+  offsets.slice(1).forEach((offset) => {
+    pdf += `${String(offset).padStart(10, "0")} 00000 n \n`;
+  });
+  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
+
+  return Buffer.from(pdf, "utf8");
+};
+
+router.get("/category-filters", async (_req, res) => {
+  try {
+    const paths = buildCategoryPaths(await readCategoryCollectionRows());
+
+    return res.json({
+      success: true,
+      data: {
+        paths,
+      },
+    });
+  } catch (error: any) {
+    console.error("Shopify category filters fetch error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to load Shopify category filters",
+    });
+  }
+});
 
 const fetchShopifyProductMembership = async (
   productId: number | string
@@ -1183,133 +2128,70 @@ const ensureTypeMultipleSmartCollectionDefinition = async () => {
   return updatePayload.updatedDefinition;
 };
 
-router.get("/products", async (_req, res) => {
+router.get("/products", async (req, res) => {
+  const searchQuery =
+    typeof req.query.search === "string" ? req.query.search.trim() : "";
+  const shouldPaginate =
+    req.query.page !== undefined || req.query.pageSize !== undefined;
+  const categoryFilters = parseCategoryFilters(
+    req.query as Record<string, unknown>
+  );
+
   try {
-    if (isShopifyProductsCacheFresh()) {
-      return res.json(cachedShopifyProductsResponse);
+    const [products, collections, csvRows] = await Promise.all([
+      ensureAllShopifyProductsData(),
+      ensureAllShopifyCollectionsData(),
+      readCategoryCollectionRows(),
+    ]);
+    const filteredData = filterShopifyProductsByCategory(
+      filterShopifyProductsBySearch(products, searchQuery),
+      collections,
+      categoryFilters,
+      buildCategoryPaths(csvRows)
+    );
+
+    if (!shouldPaginate) {
+      return res.json({
+        success: true,
+        count: filteredData.length,
+        data: filteredData,
+      } satisfies ShopifyProductsResponse);
     }
 
-    const [shopifyProducts, productMemberships, allCollections] =
-      await Promise.all([
-        fetchAllShopifyResources<ShopifyProduct>(
-          "/products.json",
-          "products"
-        ),
-        fetchAllShopifyProductMemberships(),
-        fetchAllShopifyCollectionsSummary(),
-      ]);
-    const storeDomain = getStoreDomain();
-    const productMembershipMap = new Map<string, ShopifyProductMembership>();
-    const collectionById = new Map<number, ShopifyCollectionSummary>();
-    const smartCollectionIdsByTitle = new Map<string, number[]>();
-
-    allCollections.forEach((collection) => {
-      collectionById.set(collection.id, collection);
-
-      if (collection.type === "smart") {
-        const normalizedTitle = normalizeCollectionKey(collection.title);
-
-        if (!normalizedTitle) {
-          return;
-        }
-
-        const existingTitleIds =
-          smartCollectionIdsByTitle.get(normalizedTitle) ?? [];
-        smartCollectionIdsByTitle.set(normalizedTitle, [
-          ...existingTitleIds,
-          collection.id,
-        ]);
-      }
-    });
-
-    productMemberships.forEach((product) => {
-      const productId =
-        product.legacyResourceId !== undefined &&
-        product.legacyResourceId !== null
-          ? String(product.legacyResourceId)
-          : "";
-
-      if (!productId) {
-        return;
-      }
-
-      productMembershipMap.set(productId, product);
-    });
-
-    const data = shopifyProducts
-      .map((product) => {
-        const productMembership = productMembershipMap.get(String(product.id));
-        const tags = product.tags
-          ? product.tags
-              .split(",")
-              .map((tag) => tag.trim())
-              .filter(Boolean)
-          : [];
-
-        return {
-          id: String(product.id),
-          shopifyProductId: product.id,
-          title: product.title ?? "Untitled Product",
-          handle: product.handle ?? null,
-          vendor: product.vendor?.trim() || "Unknown Vendor",
-          editableCollectionIds: productMembership
-            ? [
-                ...new Set([
-                    ...(Array.isArray(productMembership.collections?.nodes)
-                      ? productMembership.collections.nodes
-                          .map((collection) =>
-                            Number(collection.legacyResourceId)
-                          )
-                          .filter(
-                            (collectionId) =>
-                              !Number.isNaN(collectionId) &&
-                              collectionById.has(collectionId)
-                          )
-                      : []),
-                    ...parseListMetafield(productMembership.metafield?.value)
-                      .flatMap(
-                        (collectionName) =>
-                          smartCollectionIdsByTitle.get(
-                            normalizeCollectionKey(collectionName)
-                          ) ?? []
-                      )
-                      .filter((collectionId) =>
-                        collectionById.has(collectionId)
-                      ),
-                  ]),
-              ].sort((left, right) => left - right)
-            : [],
-          collectionNames: productMembership
-            ? extractProductCollectionNames(productMembership)
-            : [],
-          tags,
-          productUrl: product.handle
-            ? `https://${storeDomain}/products/${product.handle}`
-            : null,
-          updatedAt: product.updated_at ?? null,
-        };
-      })
-      .sort(
-        (left, right) =>
-          toSortableTime(right.updatedAt) -
-          toSortableTime(left.updatedAt)
-      );
-
-    const responsePayload: ShopifyProductsResponse = {
+    return res.json({
       success: true,
-      count: data.length,
-      data,
-    };
-
-    cachedShopifyProductsResponse = responsePayload;
-    cachedShopifyProductsFetchedAt = Date.now();
-
-    res.json(responsePayload);
+      ...paginateItems(filteredData, req.query.page, req.query.pageSize),
+    } satisfies ShopifyProductsResponse);
   } catch (error: any) {
     console.error("Shopify products fetch error:", error);
 
     if (cachedShopifyProductsResponse) {
-      return res.json(cachedShopifyProductsResponse);
+      const categoryPaths = buildCategoryPaths(await readCategoryCollectionRows());
+      const collections =
+        cachedShopifyCollectionsResponse?.data ??
+        (await ensureAllShopifyCollectionsData());
+      const filteredData = filterShopifyProductsByCategory(
+        filterShopifyProductsBySearch(
+          cachedShopifyProductsResponse.data,
+          searchQuery
+        ),
+        collections,
+        categoryFilters,
+        categoryPaths
+      );
+
+      if (!shouldPaginate) {
+        return res.json({
+          success: true,
+          count: filteredData.length,
+          data: filteredData,
+        } satisfies ShopifyProductsResponse);
+      }
+
+      return res.json({
+        success: true,
+        ...paginateItems(filteredData, req.query.page, req.query.pageSize),
+      } satisfies ShopifyProductsResponse);
     }
 
     res.status(500).json({
@@ -1319,114 +2201,324 @@ router.get("/products", async (_req, res) => {
   }
 });
 
-router.get("/collections", async (_req, res) => {
+router.get("/collections", async (req, res) => {
+  const searchQuery =
+    typeof req.query.search === "string" ? req.query.search.trim() : "";
+  const shouldPaginate =
+    req.query.page !== undefined || req.query.pageSize !== undefined;
+  const categoryFilters = parseCategoryFilters(
+    req.query as Record<string, unknown>
+  );
+
   try {
-    if (isShopifyCollectionsCacheFresh()) {
-      return res.json(cachedShopifyCollectionsResponse);
-    }
-
-    const [collections, productMemberships] =
-      await Promise.all([
-        fetchAllShopifyCollectionsSummary(),
-        fetchAllShopifyProductMemberships(),
-      ]);
-
-    const collectionLookup = new Map<string, Set<number>>();
-    const smartCollectionTitleLookup = new Map<string, Set<number>>();
-    const collectionCounts = new Map<number, number>();
-
-    collections.forEach((collection) => {
-      collectionCounts.set(collection.id, 0);
-      addCollectionLookupValue(collectionLookup, collection.title, collection.id);
-      addCollectionLookupValue(collectionLookup, collection.handle, collection.id);
-
-      if (collection.type === "smart") {
-        addCollectionLookupValue(
-          smartCollectionTitleLookup,
-          collection.title,
-          collection.id
-        );
-      }
-    });
-
-    productMemberships.forEach((product) => {
-      const matchedCollectionIds = new Set<number>();
-
-      const defaultCollections = Array.isArray(product.collections?.nodes)
-        ? product.collections.nodes
-        : [];
-
-      defaultCollections.forEach((collection) => {
-        const resourceId = Number(collection.legacyResourceId);
-
-        if (!Number.isNaN(resourceId) && collectionCounts.has(resourceId)) {
-          matchedCollectionIds.add(resourceId);
-        }
-
-        const byTitle = collectionLookup.get(
-          normalizeCollectionKey(collection.title)
-        );
-        const byHandle = collectionLookup.get(
-          normalizeCollectionKey(collection.handle)
-        );
-
-        byTitle?.forEach((collectionId) =>
-          matchedCollectionIds.add(collectionId)
-        );
-        byHandle?.forEach((collectionId) =>
-          matchedCollectionIds.add(collectionId)
-        );
-      });
-
-      parseListMetafield(product.metafield?.value).forEach((collectionName) => {
-        const matchedIds = smartCollectionTitleLookup.get(
-          normalizeCollectionKey(collectionName)
-        );
-
-        matchedIds?.forEach((collectionId) =>
-          matchedCollectionIds.add(collectionId)
-        );
-      });
-
-      matchedCollectionIds.forEach((collectionId) => {
-        collectionCounts.set(
-          collectionId,
-          (collectionCounts.get(collectionId) ?? 0) + 1
-        );
-      });
-    });
-
-    const data = collections
-      .map((collection) => ({
-        ...collection,
-        productCount: collectionCounts.get(collection.id) ?? 0,
-      }))
-      .sort(
-      (left, right) =>
-        toSortableTime(right.updatedAt) -
-        toSortableTime(left.updatedAt)
+    const [collections, csvRows] = await Promise.all([
+      ensureAllShopifyCollectionsData(),
+      readCategoryCollectionRows(),
+    ]);
+    const filteredData = filterShopifyCollectionsBySearch(
+      filterShopifyCollectionsByCategory(
+        collections,
+        categoryFilters,
+        buildCategoryPaths(csvRows)
+      ),
+      searchQuery
     );
 
-    const responsePayload: ShopifyCollectionsResponse = {
+    if (!shouldPaginate) {
+      return res.json({
+        success: true,
+        count: filteredData.length,
+        data: filteredData,
+      } satisfies ShopifyCollectionsResponse);
+    }
+
+    return res.json({
       success: true,
-      count: data.length,
-      data,
-    };
-
-    cachedShopifyCollectionsResponse = responsePayload;
-    cachedShopifyCollectionsFetchedAt = Date.now();
-
-    res.json(responsePayload);
+      ...paginateItems(filteredData, req.query.page, req.query.pageSize),
+    } satisfies ShopifyCollectionsResponse);
   } catch (error: any) {
     console.error("Shopify collections fetch error:", error);
 
     if (cachedShopifyCollectionsResponse) {
-      return res.json(cachedShopifyCollectionsResponse);
+      const categoryPaths = buildCategoryPaths(await readCategoryCollectionRows());
+      const filteredData = filterShopifyCollectionsBySearch(
+        filterShopifyCollectionsByCategory(
+          cachedShopifyCollectionsResponse.data,
+          categoryFilters,
+          categoryPaths
+        ),
+        searchQuery
+      );
+
+      if (!shouldPaginate) {
+        return res.json({
+          success: true,
+          count: filteredData.length,
+          data: filteredData,
+        } satisfies ShopifyCollectionsResponse);
+      }
+
+      return res.json({
+        success: true,
+        ...paginateItems(filteredData, req.query.page, req.query.pageSize),
+      } satisfies ShopifyCollectionsResponse);
     }
 
     res.status(500).json({
       success: false,
       message: error.message || "Failed to fetch Shopify collections",
+    });
+  }
+});
+
+router.get("/collections/export", async (req, res) => {
+  const format =
+    typeof req.query.format === "string"
+      ? req.query.format.trim().toLowerCase()
+      : "csv";
+  const searchQuery =
+    typeof req.query.search === "string" ? req.query.search.trim() : "";
+  const categoryFilters = parseCategoryFilters(
+    req.query as Record<string, unknown>
+  );
+
+  if (!["csv", "json", "pdf"].includes(format)) {
+    return res.status(400).json({
+      success: false,
+      message: "Export format must be csv, json, or pdf",
+    });
+  }
+
+  try {
+    const report = await buildCollectionCategoryReport(
+      searchQuery,
+      categoryFilters
+    );
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const fileBaseName = `shopify-collections-category-report-${timestamp}`;
+
+    if (format === "json") {
+      res.setHeader("Content-Type", "application/json; charset=utf-8");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${fileBaseName}.json"`
+      );
+
+      return res.send(
+        JSON.stringify(
+          {
+            summary: report.summary,
+            rows: report.rows,
+          },
+          null,
+          2
+        )
+      );
+    }
+
+    if (format === "csv") {
+      const csvLines = [
+        [
+          "top_category",
+          "parent_category",
+          "final_category",
+          "collection_name",
+          "collection_handle",
+          "collection_type",
+          "live_collection_found",
+          "product_count",
+          "published",
+          "updated_at",
+          "collection_url",
+        ]
+          .map((value) => csvEscape(value))
+          .join(","),
+        ...report.rows.map((row) =>
+          [
+            row.topCategory,
+            row.parentCategory,
+            row.finalCategory,
+            row.collectionName,
+            row.collectionHandle,
+            row.collectionType,
+            row.liveCollectionFound,
+            row.productCount,
+            row.published,
+            row.updatedAt,
+            row.collectionUrl,
+          ]
+            .map((value) => csvEscape(value))
+            .join(",")
+        ),
+      ].join("\n");
+
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${fileBaseName}.csv"`
+      );
+
+      return res.send(csvLines);
+    }
+
+    const pdfLines = [
+      "Shopify Collections Category Report",
+      `Generated: ${report.summary.generatedAt}`,
+      `Rows: ${report.summary.rowCount}`,
+      `Collections with products: ${report.summary.collectionsWithProducts}`,
+      `Missing collections: ${report.summary.missingCollections}`,
+      "",
+      ...report.rows.flatMap((row, index) => [
+        `${index + 1}. ${row.collectionName} (${row.collectionHandle})`,
+        `Top: ${row.topCategory || "-"} | Parent: ${row.parentCategory || "-"} | Final: ${row.finalCategory || "-"}`,
+        `Type: ${row.collectionType} | Product count: ${row.productCount} | Published: ${row.published ? "Yes" : "No"}`,
+        `Updated: ${row.updatedAt || "-"} | URL: ${row.collectionUrl || "-"}`,
+        "",
+      ]),
+    ];
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${fileBaseName}.pdf"`
+    );
+
+    return res.send(
+      buildPdfBuffer(pdfLines)
+    );
+  } catch (error: any) {
+    console.error("Shopify collections export error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to export Shopify collections report",
+    });
+  }
+});
+
+router.get("/products/export", async (req, res) => {
+  const format =
+    typeof req.query.format === "string"
+      ? req.query.format.trim().toLowerCase()
+      : "csv";
+  const searchQuery =
+    typeof req.query.search === "string" ? req.query.search.trim() : "";
+  const categoryFilters = parseCategoryFilters(
+    req.query as Record<string, unknown>
+  );
+
+  if (!["csv", "json", "pdf"].includes(format)) {
+    return res.status(400).json({
+      success: false,
+      message: "Export format must be csv, json, or pdf",
+    });
+  }
+
+  try {
+    const report = await buildProductCategoryReport(
+      searchQuery,
+      categoryFilters
+    );
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const fileBaseName = `shopify-products-category-report-${timestamp}`;
+
+    if (format === "json") {
+      res.setHeader("Content-Type", "application/json; charset=utf-8");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${fileBaseName}.json"`
+      );
+
+      return res.send(
+        JSON.stringify(
+          {
+            summary: report.summary,
+            rows: report.rows,
+          },
+          null,
+          2
+        )
+      );
+    }
+
+    if (format === "csv") {
+      const csvLines = [
+        [
+          "shopify_product_id",
+          "title",
+          "handle",
+          "vendor",
+          "product_url",
+          "collection_names",
+          "collection_handles",
+          "top_categories",
+          "parent_categories",
+          "final_categories",
+          "tags",
+          "matched_category_paths_json",
+          "updated_at",
+        ]
+          .map((value) => csvEscape(value))
+          .join(","),
+        ...report.rows.map((row) =>
+          [
+            row.shopifyProductId,
+            row.title,
+            row.handle,
+            row.vendor,
+            row.productUrl,
+            row.collectionNames.join(" | "),
+            row.collectionHandles.join(" | "),
+            row.topCategories.join(" | "),
+            row.parentCategories.join(" | "),
+            row.finalCategories.join(" | "),
+            row.tags.join(" | "),
+            JSON.stringify(row.matchedCategoryPaths),
+            row.updatedAt,
+          ]
+            .map((value) => csvEscape(value))
+            .join(",")
+        ),
+      ].join("\n");
+
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${fileBaseName}.csv"`
+      );
+
+      return res.send(csvLines);
+    }
+
+    const pdfLines = [
+      "Shopify Products Category Report",
+      `Generated: ${report.summary.generatedAt}`,
+      `Rows: ${report.summary.rowCount}`,
+      `Products with mapped categories: ${report.summary.productsWithMappedCategories}`,
+      `Products without mapped categories: ${report.summary.productsWithoutMappedCategories}`,
+      "",
+      ...report.rows.flatMap((row, index) => [
+        `${index + 1}. ${row.title} (${row.shopifyProductId ?? row.id})`,
+        `Vendor: ${row.vendor} | Handle: ${row.handle || "-"} | URL: ${row.productUrl || "-"}`,
+        `Parent categories: ${row.parentCategories.join(", ") || "-"}`,
+        `Top categories: ${row.topCategories.join(", ") || "-"}`,
+        `Final categories: ${row.finalCategories.join(", ") || "-"}`,
+        `Collections: ${row.collectionNames.join(", ") || "-"}`,
+        "",
+      ]),
+    ];
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${fileBaseName}.pdf"`
+    );
+
+    return res.send(buildPdfBuffer(pdfLines));
+  } catch (error: any) {
+    console.error("Shopify products export error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to export Shopify products report",
     });
   }
 });

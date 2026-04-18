@@ -5,8 +5,8 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 const fs_1 = __importDefault(require("fs"));
 const path_1 = __importDefault(require("path"));
-const firebase_admin_1 = __importDefault(require("firebase-admin"));
 const firebaseAdmin_1 = require("../config/firebaseAdmin");
+const firestoreExport_service_1 = require("../services/firestoreExport.service");
 /**
  * Example usage: Script to run
  * npx ts-node src/scripts/exportFirestoreToJson.ts
@@ -19,7 +19,7 @@ const firebaseAdmin_1 = require("../config/firebaseAdmin");
  * Default Firestore collection name.
  * Override with a CLI argument or FIRESTORE_COLLECTION env variable.
  */
-const DEFAULT_COLLECTION_NAME = "product_categories";
+const DEFAULT_COLLECTION_NAME = "ai_insight_snapshots";
 const ALL_COLLECTIONS_TOKENS = new Set([
     "all",
     "--all",
@@ -58,92 +58,10 @@ const collectionSource = cliCollectionNames.length > 0
  */
 const BACKEND_ROOT = path_1.default.resolve(__dirname, "..", "..");
 const OUTPUT_DIR = path_1.default.join(BACKEND_ROOT, "exports");
-function serializeValue(value) {
-    if (value === null) {
-        return null;
-    }
-    if (value instanceof firebase_admin_1.default.firestore.Timestamp) {
-        return {
-            _type: "timestamp",
-            seconds: value.seconds,
-            nanoseconds: value.nanoseconds,
-            iso: value.toDate().toISOString(),
-        };
-    }
-    if (value instanceof firebase_admin_1.default.firestore.GeoPoint) {
-        return {
-            _type: "geopoint",
-            latitude: value.latitude,
-            longitude: value.longitude,
-        };
-    }
-    if (value instanceof
-        firebase_admin_1.default.firestore.DocumentReference) {
-        return {
-            _type: "documentReference",
-            id: value.id,
-            path: value.path,
-        };
-    }
-    if (value instanceof Date) {
-        return value.toISOString();
-    }
-    if (Buffer.isBuffer(value)) {
-        return {
-            _type: "bytes",
-            base64: value.toString("base64"),
-        };
-    }
-    if (Array.isArray(value)) {
-        return value.map((item) => serializeValue(item));
-    }
-    if (typeof value === "bigint") {
-        return value.toString();
-    }
-    if (typeof value === "object") {
-        const serializedObject = {};
-        for (const [key, nestedValue,] of Object.entries(value)) {
-            serializedObject[key] =
-                serializeValue(nestedValue);
-        }
-        return serializedObject;
-    }
-    if (typeof value === "string" ||
-        typeof value === "number" ||
-        typeof value === "boolean") {
-        return value;
-    }
-    return String(value);
-}
-function serializeDocumentData(data) {
-    return serializeValue(data);
-}
-async function exportCollectionTree(collectionRef) {
-    const snapshot = await collectionRef.get();
-    const data = [];
-    for (const doc of snapshot.docs) {
-        const subcollections = await doc.ref.listCollections();
-        const serializedDoc = {
-            id: doc.id,
-            ...serializeDocumentData(doc.data()),
-        };
-        if (subcollections.length > 0) {
-            const nestedCollections = {};
-            for (const subcollection of subcollections) {
-                nestedCollections[subcollection.id] =
-                    await exportCollectionTree(subcollection);
-            }
-            serializedDoc._subcollections =
-                nestedCollections;
-        }
-        data.push(serializedDoc);
-    }
-    return data;
-}
 async function resolveCollectionsToExport() {
     if (shouldExportAllCollections) {
-        const collections = await firebaseAdmin_1.firestore.listCollections();
-        return collections.sort((left, right) => left.id.localeCompare(right.id));
+        const collectionNames = await (0, firestoreExport_service_1.listFirestoreRootCollections)();
+        return collectionNames.map((name) => firebaseAdmin_1.firestore.collection(name));
     }
     return collectionNames.map((name) => firebaseAdmin_1.firestore.collection(name));
 }
@@ -164,11 +82,11 @@ async function exportCollections() {
         const collections = await resolveCollectionsToExport();
         for (const collectionRef of collections) {
             console.log(`\nProcessing collection: ${collectionRef.id}`);
-            const data = await exportCollectionTree(collectionRef);
+            const { documents, } = await (0, firestoreExport_service_1.exportCollectionTree)(collectionRef);
             const outputFile = path_1.default.join(OUTPUT_DIR, `${collectionRef.id}.json`);
-            fs_1.default.writeFileSync(outputFile, JSON.stringify(data, null, 2), "utf-8");
+            fs_1.default.writeFileSync(outputFile, JSON.stringify(documents, null, 2), "utf-8");
             console.log(`Export completed: ${outputFile}`);
-            console.log(`Top-level documents exported: ${data.length}`);
+            console.log(`Top-level documents exported: ${documents.length}`);
         }
         console.log("\nTip: pass one or more collection names, or use --all to export every root collection.");
     }

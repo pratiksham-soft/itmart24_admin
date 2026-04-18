@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.setProductMetafields = void 0;
+exports.setCustomProductMetafields = exports.setProductMetafields = void 0;
 const shopifyHttp_1 = require("./shopifyHttp");
 const createTextMetafield = (key, type, value) => {
     if (typeof value !== "string" || value.trim() === "") {
@@ -60,7 +60,33 @@ const setProductMetafields = async ({ shopifyProductId, featuresText, plansText,
         createTextMetafield("vendor_profile_url", "url", vendorProfileUrl),
         createTextMetafield("product_id", "single_line_text_field", productId),
     ].filter((metafield) => Boolean(metafield));
-    if (metafields.length === 0) {
+    await (0, exports.setCustomProductMetafields)({
+        shopifyProductId,
+        metafields,
+    });
+};
+exports.setProductMetafields = setProductMetafields;
+const setCustomProductMetafields = async ({ shopifyProductId, metafields, }) => {
+    if (!shopifyProductId || isNaN(shopifyProductId)) {
+        throw new Error(`Invalid shopifyProductId received in metafields: ${shopifyProductId}`);
+    }
+    const normalizedMetafields = metafields
+        .map((metafield) => {
+        const key = metafield.key?.trim();
+        const type = metafield.type?.trim();
+        const value = metafield.value?.trim();
+        if (!key || !type || !value) {
+            return null;
+        }
+        return {
+            namespace: metafield.namespace?.trim() || "custom",
+            key,
+            type,
+            value,
+        };
+    })
+        .filter((metafield) => Boolean(metafield));
+    if (normalizedMetafields.length === 0) {
         console.log("No metafields to save");
         return;
     }
@@ -80,7 +106,7 @@ const setProductMetafields = async ({ shopifyProductId, featuresText, plansText,
     }
   `;
     const variables = {
-        metafields: metafields.map((mf) => ({
+        metafields: normalizedMetafields.map((mf) => ({
             ownerId: `gid://shopify/Product/${shopifyProductId}`,
             namespace: mf.namespace,
             key: mf.key,
@@ -99,4 +125,4 @@ const setProductMetafields = async ({ shopifyProductId, featuresText, plansText,
     }
     console.log("Metafields saved:", result.metafields.map((m) => `${m.namespace}.${m.key}`));
 };
-exports.setProductMetafields = setProductMetafields;
+exports.setCustomProductMetafields = setCustomProductMetafields;

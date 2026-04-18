@@ -25,6 +25,13 @@ type ShopifyMetafield = {
   value: string;
 };
 
+export type ProductCustomMetafieldInput = {
+  key: string;
+  type: string;
+  value: string;
+  namespace?: string;
+};
+
 const createTextMetafield = (
   key: string,
   type: string,
@@ -126,7 +133,45 @@ export const setProductMetafields = async ({
     createTextMetafield("product_id", "single_line_text_field", productId),
   ].filter((metafield): metafield is ShopifyMetafield => Boolean(metafield));
 
-  if (metafields.length === 0) {
+  await setCustomProductMetafields({
+    shopifyProductId,
+    metafields,
+  });
+};
+
+export const setCustomProductMetafields = async ({
+  shopifyProductId,
+  metafields,
+}: {
+  shopifyProductId: number;
+  metafields: ProductCustomMetafieldInput[];
+}) => {
+  if (!shopifyProductId || isNaN(shopifyProductId)) {
+    throw new Error(
+      `Invalid shopifyProductId received in metafields: ${shopifyProductId}`
+    );
+  }
+
+  const normalizedMetafields = metafields
+    .map((metafield) => {
+      const key = metafield.key?.trim();
+      const type = metafield.type?.trim();
+      const value = metafield.value?.trim();
+
+      if (!key || !type || !value) {
+        return null;
+      }
+
+      return {
+        namespace: metafield.namespace?.trim() || "custom",
+        key,
+        type,
+        value,
+      } satisfies ShopifyMetafield;
+    })
+    .filter((metafield): metafield is ShopifyMetafield => Boolean(metafield));
+
+  if (normalizedMetafields.length === 0) {
     console.log("No metafields to save");
     return;
   }
@@ -148,7 +193,7 @@ export const setProductMetafields = async ({
   `;
 
   const variables = {
-    metafields: metafields.map((mf: any) => ({
+    metafields: normalizedMetafields.map((mf) => ({
       ownerId: `gid://shopify/Product/${shopifyProductId}`,
       namespace: mf.namespace,
       key: mf.key,

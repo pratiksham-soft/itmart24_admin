@@ -24,11 +24,41 @@ type ShopifyCollectionRow = {
   collectionUrl: string | null;
 };
 
+type ShopifyCollectionsResponse = {
+  success: boolean;
+  count: number;
+  data: ShopifyCollectionRow[];
+  page?: number;
+  pageSize?: number;
+  totalPages?: number;
+  message?: string;
+};
+
+type CategoryFilterPath = {
+  topCategory: string;
+  parentCategory: string;
+  finalCategory: string;
+  collectionName: string;
+  collectionHandle: string;
+};
+
+type ShopifyCategoryFiltersResponse = {
+  success: boolean;
+  data?: {
+    paths: CategoryFilterPath[];
+  };
+  message?: string;
+};
+
+type ExportFormat = "json" | "csv" | "pdf";
+
 const PAGE_SIZE = 25;
 const inputClassName =
   "w-full rounded-2xl border border-gray-300 bg-white px-4 py-3 text-sm text-gray-800 outline-none transition focus:border-brand-300 focus:ring-4 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90";
 const helperCardClassName =
   "rounded-2xl border border-gray-200 bg-gray-50 px-4 py-4 dark:border-gray-800 dark:bg-gray-800/40";
+const selectClassName =
+  "w-full rounded-2xl border border-gray-300 bg-white px-4 py-3 text-sm text-gray-800 outline-none transition focus:border-brand-300 focus:ring-4 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90";
 
 const formatDate = (value: string | null) => {
   if (!value) {
@@ -45,6 +75,15 @@ const formatDate = (value: string | null) => {
     dateStyle: "medium",
     timeStyle: "short",
   });
+};
+
+const getDownloadFilename = (
+  dispositionHeader: string | null,
+  fallbackName: string
+) => {
+  const match = dispositionHeader?.match(/filename="([^"]+)"/i);
+
+  return match?.[1] || fallbackName;
 };
 
 const CreateCollectionModal = ({
@@ -469,9 +508,21 @@ const PublishCollectionModal = ({
 const ShopifyCollections = () => {
   const [collections, setCollections] = useState<ShopifyCollectionRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [filterError, setFilterError] = useState<string | null>(null);
+  const [exportingFormat, setExportingFormat] = useState<ExportFormat | null>(
+    null
+  );
+  const [categoryPaths, setCategoryPaths] = useState<CategoryFilterPath[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const [selectedTopCategory, setSelectedTopCategory] = useState("");
+  const [selectedParentCategory, setSelectedParentCategory] = useState("");
+  const [selectedFinalCategory, setSelectedFinalCategory] = useState("");
   const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [collectionTitle, setCollectionTitle] = useState("");
   const [ruleValue, setRuleValue] = useState("");
@@ -494,7 +545,7 @@ const ShopifyCollections = () => {
   const [deleteConfirmationName, setDeleteConfirmationName] = useState("");
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
-  const hasFetchedCollections = useRef(false);
+  const hasLoadedCollections = useRef(false);
 
   const resetCreateForm = () => {
     setCollectionTitle("");
@@ -531,13 +582,65 @@ const ShopifyCollections = () => {
     setPublishError(null);
   };
 
-  const fetchCollections = async () => {
-    setLoading(true);
+  const fetchCategoryFilters = async () => {
+    setFilterError(null);
+
+    try {
+      const response = await fetch("/api/shopify/category-filters");
+      const result: ShopifyCategoryFiltersResponse = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(
+          result.message || "Failed to fetch Shopify category filters"
+        );
+      }
+
+      setCategoryPaths(Array.isArray(result.data?.paths) ? result.data.paths : []);
+    } catch (fetchError: any) {
+      console.error("Failed to fetch Shopify category filters", fetchError);
+      setFilterError(
+        fetchError?.message || "Failed to load Shopify category filters"
+      );
+    }
+  };
+
+  const fetchCollections = async (
+    requestedPage = page,
+    requestedSearchQuery = searchQuery
+  ) => {
+    if (hasLoadedCollections.current) {
+      setIsRefreshing(true);
+    } else {
+      setLoading(true);
+    }
+
     setError(null);
 
     try {
-      const response = await fetch("/api/shopify/collections");
-      const result = await response.json();
+      const params = new URLSearchParams({
+        page: String(requestedPage),
+        pageSize: String(PAGE_SIZE),
+      });
+      const trimmedSearchQuery = requestedSearchQuery.trim();
+
+      if (trimmedSearchQuery) {
+        params.set("search", trimmedSearchQuery);
+      }
+
+      if (selectedTopCategory) {
+        params.set("topCategory", selectedTopCategory);
+      }
+
+      if (selectedParentCategory) {
+        params.set("parentCategory", selectedParentCategory);
+      }
+
+      if (selectedFinalCategory) {
+        params.set("finalCategory", selectedFinalCategory);
+      }
+
+      const response = await fetch(`/api/shopify/collections?${params.toString()}`);
+      const result: ShopifyCollectionsResponse = await response.json();
 
       if (!response.ok || !result.success) {
         throw new Error(
@@ -545,7 +648,18 @@ const ShopifyCollections = () => {
         );
       }
 
-      setCollections(result.data);
+      setCollections(Array.isArray(result.data) ? result.data : []);
+      setTotalCount(result.count ?? 0);
+      setTotalPages(result.totalPages ?? 1);
+
+      if (
+        typeof result.page === "number" &&
+        result.page !== requestedPage
+      ) {
+        setPage(result.page);
+      }
+
+      hasLoadedCollections.current = true;
     } catch (fetchError: any) {
       console.error("Failed to fetch Shopify collections", fetchError);
       setError(
@@ -553,17 +667,23 @@ const ShopifyCollections = () => {
       );
     } finally {
       setLoading(false);
+      setIsRefreshing(false);
     }
   };
 
   useEffect(() => {
-    if (hasFetchedCollections.current) {
-      return;
-    }
-
-    hasFetchedCollections.current = true;
-    fetchCollections();
+    void fetchCategoryFilters();
   }, []);
+
+  useEffect(() => {
+    void fetchCollections(page, searchQuery);
+  }, [
+    page,
+    searchQuery,
+    selectedTopCategory,
+    selectedParentCategory,
+    selectedFinalCategory,
+  ]);
 
   useEffect(() => {
     if (!isRuleValueDirty) {
@@ -571,42 +691,45 @@ const ShopifyCollections = () => {
     }
   }, [collectionTitle, isRuleValueDirty]);
 
-  const filteredCollections = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
-
-    if (!query) {
-      return collections;
-    }
-
-    return collections.filter((collection) =>
-      [
-        collection.title,
-        collection.type,
-        collection.handle ?? "",
-        collection.sortOrder,
-        collection.id.toString(),
-      ].some((value) => value.toLowerCase().includes(query))
-    );
-  }, [collections, searchQuery]);
-
-  const totalCount = filteredCollections.length;
-  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
-  const paginatedCollections = filteredCollections.slice(
-    (page - 1) * PAGE_SIZE,
-    page * PAGE_SIZE
+  const topCategoryOptions = useMemo(
+    () =>
+      [...new Set(categoryPaths.map((path) => path.topCategory).filter(Boolean))]
+        .sort((left, right) => left.localeCompare(right)),
+    [categoryPaths]
   );
+
+  const parentCategoryOptions = useMemo(() => {
+    return [
+      ...new Set(
+        categoryPaths
+          .filter(
+            (path) =>
+              !selectedTopCategory || path.topCategory === selectedTopCategory
+          )
+          .map((path) => path.parentCategory)
+          .filter(Boolean)
+      ),
+    ].sort((left, right) => left.localeCompare(right));
+  }, [categoryPaths, selectedTopCategory]);
+
+  const finalCategoryOptions = useMemo(() => {
+    return [
+      ...new Set(
+        categoryPaths
+          .filter(
+            (path) =>
+              (!selectedTopCategory || path.topCategory === selectedTopCategory) &&
+              (!selectedParentCategory ||
+                path.parentCategory === selectedParentCategory)
+          )
+          .map((path) => path.finalCategory)
+          .filter(Boolean)
+      ),
+    ].sort((left, right) => left.localeCompare(right));
+  }, [categoryPaths, selectedParentCategory, selectedTopCategory]);
+
   const startItem = totalCount === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
   const endItem = Math.min(page * PAGE_SIZE, totalCount);
-
-  useEffect(() => {
-    setPage(1);
-  }, [searchQuery]);
-
-  useEffect(() => {
-    if (page > totalPages) {
-      setPage(totalPages);
-    }
-  }, [page, totalPages]);
 
   const handlePageClick = (pageNumber: number) => {
     if (pageNumber < 1 || pageNumber > totalPages || pageNumber === page) {
@@ -614,6 +737,64 @@ const ShopifyCollections = () => {
     }
 
     setPage(pageNumber);
+  };
+
+  const handleExport = async (format: ExportFormat) => {
+    setExportingFormat(format);
+    setExportError(null);
+
+    try {
+      const params = new URLSearchParams({ format });
+      const trimmedSearchQuery = searchQuery.trim();
+
+      if (trimmedSearchQuery) {
+        params.set("search", trimmedSearchQuery);
+      }
+
+      if (selectedTopCategory) {
+        params.set("topCategory", selectedTopCategory);
+      }
+
+      if (selectedParentCategory) {
+        params.set("parentCategory", selectedParentCategory);
+      }
+
+      if (selectedFinalCategory) {
+        params.set("finalCategory", selectedFinalCategory);
+      }
+
+      const response = await fetch(
+        `/api/shopify/collections/export?${params.toString()}`
+      );
+
+      if (!response.ok) {
+        const result = await response.json().catch(() => null);
+        throw new Error(
+          result?.message || "Failed to export Shopify collections report"
+        );
+      }
+
+      const blob = await response.blob();
+      const downloadUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+
+      link.href = downloadUrl;
+      link.download = getDownloadFilename(
+        response.headers.get("Content-Disposition"),
+        `shopify-collections-category-report.${format}`
+      );
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(downloadUrl);
+    } catch (submitError: any) {
+      console.error("Failed to export Shopify collections report", submitError);
+      setExportError(
+        submitError?.message || "Failed to export Shopify collections report"
+      );
+    } finally {
+      setExportingFormat(null);
+    }
   };
 
   const handleCreateCollection = async (
@@ -655,8 +836,11 @@ const ShopifyCollections = () => {
         );
       }
 
-      await fetchCollections();
-      setPage(1);
+      if (page !== 1) {
+        setPage(1);
+      } else {
+        await fetchCollections(1, searchQuery);
+      }
       setCreateSuccess(
         `Collection "${result.data?.title ?? trimmedTitle}" was created in Shopify.`
       );
@@ -713,8 +897,11 @@ const ShopifyCollections = () => {
         );
       }
 
-      await fetchCollections();
-      setPage(1);
+      if (page !== 1) {
+        setPage(1);
+      } else {
+        await fetchCollections(1, searchQuery);
+      }
       setDeleteSuccess(
         `Collection "${result.data?.title ?? collectionToDelete.title}" was deleted from Shopify.`
       );
@@ -766,7 +953,7 @@ const ShopifyCollections = () => {
         );
       }
 
-      await fetchCollections();
+      await fetchCollections(page, searchQuery);
       setPublishSuccess(
         publishTargetState
           ? `Collection "${collectionToPublish.title}" was published in Shopify.`
@@ -797,26 +984,142 @@ const ShopifyCollections = () => {
         title="Shopify Collections"
         desc="Smart and custom collections available in the connected Shopify store."
       >
+        <div className="rounded-3xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-800/30">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                Category Filters
+              </p>
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                Leave any filter blank to include all values. Exports will use
+                the same filters shown here.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setPage(1);
+                setSelectedTopCategory("");
+                setSelectedParentCategory("");
+                setSelectedFinalCategory("");
+              }}
+              className="rounded-2xl border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 transition hover:bg-white dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-900"
+            >
+              Reset Filters
+            </button>
+          </div>
+
+          <div className="mt-4 grid gap-3 md:grid-cols-3">
+            <div>
+              <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                Category
+              </label>
+              <select
+                value={selectedTopCategory}
+                onChange={(event) => {
+                  setPage(1);
+                  setSelectedTopCategory(event.target.value);
+                  setSelectedParentCategory("");
+                  setSelectedFinalCategory("");
+                }}
+                className={selectClassName}
+              >
+                <option value="">All Categories</option>
+                {topCategoryOptions.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                Sub Category
+              </label>
+              <select
+                value={selectedParentCategory}
+                onChange={(event) => {
+                  setPage(1);
+                  setSelectedParentCategory(event.target.value);
+                  setSelectedFinalCategory("");
+                }}
+                className={selectClassName}
+              >
+                <option value="">All Sub Categories</option>
+                {parentCategoryOptions.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                Final Category
+              </label>
+              <select
+                value={selectedFinalCategory}
+                onChange={(event) => {
+                  setPage(1);
+                  setSelectedFinalCategory(event.target.value);
+                }}
+                className={selectClassName}
+              >
+                <option value="">All Final Categories</option>
+                {finalCategoryOptions.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {filterError ? (
+            <p className="mt-3 text-sm text-red-600">{filterError}</p>
+          ) : null}
+        </div>
+
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <ProductSearchBar
             id="shopify-collections-search"
             label="Search Shopify collections"
             value={searchQuery}
-            onChange={setSearchQuery}
+            onChange={(value) => {
+              setPage(1);
+              setSearchQuery(value);
+            }}
             placeholder="Search by collection title, type, handle, sort order, or ID"
           />
-          <button
-            type="button"
-            onClick={() => {
-              setCreateSuccess(null);
-              setDeleteSuccess(null);
-              setCreateError(null);
-              setIsCreateOpen(true);
-            }}
-            className="inline-flex items-center justify-center rounded-2xl bg-brand-500 px-4 py-3 text-sm font-medium text-white transition hover:bg-brand-600"
-          >
-            Create
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            {(["json", "csv", "pdf"] as ExportFormat[]).map((format) => (
+              <button
+                key={format}
+                type="button"
+                disabled={exportingFormat !== null}
+                onClick={() => void handleExport(format)}
+                className="inline-flex items-center justify-center rounded-2xl border border-gray-300 px-4 py-3 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+              >
+                {exportingFormat === format
+                  ? `Exporting ${format.toUpperCase()}...`
+                  : `Export ${format.toUpperCase()}`}
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={() => {
+                setCreateSuccess(null);
+                setDeleteSuccess(null);
+                setCreateError(null);
+                setIsCreateOpen(true);
+              }}
+              className="inline-flex items-center justify-center rounded-2xl bg-brand-500 px-4 py-3 text-sm font-medium text-white transition hover:bg-brand-600"
+            >
+              Create
+            </button>
+          </div>
         </div>
 
         {createSuccess ? (
@@ -841,13 +1144,17 @@ const ShopifyCollections = () => {
           <p className="text-sm text-red-600">{error}</p>
         ) : null}
 
+        {exportError ? (
+          <p className="text-sm text-red-600">{exportError}</p>
+        ) : null}
+
         {searchQuery && !error ? (
           <p className="text-sm text-gray-500">
             {totalCount} matching collection{totalCount === 1 ? "" : "s"} found.
           </p>
         ) : null}
 
-        {!error && filteredCollections.length === 0 ? (
+        {!error && !loading && collections.length === 0 ? (
           <p className="text-sm text-gray-500">
             {searchQuery
               ? "No Shopify collections match your search."
@@ -855,7 +1162,7 @@ const ShopifyCollections = () => {
           </p>
         ) : null}
 
-        {!error && filteredCollections.length > 0 ? (
+        {!error && collections.length > 0 ? (
           <div className="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-white/[0.05] dark:bg-white/[0.03]">
             <div className="max-w-full overflow-x-auto">
               <Table>
@@ -889,7 +1196,7 @@ const ShopifyCollections = () => {
                 </TableHeader>
 
                 <TableBody className="divide-y divide-gray-100 dark:divide-white/[0.05]">
-                  {paginatedCollections.map((collection) => (
+                  {collections.map((collection) => (
                     <TableRow key={collection.id}>
                       <TableCell className="px-5 py-4 text-start">
                         <div>
@@ -1003,7 +1310,7 @@ const ShopifyCollections = () => {
           </div>
         ) : null}
 
-        {!error && filteredCollections.length > 0 ? (
+        {!error && collections.length > 0 ? (
           <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <span className="text-sm text-gray-500">
               {startItem}-{endItem} / {totalCount}
@@ -1011,7 +1318,7 @@ const ShopifyCollections = () => {
 
             <div className="flex items-center gap-2">
               <button
-                disabled={page === 1}
+                disabled={page === 1 || isRefreshing}
                 onClick={() => handlePageClick(page - 1)}
                 className="rounded-md border px-3 py-1 text-sm disabled:opacity-50"
               >
@@ -1037,7 +1344,7 @@ const ShopifyCollections = () => {
               ) : null}
 
               <button
-                disabled={page === totalPages}
+                disabled={page === totalPages || isRefreshing}
                 onClick={() => handlePageClick(page + 1)}
                 className="rounded-md bg-blue-600 px-3 py-1 text-sm text-white disabled:opacity-50"
               >

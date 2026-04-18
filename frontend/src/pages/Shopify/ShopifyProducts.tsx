@@ -33,11 +33,58 @@ type ShopifyCollectionOption = {
   productCount: number;
 };
 
+type ShopifyProductsResponse = {
+  success: boolean;
+  count: number;
+  data: ShopifyProductRow[];
+  page?: number;
+  pageSize?: number;
+  totalPages?: number;
+  message?: string;
+};
+
+type ShopifyCollectionsResponse = {
+  success: boolean;
+  count: number;
+  data: ShopifyCollectionOption[];
+  page?: number;
+  pageSize?: number;
+  totalPages?: number;
+  message?: string;
+};
+
+type CategoryFilterPath = {
+  topCategory: string;
+  parentCategory: string;
+  finalCategory: string;
+  collectionName: string;
+  collectionHandle: string;
+};
+
+type ShopifyCategoryFiltersResponse = {
+  success: boolean;
+  data?: {
+    paths: CategoryFilterPath[];
+  };
+  message?: string;
+};
+
+type ExportFormat = "json" | "csv" | "pdf";
+
 const PAGE_SIZE = 25;
 const COLLECTION_ROW_HEIGHT = 112;
 const COLLECTION_LIST_OVERSCAN = 6;
 const inputClassName =
   "w-full rounded-2xl border border-gray-300 bg-white px-4 py-3 text-sm text-gray-800 outline-none transition focus:border-brand-300 focus:ring-4 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90";
+
+const getDownloadFilename = (
+  dispositionHeader: string | null,
+  fallbackName: string
+) => {
+  const match = dispositionHeader?.match(/filename="([^"]+)"/i);
+
+  return match?.[1] || fallbackName;
+};
 
 const ManageCollectionsModal = ({
   isOpen,
@@ -548,38 +595,114 @@ const ShopifyProducts = () => {
   const [products, setProducts] = useState<ShopifyProductRow[]>([]);
   const [collections, setCollections] = useState<ShopifyCollectionOption[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [collectionsLoading, setCollectionsLoading] = useState(false);
   const [collectionsError, setCollectionsError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [filterError, setFilterError] = useState<string | null>(null);
+  const [exportingFormat, setExportingFormat] = useState<ExportFormat | null>(
+    null
+  );
+  const [categoryPaths, setCategoryPaths] = useState<CategoryFilterPath[]>([]);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [selectedTopCategory, setSelectedTopCategory] = useState("");
+  const [selectedParentCategory, setSelectedParentCategory] = useState("");
+  const [selectedFinalCategory, setSelectedFinalCategory] = useState("");
   const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const [isManageOpen, setIsManageOpen] = useState(false);
   const [activeProduct, setActiveProduct] = useState<ShopifyProductRow | null>(null);
   const [collectionSearch, setCollectionSearch] = useState("");
   const [selectedCollectionIds, setSelectedCollectionIds] = useState<number[]>([]);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
-  const hasFetchedProducts = useRef(false);
+  const hasLoadedProducts = useRef(false);
 
-  const fetchProducts = async () => {
-    setLoading(true);
+  const fetchCategoryFilters = async () => {
+    setFilterError(null);
+
+    try {
+      const response = await fetch("/api/shopify/category-filters");
+      const result: ShopifyCategoryFiltersResponse = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(
+          result.message || "Failed to fetch Shopify category filters"
+        );
+      }
+
+      setCategoryPaths(Array.isArray(result.data?.paths) ? result.data.paths : []);
+    } catch (fetchError: any) {
+      console.error("Failed to fetch Shopify category filters", fetchError);
+      setFilterError(
+        fetchError?.message || "Failed to load Shopify category filters"
+      );
+    }
+  };
+
+  const fetchProducts = async (
+    requestedPage = page,
+    requestedSearchQuery = searchQuery
+  ) => {
+    if (hasLoadedProducts.current) {
+      setIsRefreshing(true);
+    } else {
+      setLoading(true);
+    }
+
     setError(null);
 
     try {
-      const response = await fetch("/api/shopify/products");
-      const result = await response.json();
+      const params = new URLSearchParams({
+        page: String(requestedPage),
+        pageSize: String(PAGE_SIZE),
+      });
+      const trimmedSearchQuery = requestedSearchQuery.trim();
+
+      if (trimmedSearchQuery) {
+        params.set("search", trimmedSearchQuery);
+      }
+
+      if (selectedTopCategory) {
+        params.set("topCategory", selectedTopCategory);
+      }
+
+      if (selectedParentCategory) {
+        params.set("parentCategory", selectedParentCategory);
+      }
+
+      if (selectedFinalCategory) {
+        params.set("finalCategory", selectedFinalCategory);
+      }
+
+      const response = await fetch(`/api/shopify/products?${params.toString()}`);
+      const result: ShopifyProductsResponse = await response.json();
 
       if (!response.ok || !result.success) {
         throw new Error(result.message || "Failed to fetch Shopify products");
       }
 
-      setProducts(result.data);
+      setProducts(Array.isArray(result.data) ? result.data : []);
+      setTotalCount(result.count ?? 0);
+      setTotalPages(result.totalPages ?? 1);
+
+      if (
+        typeof result.page === "number" &&
+        result.page !== requestedPage
+      ) {
+        setPage(result.page);
+      }
+
+      hasLoadedProducts.current = true;
     } catch (fetchError: any) {
       console.error("Failed to fetch Shopify products", fetchError);
       setError(fetchError?.message || "Failed to load Shopify products");
     } finally {
       setLoading(false);
+      setIsRefreshing(false);
     }
   };
 
@@ -589,13 +712,13 @@ const ShopifyProducts = () => {
 
     try {
       const response = await fetch("/api/shopify/collections");
-      const result = await response.json();
+      const result: ShopifyCollectionsResponse = await response.json();
 
       if (!response.ok || !result.success) {
         throw new Error(result.message || "Failed to fetch Shopify collections");
       }
 
-      setCollections(result.data);
+      setCollections(Array.isArray(result.data) ? result.data : []);
     } catch (fetchError: any) {
       console.error("Failed to fetch Shopify collections", fetchError);
       setCollections([]);
@@ -608,52 +731,58 @@ const ShopifyProducts = () => {
   };
 
   useEffect(() => {
-    if (hasFetchedProducts.current) {
-      return;
-    }
-
-    hasFetchedProducts.current = true;
-    fetchProducts();
-    fetchCollections();
+    void fetchCategoryFilters();
   }, []);
 
-  const filteredProducts = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
+  useEffect(() => {
+    void fetchProducts(page, searchQuery);
+  }, [
+    page,
+    searchQuery,
+    selectedTopCategory,
+    selectedParentCategory,
+    selectedFinalCategory,
+  ]);
 
-    if (!query) {
-      return products;
-    }
-
-    return products.filter((product) =>
-      [
-        product.title,
-        product.vendor,
-        product.handle ?? "",
-        product.shopifyProductId?.toString() ?? "",
-        product.collectionNames.join(" "),
-        product.tags.join(" "),
-      ].some((value) => value.toLowerCase().includes(query))
-    );
-  }, [products, searchQuery]);
-
-  const totalCount = filteredProducts.length;
-  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
-  const paginatedProducts = filteredProducts.slice(
-    (page - 1) * PAGE_SIZE,
-    page * PAGE_SIZE
+  const topCategoryOptions = useMemo(
+    () =>
+      [...new Set(categoryPaths.map((path) => path.topCategory).filter(Boolean))]
+        .sort((left, right) => left.localeCompare(right)),
+    [categoryPaths]
   );
+
+  const parentCategoryOptions = useMemo(() => {
+    return [
+      ...new Set(
+        categoryPaths
+          .filter(
+            (path) =>
+              !selectedTopCategory || path.topCategory === selectedTopCategory
+          )
+          .map((path) => path.parentCategory)
+          .filter(Boolean)
+      ),
+    ].sort((left, right) => left.localeCompare(right));
+  }, [categoryPaths, selectedTopCategory]);
+
+  const finalCategoryOptions = useMemo(() => {
+    return [
+      ...new Set(
+        categoryPaths
+          .filter(
+            (path) =>
+              (!selectedTopCategory || path.topCategory === selectedTopCategory) &&
+              (!selectedParentCategory ||
+                path.parentCategory === selectedParentCategory)
+          )
+          .map((path) => path.finalCategory)
+          .filter(Boolean)
+      ),
+    ].sort((left, right) => left.localeCompare(right));
+  }, [categoryPaths, selectedParentCategory, selectedTopCategory]);
+
   const startItem = totalCount === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
   const endItem = Math.min(page * PAGE_SIZE, totalCount);
-
-  useEffect(() => {
-    setPage(1);
-  }, [searchQuery]);
-
-  useEffect(() => {
-    if (page > totalPages) {
-      setPage(totalPages);
-    }
-  }, [page, totalPages]);
 
   const handlePageClick = (pageNumber: number) => {
     if (pageNumber < 1 || pageNumber > totalPages || pageNumber === page) {
@@ -661,6 +790,64 @@ const ShopifyProducts = () => {
     }
 
     setPage(pageNumber);
+  };
+
+  const handleExport = async (format: ExportFormat) => {
+    setExportingFormat(format);
+    setExportError(null);
+
+    try {
+      const params = new URLSearchParams({ format });
+      const trimmedSearchQuery = searchQuery.trim();
+
+      if (trimmedSearchQuery) {
+        params.set("search", trimmedSearchQuery);
+      }
+
+      if (selectedTopCategory) {
+        params.set("topCategory", selectedTopCategory);
+      }
+
+      if (selectedParentCategory) {
+        params.set("parentCategory", selectedParentCategory);
+      }
+
+      if (selectedFinalCategory) {
+        params.set("finalCategory", selectedFinalCategory);
+      }
+
+      const response = await fetch(
+        `/api/shopify/products/export?${params.toString()}`
+      );
+
+      if (!response.ok) {
+        const result = await response.json().catch(() => null);
+        throw new Error(
+          result?.message || "Failed to export Shopify products report"
+        );
+      }
+
+      const blob = await response.blob();
+      const downloadUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+
+      link.href = downloadUrl;
+      link.download = getDownloadFilename(
+        response.headers.get("Content-Disposition"),
+        `shopify-products-category-report.${format}`
+      );
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(downloadUrl);
+    } catch (submitError: any) {
+      console.error("Failed to export Shopify products report", submitError);
+      setExportError(
+        submitError?.message || "Failed to export Shopify products report"
+      );
+    } finally {
+      setExportingFormat(null);
+    }
   };
 
   const handleOpenManageCollections = (product: ShopifyProductRow) => {
@@ -671,8 +858,8 @@ const ShopifyProducts = () => {
     setSuccessMessage(null);
     setIsManageOpen(true);
 
-    if (collections.length === 0) {
-      fetchCollections();
+    if (collections.length === 0 && !collectionsLoading) {
+      void fetchCollections();
     }
   };
 
@@ -730,7 +917,7 @@ const ShopifyProducts = () => {
         );
       }
 
-      await Promise.all([fetchProducts(), fetchCollections()]);
+      await Promise.all([fetchProducts(page, searchQuery), fetchCollections()]);
       setSuccessMessage(
         `Collections updated for "${activeProduct.title}" in Shopify.`
       );
@@ -755,14 +942,130 @@ const ShopifyProducts = () => {
         title="Shopify Products"
         desc="Products fetched directly from the connected Shopify store."
       >
+        <div className="rounded-3xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-800/30">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                Category Filters
+              </p>
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                Leave any filter blank to include all values. Exports will use
+                the same filters shown here.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setPage(1);
+                setSelectedTopCategory("");
+                setSelectedParentCategory("");
+                setSelectedFinalCategory("");
+              }}
+              className="rounded-2xl border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 transition hover:bg-white dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-900"
+            >
+              Reset Filters
+            </button>
+          </div>
+
+          <div className="mt-4 grid gap-3 md:grid-cols-3">
+            <div>
+              <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                Category
+              </label>
+              <select
+                value={selectedTopCategory}
+                onChange={(event) => {
+                  setPage(1);
+                  setSelectedTopCategory(event.target.value);
+                  setSelectedParentCategory("");
+                  setSelectedFinalCategory("");
+                }}
+                className={inputClassName}
+              >
+                <option value="">All Categories</option>
+                {topCategoryOptions.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                Sub Category
+              </label>
+              <select
+                value={selectedParentCategory}
+                onChange={(event) => {
+                  setPage(1);
+                  setSelectedParentCategory(event.target.value);
+                  setSelectedFinalCategory("");
+                }}
+                className={inputClassName}
+              >
+                <option value="">All Sub Categories</option>
+                {parentCategoryOptions.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                Final Category
+              </label>
+              <select
+                value={selectedFinalCategory}
+                onChange={(event) => {
+                  setPage(1);
+                  setSelectedFinalCategory(event.target.value);
+                }}
+                className={inputClassName}
+              >
+                <option value="">All Final Categories</option>
+                {finalCategoryOptions.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {filterError ? (
+            <p className="mt-3 text-sm text-red-600">{filterError}</p>
+          ) : null}
+        </div>
+
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <ProductSearchBar
             id="shopify-products-search"
             label="Search Shopify products"
             value={searchQuery}
-            onChange={setSearchQuery}
+            onChange={(value) => {
+              setPage(1);
+              setSearchQuery(value);
+            }}
             placeholder="Search by title, vendor, collection, handle, tag, or Shopify ID"
           />
+          <div className="flex flex-wrap items-center gap-2">
+            {(["json", "csv", "pdf"] as ExportFormat[]).map((format) => (
+              <button
+                key={format}
+                type="button"
+                disabled={exportingFormat !== null}
+                onClick={() => void handleExport(format)}
+                className="inline-flex items-center justify-center rounded-2xl border border-gray-300 px-4 py-3 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+              >
+                {exportingFormat === format
+                  ? `Exporting ${format.toUpperCase()}...`
+                  : `Export ${format.toUpperCase()}`}
+              </button>
+            ))}
+          </div>
         </div>
 
         {successMessage ? (
@@ -773,6 +1076,8 @@ const ShopifyProducts = () => {
 
         {error ? <p className="text-sm text-red-600">{error}</p> : null}
 
+        {exportError ? <p className="text-sm text-red-600">{exportError}</p> : null}
+
         {searchQuery && !error ? (
           <p className="text-sm text-gray-500">
             {totalCount} matching Shopify product
@@ -780,7 +1085,7 @@ const ShopifyProducts = () => {
           </p>
         ) : null}
 
-        {!error && filteredProducts.length === 0 ? (
+        {!error && !loading && products.length === 0 ? (
           <p className="text-sm text-gray-500">
             {searchQuery
               ? "No Shopify products match your search."
@@ -788,7 +1093,7 @@ const ShopifyProducts = () => {
           </p>
         ) : null}
 
-        {!error && filteredProducts.length > 0 ? (
+        {!error && products.length > 0 ? (
           <div className="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-white/[0.05] dark:bg-white/[0.03]">
             <div className="max-w-full overflow-x-auto">
               <Table>
@@ -813,7 +1118,7 @@ const ShopifyProducts = () => {
                 </TableHeader>
 
                 <TableBody className="divide-y divide-gray-100 dark:divide-white/[0.05]">
-                  {paginatedProducts.map((product) => (
+                  {products.map((product) => (
                     <TableRow key={product.id}>
                       <TableCell className="px-5 py-4 text-start">
                         <div>
@@ -887,7 +1192,7 @@ const ShopifyProducts = () => {
           </div>
         ) : null}
 
-        {!error && filteredProducts.length > 0 ? (
+        {!error && products.length > 0 ? (
           <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <span className="text-sm text-gray-500">
               {startItem}-{endItem} / {totalCount}
@@ -895,7 +1200,7 @@ const ShopifyProducts = () => {
 
             <div className="flex items-center gap-2">
               <button
-                disabled={page === 1}
+                disabled={page === 1 || isRefreshing}
                 onClick={() => handlePageClick(page - 1)}
                 className="rounded-md border px-3 py-1 text-sm disabled:opacity-50"
               >
@@ -921,7 +1226,7 @@ const ShopifyProducts = () => {
               ) : null}
 
               <button
-                disabled={page === totalPages}
+                disabled={page === totalPages || isRefreshing}
                 onClick={() => handlePageClick(page + 1)}
                 className="rounded-md bg-blue-600 px-3 py-1 text-sm text-white disabled:opacity-50"
               >

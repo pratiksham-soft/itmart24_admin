@@ -1,34 +1,44 @@
-Task: Research and upload 25 Shopify products for the collection "Linux Shared Hosting".
+Task: Research and upload minimum 2 to 3 Shopify products in every collection that currently has zero products.
 
 Goal:
-Browse the web, identify 25 real Linux Shared Hosting products/services, gather accurate product data from official sources, and create/update Shopify products with all required fields and metafields. Accuracy is more important than speed. Do not invent data. If a value cannot be verified from an official source, leave it blank in the draft/report and mention it clearly.
+Browse the web, identify real products/services for each empty collection, gather accurate product data from official sources, and create/update Shopify products with all required fields and metafields. Accuracy is more important than speed. Do not invent data. If a value cannot be verified from an official source, leave it blank in the draft/report and mention it clearly.
+
+Primary objective:
+- Detect all collections that currently have zero products (backend\exports\category-collection-product-counts-2026-04-11T14-10-53-692Z.csv/backend\exports\category-collection-product-counts-2026-04-11T14-10-53-692Z.json)
+- For each such empty collection, upload at least 2 products
+- Upload 3 products where good-quality, clearly matching products are available
+- Do not force poor matches just to hit 3; quality and category fit are more important than count
 
 Store/Project context:
-- Use collection: "Linux Shared Hosting"
+- Work across all Shopify collections that currently have zero products
 - Use local project files as source of truth for taxonomy and filters:
   1) backend\imports\category-collections.csv
   2) backend\doc\shopify-filter-definitions.csv
 
 Important rules:
-1. Only choose genuine Linux Shared Hosting products/plans from official provider websites.
-2. Prefer well-known hosting providers, but include a mix of brands.
-3. Do not use resellers, fake review pages, affiliate pages, or third-party summaries as primary source.
-4. Always verify pricing and product details from the official product page.
-5. Use product/provider official site for title, description facts, pricing, features, and official URL.
-6. Use official brand assets for logos whenever possible.
-7. Do not publish duplicate products.
-8. Avoid VPS, dedicated server, cloud server, WordPress-only hosting, Windows hosting, and reseller hosting unless the provider page clearly positions it as Linux Shared Hosting.
-9. If a provider uses the term “Web Hosting” instead of “Linux Shared Hosting”, only include it if the plan is clearly Linux/cPanel/shared hosting.
+1. First identify all collections with zero products.
+2. For each empty collection, choose only genuine products/services that clearly match that collection.
+3. Prefer official provider/vendor/product websites as the primary source.
+4. Do not use resellers, fake review pages, affiliate pages, or third-party summaries as primary source.
+5. Always verify pricing and product details from the official product page.
+6. Use product/provider official site for title, description facts, pricing, features, and official URL.
+7. Use official brand assets for logos whenever possible.
+8. Do not publish duplicate products across the store unless a product genuinely belongs in multiple collections and your taxonomy allows that.
+9. Do not force-fit products into a collection just to satisfy the count requirement.
 10. Before making live changes, generate a structured preview CSV/JSON/report for review.
+11. If a collection has fewer than 2 high-confidence real products available, skip unsafe matches and clearly report the gap.
+12. Respect the exact taxonomy and collection mapping defined in backend\imports\category-collections.csv.
+13. Fill relevant filters only when supported by official evidence or strong category inference allowed by the filter definitions.
+14. The final live catalog content must read like polished marketplace copy, not research notes.
 
 Required Shopify product fields:
 - Title
 - URL handle
-- Description (HTML Body) minimum 300 words 
+- Description (HTML Body) minimum 300 words
 - Vendor
 - Published on online store = true
 - Status = "active"
-- Price = Product lowest price (number only, no currency symbol)
+- Price = product lowest visible price (number only, no currency symbol)
 - Charge tax = false
 - Requires shipping = false
 - Image alt text = product-related descriptive text
@@ -49,17 +59,21 @@ Required metafields:
 
 3. custom.type_multiple (Type: List of single line text)
    - Map related final category/categories using backend\imports\category-collections.csv
-   - Add more than one category only if clearly applicable
+   - Add more than one category only if clearly applicable and allowed by taxonomy
 
 4. custom.product_features (Type: Multi-line text)
    - Write concise bullet points of actual product features
 
 5. custom.plans_pricing (Type: Multi-line text)
-   - Write all available pricing plans for that hosting product in bullet/list format
+   - Write all available pricing/pricing structure details in bullet/list format
+   - Include relevant plan, tier, registration, renewal, monthly, annual, or service pricing as applicable to the product type
+   - Keep pricing bullets concise, buyer-friendly, and professional
+   - Do not write research-note bullets like "the pricing page lists", "the official site says", or "we found"
 
 6. custom.pros_cons (Type: Multi-line text)
    - Write Pros & Cons of the product in bullet/list format
    - Base on factual product characteristics, not unsupported opinions
+   - Write them like customer-facing comparison notes, not internal source-audit notes
 
 Filters requirement:
 - Read backend\doc\shopify-filter-definitions.csv
@@ -71,7 +85,11 @@ Description guidelines:
 - Write unique, clean, professional product descriptions
 - No plagiarism
 - No exaggerated marketing claims
-- Focus on what the hosting includes, who it is suitable for, and notable strengths
+- Do not write like a researcher, auditor, or reviewer describing what was seen on the vendor website
+- Avoid phrases such as "the official page says", "the reviewed source shows", "we found", "this entry treats", or similar meta commentary
+- Write in a customer-facing marketplace style so the product feels genuine, fair, and professionally presented
+- Keep the tone neutral, informative, and trustworthy without sounding like copied source notes
+- Focus on what the product/service includes, who it is suitable for, important features, pricing structure, support, notable strengths, and practical use case
 - Keep HTML/formatting consistent with existing product style if project already has a standard
 
 SEO guidelines:
@@ -81,7 +99,7 @@ SEO guidelines:
 Pricing rules:
 - Price = lowest current base price visible on official page
 - Extract numeric value only
-- If page shows billing-cycle-dependent pricing, use the lowest clearly advertised price and note details in plans_pricing
+- If pricing depends on billing cycle, plan, TLD, region, or term length, use the lowest clearly advertised starting price and note details in custom.plans_pricing
 - If pricing is not publicly visible, exclude the product unless necessary and clearly flag it
 
 Logo handling:
@@ -92,43 +110,52 @@ Logo handling:
 - Store final Shopify-hosted URL in custom.logo_image
 
 Vendor rules:
-- Vendor = hosting provider brand/company name
+- Vendor = product/provider/company brand name
 
 URL handle rules:
 - Clean, lowercase, hyphenated
 - Stable and human readable
-- Prefer format like: brand-linux-shared-hosting or brand-shared-hosting
+- Format should match product type and brand naturally
 
 Collection/category fit:
-- Every selected product must fit “Linux Shared Hosting”
+- Every selected product must clearly fit its assigned empty collection
 - Map product to the most relevant final category/categories from category-collections.csv
+- Do not assign vague or weak matches
 
 Implementation steps:
 1. Read and understand:
    - backend\imports\category-collections.csv
    - backend\doc\shopify-filter-definitions.csv
 
-2. Create a candidate list of 20–25 possible Linux Shared Hosting products from official websites.
+2. Identify all Shopify collections that currently have zero products.
 
-3. For each product, gather:
+3. For each zero-product collection:
+   - understand the collection intent from taxonomy
+   - generate a candidate list of possible real products/services from official websites
+   - choose at least 2 strong matches
+   - choose a 3rd product where quality and fit are clearly good
+
+4. For each chosen product, gather:
    - official product URL
    - title
    - vendor
    - description basis
    - lowest price
-   - pricing plans
+   - pricing details
    - feature list
    - logo source
    - filter values
    - category mapping
+   - assigned collection name
 
-4. Prepare a review artifact before upload:
+5. Prepare a review artifact before upload:
    - CSV and JSON with all fields/metafields
    - include source URLs for verification
+   - include collection name for each product
    - include a “confidence” or “verification_notes” field
    - include a list of any missing/uncertain values
 
-5. Validate:
+6. Validate:
    - no duplicates
    - all required Shopify fields present
    - all filter metafields conform to definitions
@@ -136,34 +163,42 @@ Implementation steps:
    - price numeric only
    - URLs valid
    - published/status/tax/shipping values set correctly
+   - every product is mapped to the correct empty collection
+   - every empty collection has minimum 2 products unless clearly impossible to do safely
 
-6. Only after validation, upload/create the 25 Shopify products.
+7. Only after validation, upload/create the products for all zero-product collections.
 
-7. After upload, generate a final report containing:
+8. After upload, generate a final report containing:
+   - list of all zero-product collections found
+   - number of products added per collection
    - total created
    - total updated
    - skipped products with reasons
+   - skipped collections or shortfilled collections with reasons
    - per-product source URLs
    - per-product Shopify handle
    - any fields left blank and why
 
 Expected output from you:
-- A summary of chosen 25 products
+- A summary of all zero-product collections found
+- Chosen products grouped collection-wise
 - Review CSV/JSON path
 - Upload script or implementation details
 - Final upload report
 - Error list / ambiguity list
 - Do not silently skip validation issues
 
-
 Quality bar:
 - Act like a careful product operations specialist, not a content spinner.
 - Use best judgment, but do not fabricate.
 - Where unclear, document uncertainty explicitly.
 - Make the dataset production-ready.
+- Final Shopify-facing content must read like polished catalog copy, not internal research notes.
+- Source verification is for accuracy and reporting, but the live product description and metafields must not mention the research process.
 
 Deliverables:
-1. Research dataset for 25 products
-2. Logo processing/upload handling
-3. Shopify product creation/update
-4. Final validation and report
+1. Research dataset for all zero-product collections
+2. Collection-wise product mapping plan
+3. Logo processing/upload handling
+4. Shopify product creation/update
+5. Final validation and report

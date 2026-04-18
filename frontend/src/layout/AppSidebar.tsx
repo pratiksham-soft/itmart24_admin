@@ -5,6 +5,7 @@ import { Link, useLocation } from "react-router";
 import {
   BoxCubeIcon,
   CalenderIcon,
+  ChatIcon,
   ChevronDownIcon,
   GridIcon,
   HorizontaLDots,
@@ -15,6 +16,7 @@ import {
   TableIcon,
   UserCircleIcon,
 } from "../icons";
+import Badge from "../components/ui/badge/Badge";
 import { useSidebar } from "../context/SidebarContext";
 import SidebarWidget from "./SidebarWidget";
 
@@ -25,11 +27,33 @@ type NavItem = {
   subItems?: { name: string; path: string; pro?: boolean; new?: boolean }[];
 };
 
+const databaseBadgeByProjectId: Record<
+  string,
+  {
+    label: string;
+    color: "success" | "info";
+  }
+> = {
+  "vendor-portal-91ecc": {
+    label: "Live",
+    color: "success",
+  },
+  "dev-vendor-portal-11c9d": {
+    label: "Development",
+    color: "info",
+  },
+} as const;
+
 const navItems: NavItem[] = [
   {
     icon: <GridIcon />,
     name: "Dashboard",
     subItems: [{ name: "Analytics", path: "/", pro: false }],
+  },
+  {
+    icon: <ChatIcon />,
+    name: "Support",
+    path: "/support",
   },
   {
   icon: <BoxCubeIcon />,
@@ -129,6 +153,9 @@ const othersItems: NavItem[] = [
 const AppSidebar: React.FC = () => {
   const { isExpanded, isMobileOpen, isHovered, setIsHovered } = useSidebar();
   const location = useLocation();
+  const showFullLogo = isExpanded || isHovered || isMobileOpen;
+  const databaseBadge =
+    databaseBadgeByProjectId[import.meta.env.VITE_FIREBASE_PROJECT_ID];
 
   const [openSubmenu, setOpenSubmenu] = useState<{
     type: "main" | "others";
@@ -333,12 +360,12 @@ const AppSidebar: React.FC = () => {
       onMouseLeave={() => setIsHovered(false)}
     >
       <div
-        className={`py-8 flex ${
-          !isExpanded && !isHovered ? "lg:justify-center" : "justify-start"
+        className={`py-8 flex flex-col gap-3 ${
+          showFullLogo ? "items-start" : "items-center lg:items-center"
         }`}
       >
         <Link to="/">
-          {isExpanded || isHovered || isMobileOpen ? (
+          {showFullLogo ? (
             <>
               <img
                 className="dark:hidden"
@@ -364,6 +391,13 @@ const AppSidebar: React.FC = () => {
             />
           )}
         </Link>
+        {databaseBadge ? (
+          <div>
+            <Badge size="sm" color={databaseBadge.color}>
+              {databaseBadge.label}
+            </Badge>
+          </div>
+        ) : null}
       </div>
       <div className="flex flex-col overflow-y-auto duration-300 ease-linear no-scrollbar">
         <nav className="mb-6">
