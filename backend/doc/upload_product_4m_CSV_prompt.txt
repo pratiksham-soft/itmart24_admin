@@ -1,0 +1,193 @@
+Task: Import new Shopify products from CSV with minimal changes outside this scope.
+
+Files
+- Source products to import:
+  backend/exports/software-products/B2B eCommerce Platform.csv
+- Existing Shopify export to deduplicate against:
+  backend/exports/software-products/shopify-products-category-report-2026-04-18T18-33-21-029Z.csv
+- Category mapping:
+  backend/imports/categories.csv
+  backend/imports/category-collections.csv
+- Filter definitions:
+  backend/doc/shopify-filter-definitions.csv
+- Logo folders:
+  backend/exports/software-products/fabicon
+  backend/exports/software-products/logos
+
+Goal
+Import products from `B2B eCommerce Platform.csv` into Shopify, but skip any product already present in `shopify-products-category-report-2026-04-18T18-33-21-029Z.csv`.
+
+Execution rules
+1. Reuse existing import/upload scripts, Shopify helpers, and project conventions if available.
+2. Change only code required for this import workflow.
+3. Do not refactor unrelated files.
+4. Process rows deterministically and log: imported, skipped_existing, skipped_missing_required_data, skipped_pricing_unavailable, failed.
+5. Prefer official product website as source when enrichment is needed. Official URL is usually in `product.metafields.custom.custom`.
+6. Do not invent unsupported values.
+
+Deduplication
+- Before importing a row, check whether product already exists in the Shopify export.
+- Match primarily by normalized handle.
+- If handle is weak/missing, fallback to normalized title and official URL.
+- If already exists, skip.
+
+Field mapping
+For each row in `B2B eCommerce Platform.csv`:
+
+- Handle
+  - Keep if good.
+  - Otherwise normalize to clean lowercase hyphenated human-readable handle.
+
+- Title
+  - Use as-is.
+
+- Body (HTML)
+  - Create/update Shopify body HTML.
+  - Minimum 300 words.
+  - Neutral, professional, marketplace style.
+  - No plagiarism.
+  - No meta commentary like “official site says”, “we found”, “reviewed source”.
+  - Use official website as primary source where needed.
+
+- Vendor
+  - Map to Shopify Vendor field.
+
+- Product Category
+  - Use as main category.
+  - Refer `backend/imports/categories.csv` if needed.
+
+- Type / custom.type_multiple
+  - Read `backend/imports/category-collections.csv`.
+  - Use relevant final category/categories that actually exist in taxonomy/collection mapping.
+  - Fill `custom.type_multiple` as list of single line text.
+  - Add multiple values only when clearly applicable.
+  - If exact type is absent in mapping, use closest relevant allowed collection names only.
+
+- product.metafields.custom.plans_pricing
+  - Fill `custom.plans_pricing`.
+  - Use CSV value if valid.
+  - If zero/blank, check official URL for public pricing.
+  - If pricing is not publicly visible, fill with zero pricing
+
+- product.metafields.custom.product_features
+  - Fill `custom.product_features`.
+  - Convert to improved customer-facing bullet points.
+
+- product.metafields.custom.pros_cons
+  - Fill `custom.pros_cons`.
+  - Bullet/list format.
+  - Based on factual characteristics only.
+  - No unsupported opinions.
+
+- product.metafields.custom.custom
+  - Store clean official URL in `metafields.custom.custom`.
+
+- product.metafields.custom.logo_image
+  - Find best matching logo from:
+    - backend/exports/software-products/fabicon
+    - backend/exports/software-products/logos
+  - If missing or irrelevant, try official favicon/logo/brand asset from provider site.
+  - Resize to width 120px, height auto.
+  - Convert to WEBP if needed.
+  - Upload to Shopify Files.
+  - Store final Shopify-hosted URL in `custom.logo_image`.
+- Do not upload same logo for product media file.
+
+- Ignore these columns in csv
+  - product.metafields.custom.target_use_case
+  - product.metafields.custom.pricing_billing
+  - product.metafields.custom.deployment_compatibility
+  - product.metafields.custom.features_functionality
+  - product.metafields.custom.security_backups
+  - product.metafields.custom.performance_specs
+  - product.metafields.custom.support
+  - product.metafields.custom.team_collaboration
+  - product.metafields.custom.developer_features
+
+- Variant Price
+  - Use lowest non-zero visible base price.
+  - Numeric only, no currency symbol.
+
+- SEO Title
+  - Fill Shopify SEO title.
+  - Format: product + brand + key term.
+  - Concise and readable.
+
+- SEO Description
+  - Fill Shopify SEO description.
+  - Prefer 140–160 chars.
+  - Natural language, no keyword stuffing.
+
+- Status
+  - If source says Active, publish as active.
+
+Required Shopify fields
+Ensure every imported product has:
+- Title
+- Handle
+- Body HTML (min 300 words)
+- Vendor
+- Published to online store = true
+- Status = active
+- Price
+- Charge tax = false
+- Requires shipping = false
+- Image alt text
+- SEO title
+- SEO description
+
+Filters
+- Read `backend/doc/shopify-filter-definitions.csv`.
+- Fill all relevant supported filter metafields for each product.
+- Use only exact allowed values/formats from definitions.
+- Do not guess unsupported values.
+- Leave unknown/unsupported filters blank.
+
+Description style rules
+- Unique, clean, professional.
+- Neutral, informative, trustworthy.
+- Customer-facing marketplace tone.
+- Mention what product does, who it suits, main features, pricing model, support, strengths, practical use case.
+- Keep HTML consistent with existing project style if such standard already exists.
+
+Pricing rules
+- Use lowest current clearly advertised starting/base price.
+- Numeric only.
+- If billing cycle/region/TLD/term varies, use lowest clearly visible starting price.
+- Put pricing detail caveats in `custom.plans_pricing`.
+- If no public pricing is available, skip and log.
+
+Handle rules
+- Lowercase
+- Hyphen-separated
+- Clean and stable
+- Human readable
+
+Collection/category rules
+- Every imported product must clearly fit assigned category/collections.
+- Use strongest relevant mapping only.
+- Avoid vague matches.
+
+Inventory & Shipping rules
+- Inventory tracking = disabled (do not track quantity)
+- Requires shipping = false (non-physical product)
+
+Deliverable
+Implement the import so it:
+1. Reads source CSV
+2. Deduplicates against existing Shopify export
+3. Enriches required fields
+4. Uploads product to Shopify
+5. Uploads/assigns logo file
+6. Sets metafields and filter values
+7. Logs final summary
+
+Output
+- Show which files were changed.
+- Provide a short summary:
+  - total rows
+  - imported
+  - skipped existing
+  - skipped for missing pricing
+  - failed
+- Do not modify unrelated functionality.

@@ -10,6 +10,7 @@
     "start": "node dist/server.js",
     "production": "set NODE_ENV=production&& set APP_ENV=production&& npm run build&& node dist/server.js",
     "copy:staging-data": "ts-node src/scripts/copyFirestoreCollections.ts",
+    "shopify:upsert-content-pages": "ts-node src/scripts/upsertShopifyContentPages.ts",
     "shopify:refresh-seo-copy": "ts-node src/scripts/refreshShopifyProductSeoCopy.ts",
     "shopify:sync-rankings": "ts-node src/scripts/syncProductRanking.ts",
     "test": "echo \"Error: no test specified\" && exit 1"
