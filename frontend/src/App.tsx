@@ -26,10 +26,12 @@ import ClaimedProducts from "./pages/Products/ClaimedProducts";
 import Sync from "./pages/Master/Sync";
 import ManagePlans from "./pages/Master/ManagePlans/ManagePlans";
 import ProductCategoryMaster from "./pages/Master/ProductMaster/ProductCategoryMaster";
+import MonthlyTargetMaster from "./pages/Master/MonthlyTarget/MonthlyTargetMaster";
 import Vendors from "./pages/Vendors/Vendors";
 import ShopifyProducts from "./pages/Shopify/ShopifyProducts";
 import ShopifyCollections from "./pages/Shopify/ShopifyCollections";
 import Support from "./pages/Support/Support";
+import Notifications from "./pages/Notifications/Notifications";
 
 
 export default function App() {
@@ -60,6 +62,10 @@ export default function App() {
             <Route path="/products/on-hold" element={<OnHoldProducts />} />
             <Route path="/products/claimed" element={<ClaimedProducts />} />
             <Route path="/support" element={<Support />} />
+            <Route
+              path="/notifications"
+              element={<Notifications />}
+            />
             <Route path="/vendors" element={<Vendors />} />
 
             {/* Shopify */}
@@ -72,6 +78,10 @@ export default function App() {
             {/* Master */}
             <Route path="master/sync" element={<Sync />} />
             <Route path="master/manage-plans" element={<ManagePlans />} />
+            <Route
+              path="/master/monthly-target"
+              element={<MonthlyTargetMaster />}
+            />
             <Route path="/master/product-category-master" element={<ProductCategoryMaster />}
 />
 

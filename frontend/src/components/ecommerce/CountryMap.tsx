@@ -5,9 +5,35 @@ import { worldMill } from "@react-jvectormap/world";
 // Define the component props
 interface CountryMapProps {
   mapColor?: string;
+  markers?: Array<{
+    latLng: [number, number];
+    name: string;
+  }>;
 }
 
-const CountryMap: React.FC<CountryMapProps> = ({ mapColor }) => {
+const defaultMarkers: Array<{
+  latLng: [number, number];
+  name: string;
+}> = [
+  {
+    latLng: [37.2580397, -104.657039],
+    name: "United States",
+  },
+  {
+    latLng: [20.7504374, 73.7276105],
+    name: "India",
+  },
+  {
+    latLng: [53.613, -11.6368],
+    name: "United Kingdom",
+  },
+  {
+    latLng: [-25.0304388, 115.2092761],
+    name: "Sweden",
+  },
+];
+
+const CountryMap: React.FC<CountryMapProps> = ({ mapColor, markers }) => {
   return (
     <VectorMap
       map={worldMill}
@@ -19,38 +45,16 @@ const CountryMap: React.FC<CountryMapProps> = ({ mapColor }) => {
         } as any, // Type assertion to bypass strict CSS property checks
       }}
       markersSelectable={true}
-      markers={[
-        {
-          latLng: [37.2580397, -104.657039],
-          name: "United States",
-          style: {
-            fill: "#465FFF",
-            borderWidth: 1,
-            borderColor: "white",
-            stroke: "#383f47",
-          },
+      markers={(markers?.length ? markers : defaultMarkers).map((marker) => ({
+        ...marker,
+        style: {
+          fill: "#465FFF",
+          borderWidth: 1,
+          borderColor: "white",
+          stroke: "#383f47",
+          strokeOpacity: 0,
         },
-        {
-          latLng: [20.7504374, 73.7276105],
-          name: "India",
-          style: { fill: "#465FFF", borderWidth: 1, borderColor: "white" },
-        },
-        {
-          latLng: [53.613, -11.6368],
-          name: "United Kingdom",
-          style: { fill: "#465FFF", borderWidth: 1, borderColor: "white" },
-        },
-        {
-          latLng: [-25.0304388, 115.2092761],
-          name: "Sweden",
-          style: {
-            fill: "#465FFF",
-            borderWidth: 1,
-            borderColor: "white",
-            strokeOpacity: 0,
-          },
-        },
-      ]}
+      }))}
       zoomOnScroll={false}
       zoomMax={12}
       zoomMin={1}

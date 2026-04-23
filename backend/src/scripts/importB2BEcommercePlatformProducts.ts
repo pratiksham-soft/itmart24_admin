@@ -5,7 +5,7 @@ import csv = require("csv-parser");
 import axios from "axios";
 import { execFile } from "child_process";
 import { promisify } from "util";
-import { CS_CART_B2B_HANDLE, CS_CART_B2B_OVERRIDE } from "./lib/csCartB2BOverride";
+import { getProductImportOverride } from "./lib/csCartB2BOverride";
 
 const execFileAsync = promisify(execFile);
 
@@ -13,14 +13,6 @@ let shopifyClientsPromise:
   | Promise<typeof import("../services/shopifyHttp")>
   | null = null;
 
-const SOURCE_CSV_PATH = path.resolve(
-  __dirname,
-  "../../exports/software-products/B2B eCommerce Platform.csv"
-);
-const EXISTING_EXPORT_CSV_PATH = path.resolve(
-  __dirname,
-  "../../exports/software-products/shopify-products-category-report-2026-04-18T18-33-21-029Z.csv"
-);
 const CATEGORY_COLLECTIONS_PATH = path.resolve(
   __dirname,
   "../../imports/category-collections.csv"
@@ -33,20 +25,56 @@ const FILTERS_CSV_PATH = path.resolve(
   __dirname,
   "../../doc/shopify-filter-definitions.csv"
 );
-const EXPORTS_DIR = path.resolve(__dirname, "../../exports");
-const LOCAL_LOGO_DIRS = [
-  path.resolve(__dirname, "../../exports/software-products/fabicon"),
-  path.resolve(__dirname, "../../exports/software-products/logos"),
-];
-const LOGO_TEMP_DIR = path.resolve(
-  EXPORTS_DIR,
-  "tmp-b2b-ecommerce-platform-logos"
+const slugifyPathValue = (value: string) =>
+  value
+    .toLowerCase()
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .replace(/-{2,}/g, "-");
+
+const getCliArgValue = (flag: string) => {
+  const prefixedArg = process.argv.find((arg) => arg.startsWith(`${flag}=`));
+  if (prefixedArg) {
+    return prefixedArg.slice(flag.length + 1).trim();
+  }
+
+  const argIndex = process.argv.indexOf(flag);
+  if (argIndex >= 0) {
+    return String(process.argv[argIndex + 1] ?? "").trim();
+  }
+
+  return "";
+};
+
+const SOFTWARE_PRODUCTS_BASE_ROOT = path.resolve(
+  __dirname,
+  "../../exports/software-products"
 );
-const REPORT_PREFIX = "b2b-ecommerce-platform-import";
+const INPUT_ROOT_ARG =
+  getCliArgValue("--root") || getCliArgValue("--input-root");
+const SOFTWARE_PRODUCTS_ROOT = INPUT_ROOT_ARG
+  ? path.resolve(process.cwd(), INPUT_ROOT_ARG)
+  : SOFTWARE_PRODUCTS_BASE_ROOT;
+const EXISTING_EXPORT_CSV_PATH = path.resolve(
+  SOFTWARE_PRODUCTS_BASE_ROOT,
+  "shopify-products-category-report.csv"
+);
+const EXPORTS_DIR = path.resolve(__dirname, "../../exports");
+const LOGO_TEMP_ROOT = path.resolve(EXPORTS_DIR, "tmp-software-products-import-logos");
+const IMPORT_SCOPE_SEGMENT =
+  path.relative(SOFTWARE_PRODUCTS_BASE_ROOT, SOFTWARE_PRODUCTS_ROOT) ||
+  path.basename(SOFTWARE_PRODUCTS_ROOT);
+const IMPORT_SCOPE_SLUG = slugifyPathValue(IMPORT_SCOPE_SEGMENT) || "software-products";
+const REPORT_PREFIX = `${IMPORT_SCOPE_SLUG}-import`;
+const ATTENTION_REPORT_PREFIX = `${IMPORT_SCOPE_SLUG}-zero-pricing-or-missing-logo`;
 const TARGET_CATEGORY_SLUG = "software";
-const TARGET_COLLECTION_HANDLE = "b2b-ecommerce-platform";
 const PRODUCT_GID = (productId: number) => `gid://shopify/Product/${productId}`;
 const SHOPIFY_GRAPHQL_PAGE_SIZE = 100;
+const ALLOW_ZERO_PRICE_FALLBACK = true;
+const CATEGORY_MAPPING_ALIASES = new Map<string, string>([
+  ["earthwork estimating software", "Construction Estimating Software"],
+]);
 const DIRECT_LOGO_SOURCE_EXTENSIONS = new Set([
   ".png",
   ".jpg",
@@ -95,7 +123,17 @@ type CategoryMapping = {
   collectionHandle: string;
 };
 
+type ImportTarget = {
+  folderName: string;
+  folderPath: string;
+  sourceCsvPath: string;
+  logoDirs: string[];
+  categoryMapping: CategoryMapping;
+};
+
 type PreparedProduct = {
+  categoryFolder: string;
+  sourceCsvPath: string;
   sourceTitle: string;
   title: string;
   vendor: string;
@@ -108,6 +146,7 @@ type PreparedProduct = {
   collectionHandle: string;
   customTypeMultiple: string[];
   price: string;
+  zeroPriceFallbackUsed: boolean;
   bodyHtml: string;
   seoTitle: string;
   seoDescription: string;
@@ -130,7 +169,14 @@ type ImportStatus =
   | "skipped_pricing_unavailable"
   | "failed";
 
+type LogoStatus =
+  | "uploaded"
+  | "missing"
+  | "existing_not_checked";
+
 type ImportLogRow = {
+  categoryFolder: string;
+  sourceCsvPath: string;
   sourceTitle: string;
   title: string;
   handle: string;
@@ -141,6 +187,7 @@ type ImportLogRow = {
   shopifyProductId: number | null;
   reason: string;
   logoSource: string | null;
+  logoStatus: LogoStatus;
   reportNotes: string[];
 };
 
@@ -152,6 +199,14 @@ type SummaryCounts = {
   skipped_pricing_unavailable: number;
   failed: number;
 };
+
+type ExistingExportIndex = {
+  rows: ExistingExportRow[];
+  byHandle: Map<string, ExistingExportRow>;
+  byCollectionHandle: Map<string, ExistingExportRow[]>;
+};
+
+const localLogoCache = new Map<string, Array<{ filePath: string; stem: string }>>();
 
 const readCsv = async (filePath: string) =>
   new Promise<CsvRow[]>((resolve, reject) => {
@@ -200,10 +255,18 @@ const normalizeComparableTitle = (value: string) =>
     .replace(/\s+/g, " ")
     .trim();
 
+const normalizeComparableVendor = (value: string) =>
+  normalizeText(value)
+    .replace(/\b(inc|incorporated|llc|ltd|limited|holdings|corp|corporation|co)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
 const countWords = (value: string) =>
   stripHtml(value)
     .split(/\s+/)
     .filter(Boolean).length;
+
+const MULTILINE_SEPARATOR = "\r\n";
 
 const parsePositivePrice = (value: string) => {
   const numeric = Number(String(value ?? "").replace(/[^0-9.]+/g, "").trim());
@@ -234,14 +297,143 @@ const formatNumericPrice = (value: number) => {
   return String(value).replace(/(\.\d*?)0+$/, "$1").replace(/\.$/, "");
 };
 
+const sleep = (ms: number) =>
+  new Promise((resolve) => setTimeout(resolve, ms));
+
+const isRetryableShopifyError = (error: any) => {
+  const status = error?.response?.status;
+  const message =
+    typeof error?.message === "string"
+      ? error.message.toLowerCase()
+      : "";
+  const graphQlErrors = error?.response?.data?.errors;
+
+  if (status === 429 || status === 502 || status === 503 || status === 504) {
+    return true;
+  }
+
+  if (Array.isArray(graphQlErrors)) {
+    const joined = graphQlErrors
+      .map((item) =>
+        typeof item?.message === "string" ? item.message.toLowerCase() : ""
+      )
+      .join(" ");
+    if (joined.includes("throttled")) {
+      return true;
+    }
+  }
+
+  return (
+    message.includes("timeout") ||
+    message.includes("socket hang up") ||
+    message.includes("econnreset") ||
+    message.includes("econnaborted") ||
+    message.includes("throttled")
+  );
+};
+
+const withShopifyRetries = async <T>(
+  label: string,
+  fn: () => Promise<T>,
+  maxAttempts = 5
+): Promise<T> => {
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      return await fn();
+    } catch (error: any) {
+      lastError = error;
+
+      if (!isRetryableShopifyError(error) || attempt === maxAttempts) {
+        throw error;
+      }
+
+      const delayMs = attempt * 1500;
+      console.warn(
+        `[retry] ${label} failed on attempt ${attempt}/${maxAttempts}. Retrying in ${delayMs}ms...`
+      );
+      await sleep(delayMs);
+    }
+  }
+
+  throw lastError;
+};
+
+const formatShopifyError = (error: unknown) => {
+  const message = error instanceof Error ? error.message : String(error);
+  const responseData = (error as any)?.response?.data;
+  const details =
+    typeof responseData === "string"
+      ? responseData
+      : responseData
+      ? JSON.stringify(responseData)
+      : "";
+
+  return details && !message.includes(details)
+    ? `${message} | ${details}`
+    : message;
+};
+
+const extractFirstUrlCandidate = (value: string) => {
+  const source = String(value ?? "").trim();
+  if (!source) {
+    return "";
+  }
+
+  const markdownMatch = source.match(/\((https?:\/\/[^)\s]+)\)?/i);
+  if (markdownMatch?.[1]) {
+    return markdownMatch[1];
+  }
+
+  const httpMatch = source.match(/https?:\/\/[^\s)\]"']+/i);
+  if (httpMatch?.[0]) {
+    return httpMatch[0];
+  }
+
+  const wwwMatch = source.match(/www\.[^\s)\]"']+/i);
+  if (wwwMatch?.[0]) {
+    return wwwMatch[0];
+  }
+
+  return "";
+};
+
+const isLikelyPublicUrl = (value: string) => {
+  if (!value) {
+    return false;
+  }
+
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+};
+
 const cleanOfficialUrl = (value: string) => {
-  const trimmed = String(value ?? "")
+  const extractedCandidate = extractFirstUrlCandidate(value);
+  let trimmed = (extractedCandidate || String(value ?? ""))
     .trim()
     .replace(/^[\["'\s]+/, "")
     .replace(/[\]"'\s]+$/, "");
 
+  trimmed = trimmed
+    .replace(/^\[[^\]]*\]\(/, "")
+    .replace(/[)\]"'\s]+$/, "")
+    .trim();
+
   if (!trimmed) {
     return "";
+  }
+
+  if (!/^(https?:\/\/|www\.)/i.test(trimmed)) {
+    return "";
+  }
+
+  if (/^www\./i.test(trimmed)) {
+    trimmed = `https://${trimmed}`;
   }
 
   try {
@@ -255,15 +447,43 @@ const cleanOfficialUrl = (value: string) => {
   }
 };
 
+const resolveOfficialUrl = (row: CsvRow, overrideOfficialUrl?: string | null) => {
+  const prioritizedValues = [
+    overrideOfficialUrl ?? "",
+    String(row["product.metafields.custom.custom"] ?? ""),
+    String(row["product.metafields.custom.logo_image"] ?? ""),
+    String(row["product.metafields.custom.target_use_case"] ?? ""),
+    String(row["Body (HTML)"] ?? ""),
+    String(row["SEO Description"] ?? ""),
+    ...Object.values(row),
+  ];
+
+  for (const value of prioritizedValues) {
+    const cleaned = cleanOfficialUrl(value);
+    if (isLikelyPublicUrl(cleaned)) {
+      return cleaned;
+    }
+  }
+
+  return "";
+};
+
 const splitAllowedValues = (value: string) =>
   value
     .split("|")
     .map((item) => item.trim())
     .filter(Boolean);
 
-const extractCleanLines = (value: string) =>
+const normalizeMultilineSourceText = (value: string) =>
   String(value ?? "")
-    .replace(/\r/g, "\n")
+    .replace(/\\r\\n/g, "\n")
+    .replace(/\\n/g, "\n")
+    .replace(/\\r/g, "\n")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n");
+
+const extractCleanLines = (value: string) =>
+  normalizeMultilineSourceText(value)
     .split("\n")
     .map((line) =>
       line
@@ -353,7 +573,13 @@ const buildSummaryCounts = (
   failed: logRows.filter((row) => row.status === "failed").length,
 });
 
-const writeReport = async (
+const csvEscape = (value: unknown) => {
+  const stringValue =
+    value === null || value === undefined ? "" : String(value);
+  return `"${stringValue.replace(/"/g, '""')}"`;
+};
+
+const writeJsonReport = async (
   sourceRowsCount: number,
   logRows: ImportLogRow[],
   mode: "dry-run" | "apply"
@@ -379,20 +605,116 @@ const writeReport = async (
     "utf8"
   );
 
-  return { reportPath, summary };
+  return { reportPath, summary, timestamp };
 };
 
-const loadCategoryMapping = async (): Promise<CategoryMapping> => {
-  const categoryRows = await readCsv(CATEGORY_COLLECTIONS_PATH);
-  const mappingRow = categoryRows.find(
+const writeAttentionCsvReport = async (
+  logRows: ImportLogRow[],
+  timestamp: string
+) => {
+  const rows = logRows.filter(
     (row) =>
-      row.top_slug === TARGET_CATEGORY_SLUG &&
-      row.collection_handle === TARGET_COLLECTION_HANDLE
+      row.shopifyProductId !== null &&
+      (row.price === "0" || row.logoStatus === "missing")
   );
+
+  const reportPath = path.join(
+    EXPORTS_DIR,
+    `${ATTENTION_REPORT_PREFIX}-${timestamp}.csv`
+  );
+
+  const header = [
+    "Product Name",
+    "Product ID",
+    "Pricing",
+    "logo status",
+    "official URL",
+  ];
+  const lines = [
+    header.map(csvEscape).join(","),
+    ...rows.map((row) =>
+      [
+        row.title,
+        row.shopifyProductId ?? "",
+        row.price,
+        row.logoStatus,
+        row.officialUrl,
+      ]
+        .map(csvEscape)
+        .join(",")
+    ),
+  ];
+
+  await fs.promises.writeFile(reportPath, lines.join("\n"), "utf8");
+  return reportPath;
+};
+
+const loadFilterDefinitions = async () => {
+  const rows = await readCsv(FILTERS_CSV_PATH);
+  const definitions = rows
+    .filter(
+      (row) =>
+        row.category_slug === TARGET_CATEGORY_SLUG &&
+        row.namespace === "marketplace"
+    )
+    .map<FilterDefinition>((row) => ({
+      key: String(row.metafield_key ?? "").trim(),
+      allowedValues: new Set(splitAllowedValues(String(row.allowed_values ?? ""))),
+    }))
+    .filter((definition) => definition.key);
+
+  return new Map(definitions.map((definition) => [definition.key, definition]));
+};
+
+const loadSoftwareCategoryRows = async () => {
+  const rows = await readCsv(CATEGORY_COLLECTIONS_PATH);
+  return rows.filter((row) => row.top_slug === TARGET_CATEGORY_SLUG);
+};
+
+const resolveCategoryMapping = async (
+  folderName: string,
+  sourceCsvPath: string,
+  softwareCategoryRows: CsvRow[]
+): Promise<CategoryMapping> => {
+  const sourceRows = await readCsv(sourceCsvPath);
+  const csvStem = path.basename(sourceCsvPath, path.extname(sourceCsvPath)).replace(/_/g, " ");
+  const sourceTypes = dedupe(
+    sourceRows
+      .map((row) => String(row.Type ?? "").trim())
+      .filter(Boolean)
+  );
+  const aliasValues = dedupe(
+    [folderName, csvStem, ...sourceTypes]
+      .map((value) => CATEGORY_MAPPING_ALIASES.get(normalizeText(value)) ?? "")
+      .filter(Boolean)
+  );
+  const candidateHandles = dedupe([
+    normalizeHandle(folderName),
+    normalizeHandle(csvStem),
+    ...sourceTypes.map((value) => normalizeHandle(value)),
+    ...aliasValues.map((value) => normalizeHandle(value)),
+  ]);
+  const candidateNames = dedupe([
+    normalizeText(folderName),
+    normalizeText(csvStem),
+    ...sourceTypes.map((value) => normalizeText(value)),
+    ...aliasValues.map((value) => normalizeText(value)),
+  ]);
+
+  const mappingRow =
+    softwareCategoryRows.find((row) =>
+      candidateHandles.includes(normalizeHandle(String(row.collection_handle ?? "")))
+    ) ??
+    softwareCategoryRows.find((row) =>
+      candidateNames.includes(normalizeText(String(row.final_category ?? "")))
+    ) ??
+    softwareCategoryRows.find((row) =>
+      candidateNames.includes(normalizeText(String(row.collection_title ?? "")))
+    );
 
   if (!mappingRow) {
     throw new Error(
-      `Could not find ${TARGET_COLLECTION_HANDLE} in ${CATEGORY_COLLECTIONS_PATH}`
+      `Could not resolve category mapping for folder "${folderName}" (${sourceCsvPath})`
     );
   }
 
@@ -413,55 +735,98 @@ const loadCategoryMapping = async (): Promise<CategoryMapping> => {
 
   return {
     productCategory: String(mappingRow.top_category ?? "Software"),
-    collectionTitle: String(mappingRow.final_category ?? "B2B eCommerce Platform"),
-    collectionHandle: String(mappingRow.collection_handle ?? TARGET_COLLECTION_HANDLE),
+    collectionTitle: String(mappingRow.final_category ?? ""),
+    collectionHandle: String(mappingRow.collection_handle ?? ""),
   };
 };
 
-const loadFilterDefinitions = async () => {
-  const rows = await readCsv(FILTERS_CSV_PATH);
-  const definitions = rows
-    .filter(
-      (row) =>
-        row.category_slug === TARGET_CATEGORY_SLUG &&
-        row.namespace === "marketplace"
-    )
-    .map<FilterDefinition>((row) => ({
-      key: String(row.metafield_key ?? "").trim(),
-      allowedValues: new Set(splitAllowedValues(String(row.allowed_values ?? ""))),
-    }))
-    .filter((definition) => definition.key);
+const discoverImportTargets = async () => {
+  const rootStats = await fs.promises.stat(SOFTWARE_PRODUCTS_ROOT).catch(() => null);
+  if (!rootStats?.isDirectory()) {
+    throw new Error(`Import root does not exist or is not a directory: ${SOFTWARE_PRODUCTS_ROOT}`);
+  }
 
-  return new Map(definitions.map((definition) => [definition.key, definition]));
+  const softwareCategoryRows = await loadSoftwareCategoryRows();
+  const dirents = await fs.promises.readdir(SOFTWARE_PRODUCTS_ROOT, {
+    withFileTypes: true,
+  });
+  const targets: ImportTarget[] = [];
+
+  for (const dirent of dirents
+    .filter((entry) => entry.isDirectory())
+    .sort((a, b) => a.name.localeCompare(b.name))) {
+    const folderPath = path.join(SOFTWARE_PRODUCTS_ROOT, dirent.name);
+    const fileNames = await fs.promises.readdir(folderPath);
+    const csvFiles = fileNames
+      .filter((fileName) => fileName.toLowerCase().endsWith(".csv"))
+      .sort();
+
+    if (csvFiles.length === 0) {
+      continue;
+    }
+
+    const preferredCsv =
+      csvFiles.find(
+        (fileName) =>
+          normalizeText(path.basename(fileName, path.extname(fileName)).replace(/_/g, " ")) ===
+          normalizeText(dirent.name)
+      ) ?? csvFiles[0];
+
+    const sourceCsvPath = path.join(folderPath, preferredCsv);
+    const categoryMapping = await resolveCategoryMapping(
+      dirent.name,
+      sourceCsvPath,
+      softwareCategoryRows
+    );
+    const logoDirs = ["fabicon", "logos"]
+      .map((name) => path.join(folderPath, name))
+      .filter((logoDir) => fs.existsSync(logoDir));
+
+    targets.push({
+      folderName: dirent.name,
+      folderPath,
+      sourceCsvPath,
+      logoDirs,
+      categoryMapping,
+    });
+  }
+
+  return targets;
 };
 
-const loadExistingExport = async () => {
+const loadExistingExport = async (): Promise<ExistingExportIndex> => {
   const rows = (await readCsv(EXISTING_EXPORT_CSV_PATH)) as ExistingExportRow[];
   const byHandle = new Map<string, ExistingExportRow>();
-  const targetCollectionRows = rows.filter((row) =>
-    String(row.collection_handles ?? "")
-      .split("|")
-      .map((item) => normalizeHandle(item))
-      .includes(TARGET_COLLECTION_HANDLE)
-  );
+  const byCollectionHandle = new Map<string, ExistingExportRow[]>();
 
   rows.forEach((row) => {
     const normalized = normalizeHandle(row.handle ?? "");
     if (normalized) {
       byHandle.set(normalized, row);
     }
+
+    String(row.collection_handles ?? "")
+      .split("|")
+      .map((item) => normalizeHandle(item))
+      .filter(Boolean)
+      .forEach((handle) => {
+        const current = byCollectionHandle.get(handle) ?? [];
+        current.push(row);
+        byCollectionHandle.set(handle, current);
+      });
   });
 
   return {
     rows,
     byHandle,
-    targetCollectionRows,
+    byCollectionHandle,
   };
 };
 
 const findExistingMatch = (
   row: CsvRow,
-  existing: Awaited<ReturnType<typeof loadExistingExport>>
+  existing: ExistingExportIndex,
+  collectionHandle: string
 ) => {
   const sourceHandle = normalizeHandle(String(row.Handle ?? ""));
   if (sourceHandle) {
@@ -472,22 +837,33 @@ const findExistingMatch = (
   }
 
   const sourceVendor = normalizeText(String(row.Vendor ?? ""));
+  const comparableSourceVendor = normalizeComparableVendor(String(row.Vendor ?? ""));
   const sourceTitle = normalizeComparableTitle(String(row.Title ?? ""));
-  const sourceUrl = cleanOfficialUrl(
-    String(row["product.metafields.custom.custom"] ?? "")
-  );
+  const sourceUrl = resolveOfficialUrl(row);
 
   if (!sourceVendor || !sourceTitle || !sourceUrl) {
     return null;
   }
 
-  return (
-    existing.targetCollectionRows.find((candidate) => {
-      if (normalizeText(candidate.vendor ?? "") !== sourceVendor) {
-        return false;
-      }
+  const collectionRows = existing.byCollectionHandle.get(collectionHandle) ?? [];
+  const titleMatches = collectionRows.filter(
+    (candidate) =>
+      normalizeComparableTitle(candidate.title ?? "") === sourceTitle
+  );
 
-      return normalizeComparableTitle(candidate.title ?? "") === sourceTitle;
+  if (titleMatches.length === 1) {
+    return titleMatches[0];
+  }
+
+  return (
+    titleMatches.find((candidate) => {
+      const candidateVendor = normalizeComparableVendor(candidate.vendor ?? "");
+      return (
+        candidateVendor === comparableSourceVendor ||
+        candidateVendor === sourceVendor ||
+        comparableSourceVendor.includes(candidateVendor) ||
+        candidateVendor.includes(comparableSourceVendor)
+      );
     }) ?? null
   );
 };
@@ -506,20 +882,26 @@ const inferPricingModel = (
   if (
     /\bmonth\b/.test(pricingText) ||
     /\bmonthly\b/.test(pricingText) ||
-    /\buser month\b/.test(pricingText)
+    /\bannual\b/.test(pricingText) ||
+    /\byear\b/.test(pricingText) ||
+    /\bsubscription\b/.test(pricingText)
   ) {
     values.push("Subscription");
   }
 
-  if (/\bfree plan\b/.test(pricingText) || /\bfree trial\b/.test(pricingText)) {
+  if (/\bfree plan\b/.test(pricingText) || /\bfreemium\b/.test(pricingText)) {
     values.push("Freemium");
   }
 
-  if (numericPrice === null && /not publicly disclosed/.test(pricingText)) {
-    values.push("Custom quote");
+  if (/\bfree trial\b/.test(pricingText) && !values.includes("Freemium")) {
+    values.push("Subscription");
   }
 
-  if (numericPrice === 0) {
+  if (
+    numericPrice === 0 ||
+    /\bnot publicly (available|disclosed)\b/.test(pricingText) ||
+    /\bcustom quote\b/.test(pricingText)
+  ) {
     values.push("Custom quote");
   }
 
@@ -528,6 +910,9 @@ const inferPricingModel = (
 
 const inferPriceBand = (numericPrice: number | null) => {
   if (numericPrice === null) {
+    return [];
+  }
+  if (numericPrice === 0) {
     return [];
   }
   if (numericPrice < 10) {
@@ -547,26 +932,32 @@ const inferPriceBand = (numericPrice: number | null) => {
 
 const inferDeploymentModel = (bodyText: string, featureLines: string[]) => {
   const text = normalizeText([bodyText, ...featureLines].join(" "));
-  if (/\bself hosted\b/.test(text)) {
-    return ["Self-hosted"];
+  const values: string[] = [];
+  if (/\bself hosted\b/.test(text) || /\bself-hosted\b/.test(text)) {
+    values.push("Self-hosted");
   }
-  if (
-    /\bcloud\b/.test(text) ||
-    /\bsaas\b/.test(text) ||
-    /\bplatform\b/.test(text) ||
-    /\bmonthly\b/.test(text)
-  ) {
-    return ["Cloud / SaaS"];
+  if (/\bon premise\b/.test(text) || /\bon-premise\b/.test(text)) {
+    values.push("On-premise");
   }
-  return [];
+  if (/\bapi\b/.test(text) || /\bapi first\b/.test(text) || /\bapi-first\b/.test(text)) {
+    values.push("API-first");
+  }
+  if (/\bcloud\b/.test(text) || /\bsaas\b/.test(text) || /\bhosted\b/.test(text)) {
+    values.push("Cloud / SaaS");
+  }
+  return dedupe(values);
 };
 
 const inferCollaborationMode = (bodyText: string, featureLines: string[]) => {
   const text = normalizeText([bodyText, ...featureLines].join(" "));
-  if (/\brole based\b/.test(text) || /\bpermissions\b/.test(text)) {
-    return ["Roles & permissions"];
+  const values: string[] = [];
+  if (/\brole based\b/.test(text) || /\brole-based\b/.test(text) || /\bpermissions\b/.test(text)) {
+    values.push("Roles & permissions");
   }
-  return [];
+  if (/\bteam\b/.test(text) || /\bshared\b/.test(text)) {
+    values.push("Team sharing");
+  }
+  return dedupe(values);
 };
 
 const inferDeveloperFeatures = (bodyText: string, featureLines: string[]) => {
@@ -575,8 +966,14 @@ const inferDeveloperFeatures = (bodyText: string, featureLines: string[]) => {
   if (/\bapi\b/.test(text)) {
     values.push("API access");
   }
-  if (/\bwebhooks\b/.test(text)) {
+  if (/\bsdk\b/.test(text)) {
+    values.push("SDKs");
+  }
+  if (/\bwebhook\b/.test(text)) {
     values.push("Webhooks");
+  }
+  if (/\boauth\b/.test(text) || /\bsso\b/.test(text)) {
+    values.push("OAuth / SSO");
   }
   return dedupe(values);
 };
@@ -589,8 +986,6 @@ const buildFilterValues = (
   definitions: Map<string, FilterDefinition>
 ) => {
   const candidateValues: Record<string, string[]> = {
-    software_type: ["E-commerce tools"],
-    primary_use_case: ["E-commerce operations"],
     pricing_model: inferPricingModel(pricingLines, price),
     price_band: inferPriceBand(price),
     deployment_model: inferDeploymentModel(bodyText, featureLines),
@@ -615,10 +1010,7 @@ const buildFilterValues = (
 };
 
 const buildProductFeatures = (featureLines: string[]) =>
-  featureLines.map((line) => `- ${toSentence(line)}`).join("\n");
-
-const buildPlansPricing = (pricingLines: string[]) =>
-  pricingLines.map((line) => `- ${toSentence(line)}`).join("\n");
+  featureLines.map((line) => `- ${toSentence(line)}`).join(MULTILINE_SEPARATOR);
 
 const buildPlansPricingWithFallback = (
   pricingLines: string[],
@@ -626,17 +1018,22 @@ const buildPlansPricingWithFallback = (
 ) => {
   const lines = [...pricingLines];
   if (usedZeroPriceFallback) {
-    lines.push(
-      "Price field is set to 0 because no public numeric base price was available in the source import data."
-    );
+    lines.push('To visit product official website click "Get Now".');
   }
-  return buildPlansPricing(lines);
+  return lines
+    .map((line) =>
+      line === 'To visit product official website click "Get Now".'
+        ? line
+        : `- ${toSentence(line)}`
+    )
+    .join(MULTILINE_SEPARATOR);
 };
 
 const buildProsCons = (
   featureLines: string[],
   pricingLines: string[],
-  numericPrice: number
+  numericPrice: number,
+  usedZeroPriceFallback: boolean
 ) => {
   const pricingText = pricingLines.join(" ");
   const planPrices = dedupe(
@@ -646,12 +1043,16 @@ const buildProsCons = (
   );
 
   const pros = [
-    `Pro: Public starting price is listed at ${formatNumericPrice(numericPrice)}.`,
+    ...(usedZeroPriceFallback
+      ? ["Pro: The listing stays comparable even though public base pricing is not disclosed."]
+      : [`Pro: Public starting price is listed at ${formatNumericPrice(numericPrice)}.`]),
     ...featureLines.slice(0, 2).map((line) => `Pro: ${toSentence(line)}.`),
   ];
 
   const cons: string[] = [];
-  if (planPrices.length > 1) {
+  if (usedZeroPriceFallback) {
+    cons.push("Con: Public pricing is not currently available on the referenced source.");
+  } else if (planPrices.length > 1) {
     cons.push(
       `Con: Pricing varies by plan, with higher visible tiers up to ${planPrices[planPrices.length - 1]}.`
     );
@@ -661,17 +1062,13 @@ const buildProsCons = (
     );
   }
 
-  if (normalizeText(featureLines.join(" ")).includes("self hosted")) {
-    cons.push(
-      "Con: Self-hosted deployment means the buyer needs to manage hosting and implementation."
-    );
-  } else {
-    cons.push(
-      "Con: Buyers should confirm integration scope, account structure, and rollout effort against their operational needs."
-    );
-  }
+  cons.push(
+    "Con: Buyers should confirm integration scope, account structure, and rollout effort against their operational needs."
+  );
 
-  return [...pros, ...cons].map((line) => `- ${line}`).join("\n");
+  return [...pros, ...cons]
+    .map((line) => `- ${line}`)
+    .join(MULTILINE_SEPARATOR);
 };
 
 const buildBodyHtml = (
@@ -691,7 +1088,7 @@ const buildBodyHtml = (
     [
       ...pricingLines.slice(0, 3),
       ...(usedZeroPriceFallback
-        ? ["No public numeric base price was available, so the marketplace price is set to 0 for this listing"]
+        ? ["Pricing is not publicly available and the marketplace price is set to 0 for this listing"]
         : []),
     ].filter(Boolean)
   );
@@ -699,27 +1096,27 @@ const buildBodyHtml = (
     filterValues.deployment_model?.length > 0
       ? `${title} follows a ${filterValues.deployment_model
           .map((value) => value.toLowerCase())
-          .join(" and ")} delivery model based on the source material.`
-      : "Deployment details should be reviewed against the official product information before rollout.";
+          .join(" and ")} delivery model based on the available source material.`
+      : "Deployment expectations should still be validated directly against the vendor's current product documentation.";
   const collaborationSentence =
     filterValues.collaboration_mode?.length > 0
-      ? `The documented workflow also indicates support for ${filterValues.collaboration_mode
+      ? `The documented workflow also points to ${filterValues.collaboration_mode
           .map((value) => value.toLowerCase())
-          .join(" and ")}.`
-      : "Teams should still confirm how the product handles buyer roles, approvals, and account management in their own operating model.";
+          .join(" and ")} where team operations matter.`
+      : "Team buyers should still confirm how the product handles shared access, role controls, and operational oversight.";
   const developerSentence =
     filterValues.developer_features?.length > 0
       ? `Technical buyers can also note the presence of ${filterValues.developer_features
           .map((value) => value.toLowerCase())
-          .join(" and ")} where implementation depth matters.`
-      : "Integration and extensibility requirements should be reviewed directly against the vendor's implementation documentation.";
+          .join(" and ")} where implementation depth is relevant.`
+      : "Implementation and extensibility requirements should be checked against the vendor's current setup and support model.";
 
   const paragraphs = [
-    `<p>${title} is ${collectionTitle.toLowerCase()} from ${vendor} for organizations that need structured wholesale and business buying workflows. It belongs in the ${collectionTitle} collection because the product focuses on account-based commerce operations, buyer-specific pricing, catalog control, and repeat ordering rather than generic storefront functionality. Buyers evaluating products in this category typically need software that can support operational complexity across business customers, pricing policies, and internal approval requirements.</p>`,
-    `<p>${bodyText}. The source material highlights capabilities such as ${featureSentence}. Those capabilities are relevant for teams that want to centralize B2B buying experiences, improve ordering consistency, and reduce manual coordination across business accounts. When a platform supports clearer account rules, pricing logic, and catalog management, it is easier to align the storefront with how distributors, manufacturers, or wholesalers actually sell.</p>`,
-    `<p>${title} is suited to buyers comparing workflow fit, deployment model, and pricing visibility across B2B commerce options. ${deploymentSentence} ${collaborationSentence} ${developerSentence} In practical terms, the available feature set points to product usage in areas such as private storefront access, customer-specific catalog experiences, order capture, quote or invoice workflows, and account-level commerce administration.</p>`,
-    `<p>The visible pricing information for this listing is based on the marketplace import value of ${formatNumericPrice(numericPrice)}. ${pricingSentence}. This keeps the Shopify price field numeric and comparable while leaving plan-specific details inside the pricing metafield. Buyers should still review plan limits, contract terms, implementation services, and any usage conditions on the official site before making a final purchase decision.</p>`,
-    `<p>From a marketplace perspective, ${title} stands out for clearly documented B2B workflow relevance, structured commerce controls, and pricing visibility that helps comparison shopping. At the same time, businesses should confirm category fit against their own catalog size, integration requirements, internal approval model, and expected rollout complexity. That balanced view helps keep the listing informative, neutral, and useful for buyers who need ${collectionTitle.toLowerCase()} with practical fit for business selling operations.</p>`,
+    `<p>${title} is ${collectionTitle.toLowerCase()} from ${vendor} for teams that need software aligned with this category's operational workflow. It belongs in the ${collectionTitle} collection because the product description, feature set, and commercial positioning align with buyers comparing tools in this segment rather than general-purpose software. Shoppers in this category usually need focused workflow support, clearer operational controls, and fit for the specific process the software is designed to manage.</p>`,
+    `<p>${bodyText}. The source material highlights capabilities such as ${featureSentence}. Those capabilities matter because buyers comparing products in this category often need a tool that improves consistency, reduces manual coordination, and provides more structure around recurring work. When the product clearly supports the target workflow, it becomes easier for teams to evaluate suitability against internal operating requirements and expected rollout complexity.</p>`,
+    `<p>${title} is best assessed in terms of workflow fit, deployment expectations, pricing visibility, and day-to-day usability for the intended audience. ${deploymentSentence} ${collaborationSentence} ${developerSentence} In practical terms, the documented features indicate that the product can support category-specific tasks, buyer comparison needs, and implementation decisions without relying on unsupported assumptions about adjacent use cases.</p>`,
+    `<p>The marketplace price for this listing is ${formatNumericPrice(numericPrice)}. ${pricingSentence}. This keeps the Shopify price field numeric and comparable while leaving the detailed plan context inside the pricing metafield for shoppers who need extra commercial clarity. Buyers should still review plan conditions, usage thresholds, contract terms, and any service limitations on the official site before making a final purchase decision.</p>`,
+    `<p>From a marketplace perspective, ${title} stands out for documented relevance to ${collectionTitle.toLowerCase()} buyers, a visible feature set, and a neutral presentation that supports comparison shopping. At the same time, organizations should validate final fit against deployment preferences, integration needs, governance requirements, and the scale of the workflow they expect the software to handle. That keeps the listing clear, practical, and trustworthy for buyers evaluating software options in this category.</p>`,
   ];
 
   const html = paragraphs.join("");
@@ -729,9 +1126,18 @@ const buildBodyHtml = (
   return html;
 };
 
-const loadLocalLogoFiles = async () => {
+const loadLocalLogoFiles = async (logoDirs: string[]) => {
+  const cacheKey = logoDirs.join("|");
+  const cached = localLogoCache.get(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
   const entries: Array<{ filePath: string; stem: string }> = [];
-  for (const directory of LOCAL_LOGO_DIRS) {
+  for (const directory of logoDirs) {
+    if (!fs.existsSync(directory)) {
+      continue;
+    }
     const fileNames = await fs.promises.readdir(directory);
     fileNames.forEach((fileName) => {
       const fullPath = path.join(directory, fileName);
@@ -739,11 +1145,13 @@ const loadLocalLogoFiles = async () => {
       entries.push({ filePath: fullPath, stem });
     });
   }
+
+  localLogoCache.set(cacheKey, entries);
   return entries;
 };
 
-const findBestLocalLogo = async (row: CsvRow) => {
-  const files = await loadLocalLogoFiles();
+const findBestLocalLogo = async (row: CsvRow, logoDirs: string[]) => {
+  const files = await loadLocalLogoFiles(logoDirs);
   const officialUrl = cleanOfficialUrl(
     String(row["product.metafields.custom.custom"] ?? "")
   );
@@ -759,11 +1167,6 @@ const findBestLocalLogo = async (row: CsvRow) => {
     [
       normalizeHandle(String(row.Handle ?? "")),
       normalizeHandle(String(row.Title ?? "")),
-      normalizeHandle(
-        String(row.Title ?? "")
-          .replace(/\bB2B\b/gi, "")
-          .replace(/\bEdition\b/gi, "")
-      ),
       normalizeHandle(String(row.Vendor ?? "")),
       hostToken,
     ].filter(Boolean)
@@ -812,7 +1215,7 @@ $image.Dispose();
 };
 
 const prepareLocalLogoAsset = async (localPath: string) => {
-  await ensureDir(LOGO_TEMP_DIR);
+  await ensureDir(LOGO_TEMP_ROOT);
   const extension = normalizeLogoExtension(path.extname(localPath));
   const baseName = path.basename(localPath, path.extname(localPath));
 
@@ -821,7 +1224,7 @@ const prepareLocalLogoAsset = async (localPath: string) => {
   }
 
   if (RASTER_LOGO_SOURCE_EXTENSIONS.has(extension)) {
-    const outputPath = path.join(LOGO_TEMP_DIR, `${baseName}-120.png`);
+    const outputPath = path.join(LOGO_TEMP_ROOT, `${baseName}-120.png`);
     try {
       await resizeRasterLogoTo120(localPath, outputPath);
       return outputPath;
@@ -898,7 +1301,7 @@ const downloadRemoteLogoAsset = async (
   officialUrl: string,
   fileStem: string
 ) => {
-  await ensureDir(LOGO_TEMP_DIR);
+  await ensureDir(LOGO_TEMP_ROOT);
   const sourceUrl = await resolveRemoteLogoSourceUrl(officialUrl);
   const response = await axios.get<ArrayBuffer>(sourceUrl, {
     timeout: 30000,
@@ -921,9 +1324,8 @@ const downloadRemoteLogoAsset = async (
     throw new Error(`Unsupported remote logo format for ${officialUrl}`);
   }
 
-  const originalPath = path.join(LOGO_TEMP_DIR, `${fileStem}${extension}`);
+  const originalPath = path.join(LOGO_TEMP_ROOT, `${fileStem}${extension}`);
   await fs.promises.writeFile(originalPath, Buffer.from(response.data));
-
   return prepareLocalLogoAsset(originalPath);
 };
 
@@ -941,25 +1343,27 @@ const fetchPublicationIds = async () => {
   let hasNextPage = true;
 
   while (hasNextPage) {
-    const response: any = await shopifyGraphQL.post("", {
-      query: `
-        query FetchPublications($first: Int!, $after: String) {
-          publications(first: $first, after: $after) {
-            nodes {
-              id
-            }
-            pageInfo {
-              hasNextPage
-              endCursor
+    const response: any = await withShopifyRetries("fetch Shopify publications", () =>
+      shopifyGraphQL.post("", {
+        query: `
+          query FetchPublications($first: Int!, $after: String) {
+            publications(first: $first, after: $after) {
+              nodes {
+                id
+              }
+              pageInfo {
+                hasNextPage
+                endCursor
+              }
             }
           }
-        }
-      `,
-      variables: {
-        first: SHOPIFY_GRAPHQL_PAGE_SIZE,
-        after: cursor,
-      },
-    });
+        `,
+        variables: {
+          first: SHOPIFY_GRAPHQL_PAGE_SIZE,
+          after: cursor,
+        },
+      })
+    );
 
     if (response.data?.errors?.length) {
       throw new Error(JSON.stringify(response.data.errors));
@@ -987,24 +1391,26 @@ const publishProduct = async (productId: number) => {
     return;
   }
 
-  const response = await shopifyGraphQL.post("", {
-    query: `
-      mutation PublishProduct($id: ID!, $input: [PublicationInput!]!) {
-        publishablePublish(id: $id, input: $input) {
-          userErrors {
-            field
-            message
+  const response = await withShopifyRetries(`publish product ${productId}`, () =>
+    shopifyGraphQL.post("", {
+      query: `
+        mutation PublishProduct($id: ID!, $input: [PublicationInput!]!) {
+          publishablePublish(id: $id, input: $input) {
+            userErrors {
+              field
+              message
+            }
           }
         }
-      }
-    `,
-    variables: {
-      id: PRODUCT_GID(productId),
-      input: publicationIds.map((publicationId) => ({
-        publicationId,
-      })),
-    },
-  });
+      `,
+      variables: {
+        id: PRODUCT_GID(productId),
+        input: publicationIds.map((publicationId) => ({
+          publicationId,
+        })),
+      },
+    })
+  );
 
   const errors = response.data?.data?.publishablePublish?.userErrors ?? [];
   if (errors.length > 0) {
@@ -1016,24 +1422,28 @@ const buildMarketplaceFilterReferenceMap = async (
   filterKeys: string[]
 ): Promise<MarketplaceFilterReferenceMap> => {
   const { shopifyGraphQL } = await getShopifyClients();
-  const definitionsResponse = await shopifyGraphQL.post("", {
-    query: `
-      query MarketplaceMetafieldDefinitions {
-        metafieldDefinitions(first: 50, ownerType: PRODUCT, namespace: "marketplace") {
-          nodes {
-            key
-            type {
-              name
-            }
-            validations {
-              name
-              value
+  const definitionsResponse = await withShopifyRetries(
+    "load marketplace metafield definitions",
+    () =>
+      shopifyGraphQL.post("", {
+        query: `
+          query MarketplaceMetafieldDefinitions {
+            metafieldDefinitions(first: 50, ownerType: PRODUCT, namespace: "marketplace") {
+              nodes {
+                key
+                type {
+                  name
+                }
+                validations {
+                  name
+                  value
+                }
+              }
             }
           }
-        }
-      }
-    `,
-  });
+        `,
+      })
+  );
 
   const definitionNodes = Array.isArray(
     definitionsResponse.data?.data?.metafieldDefinitions?.nodes
@@ -1130,12 +1540,14 @@ const buildMarketplaceFilterReferenceMap = async (
 
 const fetchProductByHandle = async (handle: string) => {
   const { shopifyRest } = await getShopifyClients();
-  const response = await shopifyRest.get("/products.json", {
-    params: {
-      handle,
-      limit: 1,
-    },
-  });
+  const response = await withShopifyRetries(`fetch product by handle ${handle}`, () =>
+    shopifyRest.get("/products.json", {
+      params: {
+        handle,
+        limit: 1,
+      },
+    })
+  );
 
   const products = Array.isArray(response.data?.products)
     ? response.data.products
@@ -1145,29 +1557,31 @@ const fetchProductByHandle = async (handle: string) => {
 
 const createShopifyProduct = async (product: PreparedProduct) => {
   const { shopifyRest } = await getShopifyClients();
-  const response = await shopifyRest.post("/products.json", {
-    product: {
-      title: product.title,
-      handle: product.handle,
-      body_html: product.bodyHtml,
-      vendor: product.vendor,
-      product_type: product.collectionTitle,
-      status: product.status,
-      published: product.published,
-      metafields_global_title_tag: product.seoTitle,
-      metafields_global_description_tag: product.seoDescription,
-      variants: [
-        {
-          option1: "Default Title",
-          price: product.price,
-          taxable: false,
-          requires_shipping: false,
-          inventory_management: null,
-          inventory_policy: "continue",
-        },
-      ],
-    },
-  });
+  const response = await withShopifyRetries(`create product ${product.handle}`, () =>
+    shopifyRest.post("/products.json", {
+      product: {
+        title: product.title,
+        handle: product.handle,
+        body_html: product.bodyHtml,
+        vendor: product.vendor,
+        product_type: product.collectionTitle,
+        status: product.status,
+        published: product.published,
+        metafields_global_title_tag: product.seoTitle,
+        metafields_global_description_tag: product.seoDescription,
+        variants: [
+          {
+            option1: "Default Title",
+            price: product.price,
+            taxable: false,
+            requires_shipping: false,
+            inventory_management: null,
+            inventory_policy: "continue",
+          },
+        ],
+      },
+    })
+  );
 
   const productId = Number(response.data?.product?.id ?? 0);
   if (!productId) {
@@ -1182,36 +1596,40 @@ const uploadFileToShopify = async (localPath: string, altText: string) => {
   const fileName = path.basename(localPath);
   const mimeType = mimeTypeFromPath(localPath);
   const fileBytes = await fs.promises.readFile(localPath);
-  const stagedUploadResponse = await shopifyGraphQL.post("", {
-    query: `
-      mutation StagedUploadsCreate($input: [StagedUploadInput!]!) {
-        stagedUploadsCreate(input: $input) {
-          stagedTargets {
-            url
-            resourceUrl
-            parameters {
-              name
-              value
+  const stagedUploadResponse = await withShopifyRetries(
+    `create staged upload for ${fileName}`,
+    () =>
+      shopifyGraphQL.post("", {
+        query: `
+          mutation StagedUploadsCreate($input: [StagedUploadInput!]!) {
+            stagedUploadsCreate(input: $input) {
+              stagedTargets {
+                url
+                resourceUrl
+                parameters {
+                  name
+                  value
+                }
+              }
+              userErrors {
+                field
+                message
+              }
             }
           }
-          userErrors {
-            field
-            message
-          }
-        }
-      }
-    `,
-    variables: {
-      input: [
-        {
-          filename: fileName,
-          mimeType,
-          httpMethod: "PUT",
-          resource: "FILE",
+        `,
+        variables: {
+          input: [
+            {
+              filename: fileName,
+              mimeType,
+              httpMethod: "PUT",
+              resource: "FILE",
+            },
+          ],
         },
-      ],
-    },
-  });
+      })
+  );
 
   const stagedErrors =
     stagedUploadResponse.data?.data?.stagedUploadsCreate?.userErrors ?? [];
@@ -1240,31 +1658,35 @@ const uploadFileToShopify = async (localPath: string, altText: string) => {
     maxContentLength: Infinity,
   });
 
-  const fileCreateResponse = await shopifyGraphQL.post("", {
-    query: `
-      mutation FileCreate($files: [FileCreateInput!]!) {
-        fileCreate(files: $files) {
-          files {
-            id
-            fileStatus
+  const fileCreateResponse = await withShopifyRetries(
+    `create Shopify file ${fileName}`,
+    () =>
+      shopifyGraphQL.post("", {
+        query: `
+          mutation FileCreate($files: [FileCreateInput!]!) {
+            fileCreate(files: $files) {
+              files {
+                id
+                fileStatus
+              }
+              userErrors {
+                field
+                message
+              }
+            }
           }
-          userErrors {
-            field
-            message
-          }
-        }
-      }
-    `,
-    variables: {
-      files: [
-        {
-          alt: altText,
-          contentType: "IMAGE",
-          originalSource: target.resourceUrl,
+        `,
+        variables: {
+          files: [
+            {
+              alt: altText,
+              contentType: "IMAGE",
+              originalSource: target.resourceUrl,
+            },
+          ],
         },
-      ],
-    },
-  });
+      })
+  );
 
   const fileErrors = fileCreateResponse.data?.data?.fileCreate?.userErrors ?? [];
   if (fileErrors.length > 0) {
@@ -1278,34 +1700,38 @@ const uploadFileToShopify = async (localPath: string, altText: string) => {
   }
 
   for (let attempt = 0; attempt < 20; attempt += 1) {
-    const pollResponse = await shopifyGraphQL.post("", {
-      query: `
-        query CheckFileStatus($id: ID!) {
-          node(id: $id) {
-            ... on File {
-              fileStatus
-              preview {
-                status
-                image {
+    const pollResponse = await withShopifyRetries(
+      `poll Shopify file ${fileName}`,
+      () =>
+        shopifyGraphQL.post("", {
+          query: `
+            query CheckFileStatus($id: ID!) {
+              node(id: $id) {
+                ... on File {
+                  fileStatus
+                  preview {
+                    status
+                    image {
+                      url
+                    }
+                  }
+                }
+                ... on MediaImage {
+                  image {
+                    url
+                  }
+                }
+                ... on GenericFile {
                   url
                 }
               }
             }
-            ... on MediaImage {
-              image {
-                url
-              }
-            }
-            ... on GenericFile {
-              url
-            }
-          }
-        }
-      `,
-      variables: {
-        id: fileId,
-      },
-    });
+          `,
+          variables: {
+            id: fileId,
+          },
+        })
+    );
 
     const node = pollResponse.data?.data?.node;
     const url =
@@ -1327,40 +1753,10 @@ const uploadFileToShopify = async (localPath: string, altText: string) => {
   throw new Error("Shopify file URL was not returned");
 };
 
-const upsertProductImage = async (
-  productId: number,
-  logoFileUrl: string,
-  altText: string
-) => {
-  const { shopifyRest } = await getShopifyClients();
-  const productResponse = await shopifyRest.get(`/products/${productId}.json`);
-  const product = productResponse.data?.product ?? null;
-  const images = Array.isArray(product?.images) ? product.images : [];
-  const primaryImage = images[0];
-
-  if (primaryImage?.id) {
-    await shopifyRest.put(`/products/${productId}/images/${primaryImage.id}.json`, {
-      image: {
-        id: primaryImage.id,
-        src: logoFileUrl,
-        alt: altText,
-      },
-    });
-    return;
-  }
-
-  await shopifyRest.post(`/products/${productId}/images.json`, {
-    image: {
-      src: logoFileUrl,
-      alt: altText,
-    },
-  });
-};
-
 const setShopifyMetafields = async (
   productId: number,
   product: PreparedProduct,
-  logoFileUrl: string,
+  logoFileUrl: string | null,
   marketplaceFilterReferences: MarketplaceFilterReferenceMap
 ) => {
   const { shopifyGraphQL } = await getShopifyClients();
@@ -1371,12 +1767,16 @@ const setShopifyMetafields = async (
       type: "url",
       value: product.officialUrl,
     },
-    {
-      namespace: "custom",
-      key: "logo_image",
-      type: "url",
-      value: logoFileUrl,
-    },
+    ...(logoFileUrl
+      ? [
+          {
+            namespace: "custom",
+            key: "logo_image",
+            type: "url",
+            value: logoFileUrl,
+          },
+        ]
+      : []),
     {
       namespace: "custom",
       key: "type_multiple",
@@ -1424,28 +1824,26 @@ const setShopifyMetafields = async (
     }),
   ];
 
-  const response = await shopifyGraphQL.post("", {
-    query: `
-      mutation SetProductMetafields($metafields: [MetafieldsSetInput!]!) {
-        metafieldsSet(metafields: $metafields) {
-          metafields {
-            id
-            key
-          }
-          userErrors {
-            field
-            message
+  const response = await withShopifyRetries(`set metafields for ${product.handle}`, () =>
+    shopifyGraphQL.post("", {
+      query: `
+        mutation SetProductMetafields($metafields: [MetafieldsSetInput!]!) {
+          metafieldsSet(metafields: $metafields) {
+            userErrors {
+              field
+              message
+            }
           }
         }
-      }
-    `,
-    variables: {
-      metafields: inputs.map((input) => ({
-        ownerId: PRODUCT_GID(productId),
-        ...input,
-      })),
-    },
-  });
+      `,
+      variables: {
+        metafields: inputs.map((input) => ({
+          ownerId: PRODUCT_GID(productId),
+          ...input,
+        })),
+      },
+    })
+  );
 
   const errors = response.data?.data?.metafieldsSet?.userErrors ?? [];
   if (errors.length > 0) {
@@ -1453,44 +1851,65 @@ const setShopifyMetafields = async (
   }
 };
 
+const shouldUseZeroPriceFallback = (
+  rawNumericPrice: number | null,
+  pricingLines: string[]
+) => {
+  if (!ALLOW_ZERO_PRICE_FALLBACK) {
+    return false;
+  }
+
+  if (rawNumericPrice === 0) {
+    return true;
+  }
+
+  const pricingText = normalizeText(pricingLines.join(" "));
+  return (
+    /\bnot publicly available\b/.test(pricingText) ||
+    /\bnot publicly disclosed\b/.test(pricingText) ||
+    /\bpricing not publicly disclosed\b/.test(pricingText) ||
+    /\bpricing unavailable\b/.test(pricingText)
+  );
+};
+
 const prepareProduct = async (
   row: CsvRow,
-  categoryMapping: CategoryMapping,
+  target: ImportTarget,
   filterDefinitions: Map<string, FilterDefinition>
 ) => {
   const normalizedSourceHandle = normalizeHandle(String(row.Handle ?? ""));
-  const isCsCartB2B = normalizedSourceHandle === CS_CART_B2B_HANDLE;
+  const override = getProductImportOverride(normalizedSourceHandle);
   const title = String(row.Title ?? "").trim();
   const vendor = String(row.Vendor ?? "").trim();
-  const sourceBodyText = isCsCartB2B
-    ? CS_CART_B2B_OVERRIDE.bodyText
+  const sourceBodyText = override?.bodyText
+    ? override.bodyText
     : stripHtml(String(row["Body (HTML)"] ?? ""));
-  const officialUrl = isCsCartB2B
-    ? CS_CART_B2B_OVERRIDE.officialUrl
-    : cleanOfficialUrl(String(row["product.metafields.custom.custom"] ?? ""));
-  const explicitPrice = isCsCartB2B
-    ? CS_CART_B2B_OVERRIDE.price
-    : parsePositivePrice(String(row["Variant Price"] ?? ""));
-  const rawNumericPrice = parseAnyNumericPrice(String(row["Variant Price"] ?? ""));
-  const usedZeroPriceFallback = explicitPrice === null && rawNumericPrice === 0;
-  const priceValue = explicitPrice ?? (usedZeroPriceFallback ? 0 : null);
-  const handle = normalizeHandle(String(row.Handle ?? "")) || normalizeHandle(title);
-  const featureLines = isCsCartB2B
-    ? [...CS_CART_B2B_OVERRIDE.featureLines]
+  const officialUrl = resolveOfficialUrl(row, override?.officialUrl ?? null);
+  const featureLines = override?.featureLines
+    ? [...override.featureLines]
     : extractCleanLines(
         String(row["product.metafields.custom.product_features"] ?? "")
       );
-  const pricingLines = isCsCartB2B
-    ? [...CS_CART_B2B_OVERRIDE.pricingLines]
+  const pricingLines = override?.pricingLines
+    ? [...override.pricingLines]
     : extractCleanLines(
         String(row["product.metafields.custom.plans_pricing"] ?? "")
       );
-  const localLogoPath = await findBestLocalLogo(row);
+  const explicitPrice =
+    typeof override?.price === "number"
+      ? override.price
+      : parsePositivePrice(String(row["Variant Price"] ?? ""));
+  const rawNumericPrice = parseAnyNumericPrice(String(row["Variant Price"] ?? ""));
+  const zeroPriceFallbackUsed =
+    explicitPrice === null && shouldUseZeroPriceFallback(rawNumericPrice, pricingLines);
+  const priceValue = explicitPrice ?? (zeroPriceFallbackUsed ? 0 : null);
+  const handle = normalizeHandle(String(row.Handle ?? "")) || normalizeHandle(title);
+  const localLogoPath = await findBestLocalLogo(row, target.logoDirs);
 
   const missingFields = [
-    !title ? "Title" : "",
-    !vendor ? "Vendor" : "",
-    !handle ? "Handle" : "",
+    !title || /^title$/i.test(title) ? "Title" : "",
+    !vendor || /^vendor$/i.test(vendor) ? "Vendor" : "",
+    !handle || /^handle$/i.test(handle) ? "Handle" : "",
     !officialUrl ? "product.metafields.custom.custom" : "",
     featureLines.length === 0 ? "product.metafields.custom.product_features" : "",
     pricingLines.length === 0 ? "product.metafields.custom.plans_pricing" : "",
@@ -1509,7 +1928,7 @@ const prepareProduct = async (
       prepared: null,
       skipStatus: "skipped_pricing_unavailable" as const,
       reason:
-        "Pricing was blank or non-numeric, so a safe numeric price could not be assigned.",
+        "Pricing was blank or non-numeric, and no safe zero-pricing fallback was justified from the source data.",
     };
   }
 
@@ -1523,32 +1942,39 @@ const prepareProduct = async (
   const productFeatures = buildProductFeatures(featureLines);
   const plansPricing = buildPlansPricingWithFallback(
     pricingLines,
-    usedZeroPriceFallback
+    zeroPriceFallbackUsed
   );
-  const prosCons = buildProsCons(featureLines, pricingLines, priceValue);
+  const prosCons = buildProsCons(
+    featureLines,
+    pricingLines,
+    priceValue,
+    zeroPriceFallbackUsed
+  );
   const bodyHtml = buildBodyHtml(
     title,
     vendor,
-    categoryMapping.collectionTitle,
+    target.categoryMapping.collectionTitle,
     sourceBodyText,
     featureLines,
     pricingLines,
     priceValue,
     filterValues,
-    usedZeroPriceFallback
+    zeroPriceFallbackUsed
   );
   const seoTitle =
-    (isCsCartB2B ? CS_CART_B2B_OVERRIDE.seoTitle : String(row["SEO Title"] ?? "").trim()) ||
-    `${title} | ${vendor} ${categoryMapping.collectionTitle}`;
+    override?.seoTitle ??
+    String(row["SEO Title"] ?? "").trim() ??
+    `${title} | ${vendor} ${target.categoryMapping.collectionTitle}`;
   const seoDescription =
-    (isCsCartB2B
-      ? CS_CART_B2B_OVERRIDE.seoDescription
-      : String(row["SEO Description"] ?? "").trim()) ||
-    `${title} for ${categoryMapping.collectionTitle.toLowerCase()} buyers with pricing, features, and B2B workflow support.`;
-  const imageAltText = `${title} ${categoryMapping.collectionTitle.toLowerCase()} logo`;
+    override?.seoDescription ??
+    String(row["SEO Description"] ?? "").trim() ??
+    `${title} for ${target.categoryMapping.collectionTitle.toLowerCase()} buyers with pricing, features, and workflow support.`;
+  const imageAltText = `${title} ${target.categoryMapping.collectionTitle.toLowerCase()} logo`;
 
   return {
     prepared: {
+      categoryFolder: target.folderName,
+      sourceCsvPath: target.sourceCsvPath,
       sourceTitle: title,
       title,
       vendor,
@@ -1556,11 +1982,12 @@ const prepareProduct = async (
       officialUrl,
       status: "active" as const,
       published: true as const,
-      productCategory: categoryMapping.productCategory,
-      collectionTitle: categoryMapping.collectionTitle,
-      collectionHandle: categoryMapping.collectionHandle,
-      customTypeMultiple: [categoryMapping.collectionTitle],
+      productCategory: target.categoryMapping.productCategory,
+      collectionTitle: target.categoryMapping.collectionTitle,
+      collectionHandle: target.categoryMapping.collectionHandle,
+      customTypeMultiple: [target.categoryMapping.collectionTitle],
       price: formatNumericPrice(priceValue),
+      zeroPriceFallbackUsed,
       bodyHtml,
       seoTitle,
       seoDescription,
@@ -1581,58 +2008,79 @@ const prepareProduct = async (
 };
 
 const buildDryRunRows = async () => {
-  const [sourceRows, categoryMapping, filterDefinitions, existing] = await Promise.all([
-    readCsv(SOURCE_CSV_PATH),
-    loadCategoryMapping(),
+  const [targets, filterDefinitions, existing] = await Promise.all([
+    discoverImportTargets(),
     loadFilterDefinitions(),
     loadExistingExport(),
   ]);
 
-  const logRows: ImportLogRow[] = [];
   const preparedRows: PreparedProduct[] = [];
+  const logRows: ImportLogRow[] = [];
+  let totalRows = 0;
 
-  for (const row of sourceRows) {
-    const existingMatch = findExistingMatch(row, existing);
-    if (existingMatch) {
-      logRows.push({
-        sourceTitle: String(row.Title ?? "").trim(),
-        title: String(row.Title ?? "").trim(),
-        handle: normalizeHandle(String(row.Handle ?? "")),
-        vendor: String(row.Vendor ?? "").trim(),
-        status: "skipped_existing",
-        price: String(row["Variant Price"] ?? "").trim(),
-        officialUrl: cleanOfficialUrl(String(row["product.metafields.custom.custom"] ?? "")),
-        shopifyProductId: Number(existingMatch.shopify_product_id ?? 0) || null,
-        reason: `Matched existing Shopify export row ${existingMatch.handle}`,
-        logoSource: null,
-        reportNotes: [],
-      });
-      continue;
+  for (const target of targets) {
+    const sourceRows = await readCsv(target.sourceCsvPath);
+    totalRows += sourceRows.length;
+
+    for (const row of sourceRows) {
+      const existingMatch = findExistingMatch(
+        row,
+        existing,
+        target.categoryMapping.collectionHandle
+      );
+      if (existingMatch) {
+        logRows.push({
+          categoryFolder: target.folderName,
+          sourceCsvPath: target.sourceCsvPath,
+          sourceTitle: String(row.Title ?? "").trim(),
+          title: String(row.Title ?? "").trim(),
+          handle: normalizeHandle(String(row.Handle ?? "")),
+          vendor: String(row.Vendor ?? "").trim(),
+          status: "skipped_existing",
+          price:
+            parseAnyNumericPrice(String(row["Variant Price"] ?? "")) === 0
+              ? "0"
+              : String(row["Variant Price"] ?? "").trim(),
+          officialUrl: resolveOfficialUrl(row),
+          shopifyProductId: Number(existingMatch.shopify_product_id ?? 0) || null,
+          reason: `Matched existing Shopify export row ${existingMatch.handle}`,
+          logoSource: null,
+          logoStatus: "existing_not_checked",
+          reportNotes: [],
+        });
+        continue;
+      }
+
+      const preparedResult = await prepareProduct(row, target, filterDefinitions);
+      if (!preparedResult.prepared || preparedResult.skipStatus) {
+        logRows.push({
+          categoryFolder: target.folderName,
+          sourceCsvPath: target.sourceCsvPath,
+          sourceTitle: String(row.Title ?? "").trim(),
+          title: String(row.Title ?? "").trim(),
+          handle: normalizeHandle(String(row.Handle ?? "")),
+          vendor: String(row.Vendor ?? "").trim(),
+          status: preparedResult.skipStatus ?? "failed",
+          price:
+            parseAnyNumericPrice(String(row["Variant Price"] ?? "")) === 0
+              ? "0"
+              : String(row["Variant Price"] ?? "").trim(),
+          officialUrl: resolveOfficialUrl(row),
+          shopifyProductId: null,
+          reason: preparedResult.reason || "Unable to prepare row",
+          logoSource: null,
+          logoStatus: "missing",
+          reportNotes: [],
+        });
+        continue;
+      }
+
+      preparedRows.push(preparedResult.prepared);
     }
-
-    const preparedResult = await prepareProduct(row, categoryMapping, filterDefinitions);
-    if (!preparedResult.prepared || preparedResult.skipStatus) {
-      logRows.push({
-        sourceTitle: String(row.Title ?? "").trim(),
-        title: String(row.Title ?? "").trim(),
-        handle: normalizeHandle(String(row.Handle ?? "")),
-        vendor: String(row.Vendor ?? "").trim(),
-        status: preparedResult.skipStatus ?? "failed",
-        price: String(row["Variant Price"] ?? "").trim(),
-        officialUrl: cleanOfficialUrl(String(row["product.metafields.custom.custom"] ?? "")),
-        shopifyProductId: null,
-        reason: preparedResult.reason || "Unable to prepare row",
-        logoSource: null,
-        reportNotes: [],
-      });
-      continue;
-    }
-
-    preparedRows.push(preparedResult.prepared);
   }
 
   return {
-    sourceRows,
+    totalRows,
     preparedRows,
     logRows,
   };
@@ -1641,7 +2089,7 @@ const buildDryRunRows = async () => {
 const applyImport = async (
   preparedRows: PreparedProduct[],
   initialLogRows: ImportLogRow[],
-  sourceRowsCount: number
+  totalRows: number
 ) => {
   const filterKeys = dedupe(
     preparedRows.flatMap((row) => Object.keys(row.filterValues ?? {}))
@@ -1657,6 +2105,8 @@ const applyImport = async (
       const liveExisting = await fetchProductByHandle(product.handle);
       if (liveExisting?.id) {
         logRows.push({
+          categoryFolder: product.categoryFolder,
+          sourceCsvPath: product.sourceCsvPath,
           sourceTitle: product.sourceTitle,
           title: product.title,
           handle: product.handle,
@@ -1667,31 +2117,39 @@ const applyImport = async (
           shopifyProductId: Number(liveExisting.id),
           reason: `Handle already exists in Shopify as ${product.handle}`,
           logoSource: null,
+          logoStatus: "existing_not_checked",
           reportNotes: [],
         });
         continue;
       }
 
-      let preparedLogoPath: string;
+      let logoFileUrl: string | null = null;
+      let logoSource: string | null = product.localLogoPath;
+      let logoStatus: LogoStatus = "missing";
+      const reportNotes: string[] = [
+        `Collection mapping: ${product.collectionTitle}`,
+        `Filters: ${Object.keys(product.filterValues).join(", ") || "none"}`,
+      ];
+
       try {
-        preparedLogoPath =
+        const preparedLogoPath =
           product.localLogoPath !== null
             ? await prepareLocalLogoAsset(product.localLogoPath)
             : await downloadRemoteLogoAsset(product.officialUrl, product.handle);
+        logoSource = preparedLogoPath;
+        logoFileUrl = await uploadFileToShopify(
+          preparedLogoPath,
+          product.imageAltText
+        );
+        logoStatus = "uploaded";
       } catch (logoError) {
-        if (!product.officialUrl) {
-          throw logoError;
-        }
-        preparedLogoPath = await downloadRemoteLogoAsset(
-          product.officialUrl,
-          product.handle
+        reportNotes.push(
+          `Logo unavailable: ${
+            logoError instanceof Error ? logoError.message : String(logoError)
+          }`
         );
       }
 
-      const logoFileUrl = await uploadFileToShopify(
-        preparedLogoPath,
-        product.imageAltText
-      );
       const productId = await createShopifyProduct(product);
       await setShopifyMetafields(
         productId,
@@ -1699,10 +2157,11 @@ const applyImport = async (
         logoFileUrl,
         marketplaceFilterReferences
       );
-      await upsertProductImage(productId, logoFileUrl, product.imageAltText);
       await publishProduct(productId);
 
       logRows.push({
+        categoryFolder: product.categoryFolder,
+        sourceCsvPath: product.sourceCsvPath,
         sourceTitle: product.sourceTitle,
         title: product.title,
         handle: product.handle,
@@ -1712,14 +2171,14 @@ const applyImport = async (
         officialUrl: product.officialUrl,
         shopifyProductId: productId,
         reason: "Imported into Shopify successfully.",
-        logoSource: preparedLogoPath,
-        reportNotes: [
-          `Collection mapping: ${product.collectionTitle}`,
-          `Filters: ${Object.keys(product.filterValues).join(", ") || "none"}`,
-        ],
+        logoSource,
+        logoStatus,
+        reportNotes,
       });
     } catch (error) {
       logRows.push({
+        categoryFolder: product.categoryFolder,
+        sourceCsvPath: product.sourceCsvPath,
         sourceTitle: product.sourceTitle,
         title: product.title,
         handle: product.handle,
@@ -1728,22 +2187,34 @@ const applyImport = async (
         price: product.price,
         officialUrl: product.officialUrl,
         shopifyProductId: null,
-        reason: error instanceof Error ? error.message : String(error),
+        reason: formatShopifyError(error),
         logoSource: product.localLogoPath,
+        logoStatus: "missing",
         reportNotes: [],
       });
     }
   }
 
-  return writeReport(sourceRowsCount, logRows, "apply");
+  const jsonReport = await writeJsonReport(totalRows, logRows, "apply");
+  const attentionCsvPath = await writeAttentionCsvReport(
+    logRows,
+    jsonReport.timestamp
+  );
+
+  return {
+    ...jsonReport,
+    attentionCsvPath,
+  };
 };
 
 const main = async () => {
   const shouldApply = process.argv.includes("--apply");
-  const { sourceRows, preparedRows, logRows } = await buildDryRunRows();
+  const { totalRows, preparedRows, logRows } = await buildDryRunRows();
 
   if (!shouldApply) {
-    const report = await writeReport(sourceRows.length, logRows, "dry-run");
+    const report = await writeJsonReport(totalRows, logRows, "dry-run");
+    console.log(`Import root: ${SOFTWARE_PRODUCTS_ROOT}`);
+    console.log(`Existing export: ${EXISTING_EXPORT_CSV_PATH}`);
     console.log(`Report: ${report.reportPath}`);
     console.log(`Total rows: ${report.summary.totalRows}`);
     console.log(`Imported: ${report.summary.imported}`);
@@ -1759,8 +2230,11 @@ const main = async () => {
     return;
   }
 
-  const report = await applyImport(preparedRows, logRows, sourceRows.length);
+  const report = await applyImport(preparedRows, logRows, totalRows);
+  console.log(`Import root: ${SOFTWARE_PRODUCTS_ROOT}`);
+  console.log(`Existing export: ${EXISTING_EXPORT_CSV_PATH}`);
   console.log(`Report: ${report.reportPath}`);
+  console.log(`Attention CSV: ${report.attentionCsvPath}`);
   console.log(`Total rows: ${report.summary.totalRows}`);
   console.log(`Imported: ${report.summary.imported}`);
   console.log(`Skipped existing: ${report.summary.skipped_existing}`);
@@ -1774,6 +2248,6 @@ const main = async () => {
 };
 
 main().catch((error) => {
-  console.error("B2B eCommerce Platform import failed:", error);
+  console.error("Software products folder import failed:", error);
   process.exitCode = 1;
 });

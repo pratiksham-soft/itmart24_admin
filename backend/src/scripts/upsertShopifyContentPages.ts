@@ -200,6 +200,58 @@ const PAGE_SPECS: PageSpec[] = [
     `.trim(),
   },
   {
+    title: "How to List a Product",
+    handle: "how-to-list-a-product",
+    menuHandle: "footer-vendors",
+    menuTitles: ["How to List a Product"],
+    bodyHtml: `
+      <h2>Eligibility Criteria</h2>
+      <ul>
+        <li>You should represent a legitimate business, product owner, reseller, or authorized service provider in a supported digital technology category.</li>
+        <li>Your offering should be lawful, commercially clear, and suitable for a marketplace focused on software, cloud, hosting, AI, security, or related services.</li>
+      </ul>
+      <h2>Required Details Before Listing</h2>
+      <ul>
+        <li>Prepare your business identity details, website, contact information, and basic background.</li>
+        <li>Prepare product details such as category fit, summary, pricing approach, delivery model, and support information.</li>
+      </ul>
+      <h2>High-Level Overview</h2>
+      <ul>
+        <li>Apply for or create a vendor account using the approved onboarding path.</li>
+        <li>Complete required business information and prepare listing-ready content for review.</li>
+        <li>Submit your information for verification before publication or wider visibility.</li>
+      </ul>
+      <h2>After Login</h2>
+      <p>This page is only a pre-registration guide. The detailed listing guide and dashboard instructions are available after vendor login.</p>
+    `.trim(),
+  },
+  {
+    title: "Vendor FAQs",
+    handle: "vendor-faqs",
+    menuHandle: "footer-vendors",
+    menuTitles: ["Vendor FAQs"],
+    bodyHtml: `
+      <h2>What Is ITMart24?</h2>
+      <p>ITMart24 is a digital technology marketplace that helps buyers discover, compare, and evaluate software, hosting, cloud, AI, security, and related offerings.</p>
+      <h2>Who Can Become a Vendor?</h2>
+      <ul>
+        <li>Businesses, product owners, authorized resellers, and qualified digital service providers may apply.</li>
+        <li>Applicants should be ready to provide accurate business and product information for review.</li>
+      </ul>
+      <h2>Is Listing Free?</h2>
+      <ul>
+        <li>Listing availability or pricing may vary by plan, product type, or marketplace requirements.</li>
+        <li>Affiliate links may be supported in some cases, but they are not mandatory for every listing.</li>
+      </ul>
+      <h2>What Products Are Allowed?</h2>
+      <p>Allowed listings generally include legitimate digital technology products and services that fit marketplace policies and category standards.</p>
+      <h2>Verification and Visibility</h2>
+      <p>Verification may include review of business details, website quality, listing accuracy, and policy compliance. Visibility may depend on category fit, completeness, and overall listing quality.</p>
+      <h2>More Help</h2>
+      <p>Advanced FAQs and account-specific guidance are available inside the vendor dashboard after login.</p>
+    `.trim(),
+  },
+  {
     title: "Why Choose Us",
     handle: "why-choose-us",
     menuHandle: "footer-company",
@@ -279,6 +331,100 @@ const PAGE_SPECS: PageSpec[] = [
       <p>ITMart24 may request verification, limit activity, suspend access, or escalate issues for further review when fraud concerns arise.</p>
     `.trim(),
   },
+  {
+    title: "Help Center",
+    handle: "help-center",
+    menuHandle: "footer-support",
+    menuTitles: ["Help Center"],
+    bodyHtml: `
+      <h2>How to Search Products</h2>
+      <ul>
+        <li>Use category navigation, search, and marketplace filters to find relevant products or services.</li>
+        <li>Compare listings carefully before deciding which vendor or solution fits your needs.</li>
+      </ul>
+      <h2>Understanding Listings</h2>
+      <p>Listings may include product summaries, screenshots, pricing clues, vendor information, and policy-related disclosures. Buyers should review listing details carefully before taking action.</p>
+      <h2>Platform Role</h2>
+      <p>ITMart24 primarily acts as a marketplace and discovery platform and is not usually the direct seller of third-party vendor offerings.</p>
+      <h2>Buying Flow</h2>
+      <p>Depending on the listing, users may be redirected to the vendor website, contact the vendor, request a demo, or follow a product-specific action path.</p>
+      <h2>Vendor Help</h2>
+      <p>Vendor-specific help is available inside the vendor login area and is not covered by this public Help Center page.</p>
+    `.trim(),
+  },
+  {
+    title: "Contact Support",
+    handle: "contact-support",
+    menuHandle: "footer-support",
+    menuTitles: ["Contact Support", "Contact / Support Ticket"],
+    bodyHtml: `
+      <h2>When to Contact Support</h2>
+      <ul>
+        <li>General inquiries about the website or marketplace experience.</li>
+        <li>Technical issues, listing errors, or storefront problems.</li>
+        <li>Pre-sales or pre-registration vendor questions.</li>
+      </ul>
+      <h2>Required Ticket Details</h2>
+      <ul>
+        <li>Name and email address.</li>
+        <li>Issue description or question.</li>
+        <li>Affected URL where relevant.</li>
+        <li>Screenshots or supporting evidence where available.</li>
+      </ul>
+      <h2>Support Guidance</h2>
+      <p>If the issue relates to abuse or security, please use the dedicated reporting pages. Approved vendors should use dashboard support after login for account-specific requests.</p>
+    `.trim(),
+  },
+  {
+    title: "Report Abuse",
+    handle: "report-abuse",
+    menuHandle: "footer-support",
+    menuTitles: ["Report Abuse"],
+    bodyHtml: `
+      <h2>Vendor Profile Abuse</h2>
+      <p>If a Report Abuse button is available on a vendor profile or listing page, use that button first to report the specific issue.</p>
+      <h2>General Abuse Reporting</h2>
+      <p>If you do not have a button available, report the issue to abuse@itmart24.com and include the affected URL, issue summary, and supporting evidence.</p>
+      <h2>Examples of Abuse</h2>
+      <ul>
+        <li>Fraud or deceptive listings.</li>
+        <li>Spam or misleading content.</li>
+        <li>Impersonation of a business, brand, or individual.</li>
+      </ul>
+      <h2>Required Report Details</h2>
+      <ul>
+        <li>The affected URL or page.</li>
+        <li>A short explanation of the issue.</li>
+        <li>Screenshots or other evidence where available.</li>
+      </ul>
+    `.trim(),
+  },
+  {
+    title: "Report Security Issue",
+    handle: "report-security-issue",
+    menuHandle: "footer-support",
+    menuTitles: ["Report Security Issue"],
+    bodyHtml: `
+      <h2>What to Report</h2>
+      <ul>
+        <li>Cross-site scripting, authentication issues, access control flaws, data leaks, or other reproducible security weaknesses.</li>
+        <li>Other vulnerabilities that create a meaningful security risk for ITMart24 or its users.</li>
+      </ul>
+      <h2>What Not to Do</h2>
+      <ul>
+        <li>Do not exploit the issue beyond what is necessary to confirm it exists.</li>
+        <li>Do not access, misuse, or disclose data that is not your own.</li>
+      </ul>
+      <h2>Required Report Details</h2>
+      <ul>
+        <li>Step-by-step reproduction details.</li>
+        <li>The affected URL, page, or feature.</li>
+        <li>Screenshots or other supporting evidence.</li>
+      </ul>
+      <h2>Security Email</h2>
+      <p>Send responsible disclosure reports to security@itmart24.com.</p>
+    `.trim(),
+  },
 ];
 
 const MENU_HANDLES = [
@@ -286,6 +432,7 @@ const MENU_HANDLES = [
   "footer-vendors",
   "footer-marketplace",
   "footer-legal",
+  "footer-support",
 ];
 
 const normalizeText = (value: string) =>

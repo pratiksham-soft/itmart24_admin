@@ -64,16 +64,6 @@ export async function importShopifyProductsToFirestore(
         : "Preparing Shopify products sync...",
   });
 
-    // Fetch all existing Firestore product IDs once
-  const existingProductIdsSnapshot =
-    await firestore.collection("products").select().get();
-
-  const existingProductIds = new Set<string>(
-    existingProductIdsSnapshot.docs.map(
-      (doc) => doc.id
-    )
-  );
-
   do {
     const params: any = {
             limit: PRODUCTS_LIMIT,
@@ -91,6 +81,14 @@ export async function importShopifyProductsToFirestore(
             });
 
     const products = response.data.products || [];
+    const productRefs = products.map((product) =>
+      firestore.collection("products").doc(String(product.id))
+    );
+    const existingSnapshots =
+      productRefs.length > 0 ? await firestore.getAll(...productRefs) : [];
+    const existingProductIds = new Set<string>(
+      existingSnapshots.filter((snapshot) => snapshot.exists).map((snapshot) => snapshot.id)
+    );
 
     console.log(
       "Shopify products fetched:",
@@ -102,9 +100,7 @@ export async function importShopifyProductsToFirestore(
       const shopifyProductId = product.id;
       const docId = String(shopifyProductId);
 
-      const productRef = firestore
-        .collection("products")
-        .doc(docId);
+      const productRef = firestore.collection("products").doc(docId);
 
             // DUPLICATE CHECK (in-memory, ultra-fast)
             if (existingProductIds.has(docId)) {
@@ -206,8 +202,6 @@ export async function importShopifyProductsToFirestore(
 
       imported++;
       processedProducts++;
-      existingProductIds.add(docId);
-
       await notifyProgress(options.onProgress, {
         totalProducts,
         processedProducts,

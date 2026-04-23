@@ -1,5 +1,23 @@
 export const CS_CART_B2B_HANDLE = "cs-cart-b2b";
 
+export type ProductImportOverride = {
+  officialUrl?: string;
+  price?: number;
+  bodyText?: string;
+  featureLines?: string[];
+  pricingLines?: string[];
+  seoTitle?: string;
+  seoDescription?: string;
+};
+
+export const PRODUCT_IMPORT_OVERRIDES_BY_HANDLE: Record<
+  string,
+  ProductImportOverride
+> = {};
+
+export const getProductImportOverride = (handle: string) =>
+  PRODUCT_IMPORT_OVERRIDES_BY_HANDLE[handle] ?? null;
+
 export const CS_CART_B2B_OVERRIDE = {
   handle: CS_CART_B2B_HANDLE,
   title: "CS-Cart B2B",
@@ -26,4 +44,3 @@ export const CS_CART_B2B_OVERRIDE = {
   seoDescription:
     "CS-Cart Multi-Vendor Cloud helps launch a B2B marketplace with managed hosting, vendor tools, and plans from $75/month billed annually.",
 } as const;
-

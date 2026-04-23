@@ -19,13 +19,15 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@types/nodemailer": "^8.0.0",
     "axios": "^1.13.3",
     "cors": "^2.8.6",
     "csv-parser": "^3.2.0",
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
     "firebase-admin": "^13.6.1",
-    "form-data": "^4.0.5"
+    "form-data": "^4.0.5",
+    "nodemailer": "^8.0.5"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",

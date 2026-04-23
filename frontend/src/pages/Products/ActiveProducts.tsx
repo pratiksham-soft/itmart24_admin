@@ -12,62 +12,41 @@ import {
 import Badge from "../../components/ui/badge/Badge";
 import ProductSearchBar from "./ProductSearchBar";
 import ProductDetailsModal from "./ProductDetailsModal";
-import { filterProductsByQuery } from "./productSearch";
+import { usePaginatedStatusProducts } from "./usePaginatedStatusProducts";
 
 type LifecycleStatus =
   | "active"
   | "pending"
   | "rejected"
   | "on-hold";
-
-type UIProduct = {
-  id: string;
-  vendorId: string;
-  businessName: string;
-  status: LifecycleStatus;
-  shopifyProductURL: string | null;
-  vendor?: {
-    basic?: {
-      subCategoryName?: string;
-    };
-  };
-  basic: {
-    productName: string;
-    category: string;
-    description: string;
-  };
-  pricing: {
-    selectedPlan: string;
-    price: number;
-  };
-};
-
-const PAGE_SIZE = 25;
-
 const ActiveProducts = () => {
-  const [products, setProducts] = useState<UIProduct[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState("");
   const [statusDraft, setStatusDraft] = useState<Record<string, LifecycleStatus>>(
     {}
   );
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkStatus, setBulkStatus] = useState<LifecycleStatus | "">("");
-  const [page, setPage] = useState(1);
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
-
-  const filteredProducts = filterProductsByQuery(products, searchQuery);
-  const totalCount = filteredProducts.length;
-  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
-  const paginatedProducts = filteredProducts.slice(
-    (page - 1) * PAGE_SIZE,
-    page * PAGE_SIZE
-  );
+  const {
+    products,
+    loading,
+    isRefreshing,
+    isPageLoading,
+    error,
+    searchQuery,
+    setSearchQuery,
+    page,
+    totalCount,
+    totalPages,
+    startItem,
+    endItem,
+    handlePageClick,
+    refetchProducts,
+  } = usePaginatedStatusProducts({
+    endpoint: "http://localhost:5000/api/products/active",
+  });
   const areAllVisibleSelected =
-    paginatedProducts.length > 0 &&
-    paginatedProducts.every((product) => selectedIds.has(product.id));
-  const startItem = totalCount === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
-  const endItem = Math.min(page * PAGE_SIZE, totalCount);
+    products.length > 0 &&
+    products.every((product) => selectedIds.has(product.id));
 
   const toggleRowSelection = (productId: string) => {
     setSelectedIds((prev) => {
@@ -78,7 +57,7 @@ const ActiveProducts = () => {
   };
 
   const toggleSelectAllVisible = () => {
-    const visibleIds = paginatedProducts.map((product) => product.id);
+    const visibleIds = products.map((product) => product.id);
 
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -93,57 +72,6 @@ const ActiveProducts = () => {
     });
   };
 
-  const fetchActiveProducts = async () => {
-    setLoading(true);
-
-    try {
-      const res = await fetch("http://localhost:5000/api/products/active?all=true");
-      const result = await res.json();
-
-      if (result.success) {
-        const uiProducts: UIProduct[] = result.data.map((product: UIProduct) => ({
-          id: product.id,
-          vendorId: product.vendorId,
-          businessName: product.businessName,
-          status: product.status,
-          shopifyProductURL: product.shopifyProductURL,
-          vendor: {
-            basic: {
-              subCategoryName: product.vendor?.basic?.subCategoryName,
-            },
-          },
-          basic: {
-            productName: product.basic.productName,
-            category: product.basic.category,
-            description: product.basic.description,
-          },
-          pricing: {
-            selectedPlan: product.pricing.selectedPlan,
-            price: product.pricing.price,
-          },
-        }));
-
-        setProducts(uiProducts);
-      }
-
-      setSelectedIds(new Set());
-      setBulkStatus("");
-    } catch (err) {
-      console.error("Failed to fetch active products", err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handlePageClick = (pageNumber: number) => {
-    if (pageNumber === page || pageNumber < 1 || pageNumber > totalPages) {
-      return;
-    }
-
-    setSelectedIds(new Set());
-    setPage(pageNumber);
-  };
-
   const {
     isUpdating,
     successMessage,
@@ -151,49 +79,30 @@ const ActiveProducts = () => {
     updateStatus,
     updateStatusBulk,
   } = useProductStatusUpdate({
-    onSuccess: fetchActiveProducts,
+    onSuccess: refetchProducts,
   });
-
-  useEffect(() => {
-    fetchActiveProducts();
-  }, []);
 
   useEffect(() => {
     const initialDraft: Record<string, LifecycleStatus> = {};
 
     products.forEach((product) => {
-      initialDraft[product.id] = product.status;
+      initialDraft[product.id] = product.status as LifecycleStatus;
     });
 
     setStatusDraft(initialDraft);
   }, [products]);
 
   useEffect(() => {
-    setPage(1);
-  }, [searchQuery]);
-
-  useEffect(() => {
-    if (page > totalPages) {
-      setPage(totalPages);
-    }
-  }, [page, totalPages]);
-
-  useEffect(() => {
-    const visibleIds = new Set(
-      filterProductsByQuery(products, searchQuery)
-        .slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
-        .map((product) => product.id)
-    );
-
-    setSelectedIds((prev) => {
-      const nextIds = Array.from(prev).filter((id) => visibleIds.has(id));
-
-      return nextIds.length === prev.size ? prev : new Set(nextIds);
-    });
-  }, [page, products, searchQuery]);
+    setSelectedIds(new Set());
+    setBulkStatus("");
+  }, [products]);
 
   if (loading) {
-    return <div>Loading active products...</div>;
+    return (
+      <div className="text-sm text-gray-500 dark:text-gray-400">
+        Loading active products...
+      </div>
+    );
   }
 
   return (
@@ -239,13 +148,21 @@ const ActiveProducts = () => {
           )}
         </div>
 
+        {isRefreshing && (
+          <p className="text-sm text-gray-500">
+            Loading page {page} of active products...
+          </p>
+        )}
+
+        {error ? <p className="text-sm text-red-600">{error}</p> : null}
+
         {searchQuery && (
           <p className="text-sm text-gray-500">
             {totalCount} matching product{totalCount === 1 ? "" : "s"} found.
           </p>
         )}
 
-        {filteredProducts.length === 0 ? (
+        {!error && products.length === 0 ? (
           <p className="text-sm text-gray-500">
             {searchQuery
               ? "No active products match your search."
@@ -283,7 +200,7 @@ const ActiveProducts = () => {
                 </TableHeader>
 
                 <TableBody className="divide-y divide-gray-100 dark:divide-white/[0.05]">
-                  {paginatedProducts.map((product) => (
+                  {products.map((product) => (
                     <TableRow key={product.id}>
                       <TableCell className="px-5 py-4">
                         <input
@@ -377,17 +294,21 @@ const ActiveProducts = () => {
           </div>
         )}
 
-        {filteredProducts.length > 0 && (
-          <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        {!error && products.length > 0 && (
+          <div
+            className={`mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between ${
+              isPageLoading ? "cursor-progress" : ""
+            }`}
+          >
             <span className="text-sm text-gray-500">
               {startItem}-{endItem} / {totalCount}
             </span>
 
             <div className="flex items-center gap-2">
               <button
-                disabled={page === 1}
+                disabled={page === 1 || isPageLoading}
                 onClick={() => handlePageClick(page - 1)}
-                className="rounded-md border px-3 py-1 text-sm disabled:opacity-50"
+                className="rounded-md border px-3 py-1 text-sm disabled:cursor-progress disabled:opacity-50"
               >
                 Previous
               </button>
@@ -397,8 +318,9 @@ const ActiveProducts = () => {
                 .map((pageNumber) => (
                   <button
                     key={pageNumber}
+                    disabled={isPageLoading}
                     onClick={() => handlePageClick(pageNumber)}
-                    className={`rounded-md px-3 py-1 text-sm ${
+                    className={`rounded-md px-3 py-1 text-sm disabled:cursor-progress disabled:opacity-50 ${
                       pageNumber === page ? "bg-blue-600 text-white" : "border"
                     }`}
                   >
@@ -411,9 +333,9 @@ const ActiveProducts = () => {
               )}
 
               <button
-                disabled={page === totalPages}
+                disabled={page === totalPages || isPageLoading}
                 onClick={() => handlePageClick(page + 1)}
-                className="rounded-md bg-blue-600 px-3 py-1 text-sm text-white disabled:opacity-50"
+                className="rounded-md bg-blue-600 px-3 py-1 text-sm text-white disabled:cursor-progress disabled:opacity-50"
               >
                 Next
               </button>
@@ -432,7 +354,7 @@ const ActiveProducts = () => {
         isOpen={selectedProductId !== null}
         productId={selectedProductId}
         onClose={() => setSelectedProductId(null)}
-        onUpdated={fetchActiveProducts}
+        onUpdated={refetchProducts}
       />
     </div>
   );

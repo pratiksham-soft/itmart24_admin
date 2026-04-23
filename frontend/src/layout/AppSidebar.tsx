@@ -3,6 +3,7 @@ import { Link, useLocation } from "react-router";
 
 // Assume these icons are imported from an icon library
 import {
+  AlertHexaIcon,
   BoxCubeIcon,
   CalenderIcon,
   ChatIcon,
@@ -56,6 +57,11 @@ const navItems: NavItem[] = [
     path: "/support",
   },
   {
+    icon: <AlertHexaIcon />,
+    name: "Notifications",
+    path: "/notifications",
+  },
+  {
   icon: <BoxCubeIcon />,
   name: "Products",
   subItems: [
@@ -87,10 +93,11 @@ const navItems: NavItem[] = [
   },
   {
   icon: <PlugInIcon />,
-  name: "Master",
+  name: "Masters",
    subItems: [
     { name: "Sync", path: "/master/sync" },
     { name: "Manage Plans", path: "/master/manage-plans" },
+    { name: "Monthly Target", path: "/master/monthly-target" },
     { name: "Product Category Master", path: "/master/product-category-master" },
   ],
   },

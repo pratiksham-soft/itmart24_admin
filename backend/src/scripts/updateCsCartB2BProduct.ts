@@ -6,6 +6,7 @@ import {
 } from "./lib/csCartB2BOverride";
 
 const PRODUCT_GID = (productId: number) => `gid://shopify/Product/${productId}`;
+const MULTILINE_SEPARATOR = "\r\n";
 
 const toSentence = (value: string) => {
   const normalized = value.trim().replace(/\s+/g, " ");
@@ -43,10 +44,14 @@ const buildBodyHtml = () => {
 };
 
 const buildProductFeatures = () =>
-  CS_CART_B2B_OVERRIDE.featureLines.map((line) => `- ${toSentence(line)}`).join("\n");
+  CS_CART_B2B_OVERRIDE.featureLines
+    .map((line) => `- ${toSentence(line)}`)
+    .join(MULTILINE_SEPARATOR);
 
 const buildPlansPricing = () =>
-  CS_CART_B2B_OVERRIDE.pricingLines.map((line) => `- ${toSentence(line)}`).join("\n");
+  CS_CART_B2B_OVERRIDE.pricingLines
+    .map((line) => `- ${toSentence(line)}`)
+    .join(MULTILINE_SEPARATOR);
 
 const buildProsCons = () =>
   [
@@ -56,7 +61,7 @@ const buildProsCons = () =>
     "- Con: Lower-tier plans cap products, revenue, vendors, and admin access.",
     "- Con: Cloud customization is more limited than a fully self-hosted marketplace stack.",
     "- Con: Buyers should compare annual and monthly plan differences, including mobile app availability.",
-  ].join("\n");
+  ].join(MULTILINE_SEPARATOR);
 
 const setCustomMetafields = async (productId: number) => {
   const metafields = [
@@ -161,4 +166,3 @@ main().catch((error) => {
   console.error("CS-Cart B2B update failed:", error);
   process.exitCode = 1;
 });
-

@@ -975,7 +975,11 @@ const ShopifyCollections = () => {
   };
 
   if (loading) {
-    return <div>Loading Shopify collections...</div>;
+    return (
+      <div className="text-sm text-gray-500 dark:text-gray-400">
+        Loading Shopify collections...
+      </div>
+    );
   }
 
   return (
@@ -1138,6 +1142,12 @@ const ShopifyCollections = () => {
           <div className="rounded-2xl border border-success-200 bg-success-50 px-4 py-3 text-sm text-success-700 dark:border-success-500/20 dark:bg-success-500/10 dark:text-success-300">
             {deleteSuccess}
           </div>
+        ) : null}
+
+        {isRefreshing ? (
+          <p className="text-sm text-gray-500">
+            Loading page {page} of Shopify collections...
+          </p>
         ) : null}
 
         {error ? (
