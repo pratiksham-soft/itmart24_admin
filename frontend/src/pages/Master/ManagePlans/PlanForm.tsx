@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { DragEvent, useEffect, useState } from "react";
 import axios from "axios";
-import { SubscriptionPlan } from "./types";
+import { PlanFeature, SubscriptionPlan } from "./types";
 
 type PlanFormProps = {
   plan: SubscriptionPlan | null;
@@ -16,15 +16,67 @@ const DEFAULT_PLAN: SubscriptionPlan = {
   isActive: true,
 };
 
+type FormFeature = PlanFeature & {
+  tempId: string;
+};
+
+type PlanFormState = Omit<SubscriptionPlan, "features"> & {
+  features: FormFeature[];
+};
+
+const createFeatureTempId = () =>
+  `feature_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+const mapFeaturesForForm = (features: PlanFeature[]): FormFeature[] =>
+  features.map((feature) => ({
+    ...feature,
+    tempId: createFeatureTempId(),
+  }));
+
+const createDefaultPlan = (): PlanFormState => ({
+  ...DEFAULT_PLAN,
+  features: [],
+});
+
+const mapPlanForForm = (plan: SubscriptionPlan): PlanFormState => ({
+  ...plan,
+  features: mapFeaturesForForm(plan.features ?? []),
+});
+
+const stripFeatureTempIds = (features: FormFeature[]): PlanFeature[] =>
+  features.map(({ tempId, ...feature }) => feature);
+
+const reorderFeatures = (
+  features: FormFeature[],
+  fromIndex: number,
+  toIndex: number
+) => {
+  if (
+    fromIndex < 0 ||
+    toIndex < 0 ||
+    fromIndex >= features.length ||
+    toIndex >= features.length ||
+    fromIndex === toIndex
+  ) {
+    return features;
+  }
+
+  const updated = [...features];
+  const [movedFeature] = updated.splice(fromIndex, 1);
+  updated.splice(toIndex, 0, movedFeature);
+  return updated;
+};
+
 const PlanForm = ({ plan, onClose, onSaved }: PlanFormProps) => {
-  const [form, setForm] = useState<SubscriptionPlan>(DEFAULT_PLAN);
+  const [form, setForm] = useState<PlanFormState>(createDefaultPlan);
   const [saving, setSaving] = useState(false);
+  const [draggedFeatureIndex, setDraggedFeatureIndex] = useState<number | null>(null);
 
   useEffect(() => {
     if (plan) {
-      setForm(plan);
+      setForm(mapPlanForForm(plan));
     } else {
-      setForm(DEFAULT_PLAN);
+      setForm(createDefaultPlan());
     }
   }, [plan]);
 
@@ -73,7 +125,7 @@ const PlanForm = ({ plan, onClose, onSaved }: PlanFormProps) => {
       ...prev,
       features: [
         ...prev.features,
-        { title: "", description: "" },
+        { title: "", description: "", tempId: createFeatureTempId() },
       ],
     }));
   };
@@ -93,6 +145,48 @@ const PlanForm = ({ plan, onClose, onSaved }: PlanFormProps) => {
       ...form,
       features: form.features.filter((_, i) => i !== index),
     });
+  };
+
+  const handleFeatureDragStart = (
+    event: DragEvent<HTMLButtonElement>,
+    index: number
+  ) => {
+    setDraggedFeatureIndex(index);
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", String(index));
+  };
+
+  const handleFeatureDragOver = (
+    event: DragEvent<HTMLDivElement>
+  ) => {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+  };
+
+  const handleFeatureDrop = (
+    event: DragEvent<HTMLDivElement>,
+    targetIndex: number
+  ) => {
+    event.preventDefault();
+
+    const sourceIndex =
+      draggedFeatureIndex ??
+      Number(event.dataTransfer.getData("text/plain"));
+
+    if (Number.isNaN(sourceIndex)) {
+      setDraggedFeatureIndex(null);
+      return;
+    }
+
+    setForm((prev) => ({
+      ...prev,
+      features: reorderFeatures(prev.features, sourceIndex, targetIndex),
+    }));
+    setDraggedFeatureIndex(null);
+  };
+
+  const handleFeatureDragEnd = () => {
+    setDraggedFeatureIndex(null);
   };
   /* =======================
      SAVE HANDLER
@@ -122,12 +216,14 @@ const PlanForm = ({ plan, onClose, onSaved }: PlanFormProps) => {
         .trim()
         .replace(/\s+/g, "-");
 
+      const sanitizedFeatures = stripFeatureTempIds(form.features).filter(
+        (f) => f.title.trim() !== ""
+      );
+
       const payload = {
         ...form,
         slug,
-        features: form.features.filter(
-          (f) => f.title.trim() !== ""
-        ),
+        features: sanitizedFeatures,
       };
 
       let savedPlan: SubscriptionPlan;
@@ -148,6 +244,11 @@ const PlanForm = ({ plan, onClose, onSaved }: PlanFormProps) => {
           slug,
         };
       }
+
+      savedPlan = {
+        ...savedPlan,
+        features: sanitizedFeatures,
+      };
 
       onSaved(savedPlan);
     } catch (error) {
@@ -289,13 +390,40 @@ const PlanForm = ({ plan, onClose, onSaved }: PlanFormProps) => {
           <div className="space-y-3">
             {form.features.map((feature, index) => (
               <div
-                key={index}
-                className="border rounded p-3 space-y-2"
+                key={feature.tempId}
+                className={`border rounded p-3 space-y-2 ${
+                  draggedFeatureIndex === index ? "opacity-60" : ""
+                }`}
+                onDragOver={handleFeatureDragOver}
+                onDrop={(event) => handleFeatureDrop(event, index)}
               >
                 <div className="flex justify-between items-center">
-                  <p className="text-sm font-semibold">
-                    Feature {index + 1}
-                  </p>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      draggable
+                      onDragStart={(event) =>
+                        handleFeatureDragStart(event, index)
+                      }
+                      onDragEnd={handleFeatureDragEnd}
+                      className="cursor-grab text-gray-400 hover:text-gray-600 active:cursor-grabbing"
+                      aria-label={`Drag feature ${index + 1}`}
+                      title="Drag to reorder"
+                    >
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 20 20"
+                        fill="currentColor"
+                        className="h-5 w-5"
+                        aria-hidden="true"
+                      >
+                        <path d="M7 4a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0ZM7 10a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0ZM7 16a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0ZM16 4a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0ZM16 10a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0ZM16 16a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Z" />
+                      </svg>
+                    </button>
+                    <p className="text-sm font-semibold">
+                      Feature {index + 1}
+                    </p>
+                  </div>
                   <button
                     type="button"
                     onClick={() => removeFeature(index)}

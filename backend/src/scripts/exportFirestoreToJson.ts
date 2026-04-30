@@ -19,7 +19,7 @@ import {
  * Default Firestore collection name.
  * Override with a CLI argument or FIRESTORE_COLLECTION env variable.
  */
-const DEFAULT_COLLECTION_NAME = "ai_insight_snapshots";
+const DEFAULT_COLLECTION_NAME = "product_categories";
 const ALL_COLLECTIONS_TOKENS = new Set([
     "all",
     "--all",

@@ -1,4 +1,5 @@
 import "../config/env";
+import { firestore } from "../config/firebaseAdmin";
 import { shopifyGraphQL } from "../services/shopifyHttp";
 
 type GraphQlError = {
@@ -17,6 +18,58 @@ type PageSpec = {
   legacyId?: string;
   menuHandle?: string;
   menuTitles?: string[];
+};
+
+type RawPlanPeriod = {
+  id?: string;
+  label?: string;
+  durationInMonths?: number;
+  durationInDays?: number;
+  price?: number;
+};
+
+type RawPlanFeature =
+  | string
+  | {
+      title?: string;
+      description?: string;
+    };
+
+type RawSubscriptionPlan = {
+  id?: string;
+  name?: string;
+  slug?: string;
+  sortOrder?: number;
+  isActive?: boolean;
+  periods?: RawPlanPeriod[];
+  features?: RawPlanFeature[];
+};
+
+type VendorPagePeriod = {
+  id: string;
+  key: string;
+  label: string;
+  price: number;
+  termLabel: string;
+};
+
+type VendorPageFeature = {
+  title: string;
+  description: string;
+};
+
+type VendorPagePlan = {
+  id: string;
+  name: string;
+  slug: string;
+  sortOrder: number;
+  kicker: string;
+  badge: string | null;
+  badgeVariant: "popular" | "premium" | null;
+  summary: string;
+  ctaLabel: string;
+  periods: VendorPagePeriod[];
+  features: VendorPageFeature[];
 };
 
 type PageRecord = {
@@ -41,6 +94,1109 @@ type MenuNode = {
   title: string;
   items: MenuItemNode[];
 };
+
+const VENDOR_PAGE_ID = "124057551087";
+const VENDOR_PORTAL_URL = "https://vendor.itmart24.com";
+
+const PLAN_PRESENTATION: Record<
+  string,
+  Pick<VendorPagePlan, "kicker" | "badge" | "badgeVariant" | "summary" | "ctaLabel">
+> = {
+  free: {
+    kicker: "For First Listings",
+    badge: "Free Access",
+    badgeVariant: null,
+    summary:
+      "Launch a clean marketplace presence with the essentials buyers expect when they first discover your product.",
+    ctaLabel: "Start Free",
+  },
+  starter: {
+    kicker: "For Early Traction",
+    badge: "Starter",
+    badgeVariant: null,
+    summary:
+      "Add visibility signals and lightweight analytics so you can learn what attracts attention and clicks.",
+    ctaLabel: "Get Started",
+  },
+  business: {
+    kicker: "For Growing Vendors",
+    badge: "Most Popular",
+    badgeVariant: "popular",
+    summary:
+      "Strengthen buyer trust with badges, branded presence, richer placement, and clearer product comparison visibility.",
+    ctaLabel: "Get Started",
+  },
+  enterprise: {
+    kicker: "For Maximum Reach",
+    badge: "Enterprise",
+    badgeVariant: "premium",
+    summary:
+      "Unlock premium exposure, AI-ready discovery surfaces, deeper analytics, and higher-priority support for larger growth goals.",
+    ctaLabel: "Get Started",
+  },
+};
+
+const escapeHtml = (value: string) =>
+  value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+
+const slugifyToken = (value: string) =>
+  value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "period";
+
+const normalizePlanFeature = (
+  feature: RawPlanFeature,
+  index: number
+): VendorPageFeature => {
+  if (typeof feature === "string") {
+    const title = feature.trim();
+    return {
+      title: title || `Feature ${index + 1}`,
+      description: "",
+    };
+  }
+
+  const title = feature?.title?.trim() || `Feature ${index + 1}`;
+  const description = feature?.description?.trim() || "";
+
+  return { title, description };
+};
+
+const getPeriodSortRank = (period: RawPlanPeriod) => {
+  const label = period.label?.trim().toLowerCase() ?? "";
+
+  if (label.includes("month")) {
+    return 1;
+  }
+
+  if (label.includes("quarter")) {
+    return 2;
+  }
+
+  if (label.includes("year") || label.includes("annual")) {
+    return 3;
+  }
+
+  const durationInMonths =
+    typeof period.durationInMonths === "number" ? period.durationInMonths : 0;
+
+  if (durationInMonths > 0) {
+    return durationInMonths;
+  }
+
+  return 99;
+};
+
+const getTermLabel = (label: string) => {
+  const normalized = label.trim().toLowerCase();
+
+  if (normalized.includes("month")) {
+    return "/ month";
+  }
+
+  if (normalized.includes("quarter")) {
+    return "/ quarter";
+  }
+
+  if (normalized.includes("year") || normalized.includes("annual")) {
+    return "/ year";
+  }
+
+  return "/ term";
+};
+
+const formatPrice = (price: number) => {
+  if (price === 0) {
+    return "Free";
+  }
+
+  return `$${price.toLocaleString("en-US", {
+    minimumFractionDigits: Number.isInteger(price) ? 0 : 2,
+    maximumFractionDigits: 2,
+  })}`;
+};
+
+const normalizeVendorPagePlan = (
+  plan: RawSubscriptionPlan,
+  index: number
+): VendorPagePlan | null => {
+  const name = plan.name?.trim() || "";
+  const slug = plan.slug?.trim() || plan.id?.trim() || slugifyToken(name);
+
+  if (!name || !slug || plan.isActive === false) {
+    return null;
+  }
+
+  const rawPeriods = Array.isArray(plan.periods) ? plan.periods : [];
+  const periods = rawPeriods
+    .filter(
+      (period): period is RawPlanPeriod =>
+        Boolean(period && typeof period.price === "number")
+    )
+    .sort((left, right) => getPeriodSortRank(left) - getPeriodSortRank(right))
+    .map((period, periodIndex) => {
+      const label = period.label?.trim() || `Option ${periodIndex + 1}`;
+      const normalizedLabel = label.toLowerCase();
+      const key = normalizedLabel.includes("month")
+        ? "monthly"
+        : normalizedLabel.includes("year") || normalizedLabel.includes("annual")
+          ? "yearly"
+          : normalizedLabel.includes("quarter")
+            ? "quarterly"
+            : `option-${periodIndex + 1}`;
+
+      return {
+        id: period.id?.trim() || `${slug}-period-${periodIndex + 1}`,
+        key,
+        label,
+        price: typeof period.price === "number" ? period.price : 0,
+        termLabel: getTermLabel(label),
+      };
+    });
+
+  const features = (Array.isArray(plan.features) ? plan.features : [])
+    .map(normalizePlanFeature)
+    .filter((feature) => feature.title);
+
+  if (periods.length === 0) {
+    return null;
+  }
+
+  const presentation =
+    PLAN_PRESENTATION[slug] ?? {
+      kicker: "For Marketplace Growth",
+      badge: null,
+      badgeVariant: null,
+      summary:
+        "Choose the feature set that best fits how much visibility, trust, and buyer engagement you want to unlock.",
+      ctaLabel: `Choose ${name}`,
+    };
+
+  return {
+    id: plan.id?.trim() || slug,
+    name,
+    slug,
+    sortOrder:
+      typeof plan.sortOrder === "number" ? plan.sortOrder : index + 1,
+    kicker: presentation.kicker,
+    badge: presentation.badge,
+    badgeVariant: presentation.badgeVariant,
+    summary: presentation.summary,
+    ctaLabel: presentation.ctaLabel,
+    periods,
+    features,
+  };
+};
+
+const renderFeatureItem = (feature: VendorPageFeature) => {
+  const title = escapeHtml(feature.title);
+  const description = escapeHtml(feature.description);
+
+  if (!description) {
+    return `<li><strong>${title}</strong></li>`;
+  }
+
+  return `<li><strong>${title}</strong><span>${description}</span></li>`;
+};
+
+const renderPlanPeriodSelector = (plan: VendorPagePlan) => {
+  if (plan.periods.length <= 1) {
+    return "";
+  }
+
+  return `
+    <div class="vendor-pricing-page__toggle" data-toggle-for="${escapeHtml(plan.slug)}-pricing">
+      ${plan.periods
+        .map(
+          (period, index) => `
+            <button
+              type="button"
+              ${index === 0 ? 'class="is-active"' : ""}
+              data-mode-btn="${escapeHtml(period.key)}"
+            >
+              ${escapeHtml(period.label)}
+            </button>
+          `
+        )
+        .join("")}
+    </div>
+  `.trim();
+};
+
+const renderPlanPricing = (plan: VendorPagePlan) => {
+  return `
+    <div
+      class="vendor-pricing-page__pricing"
+      id="${escapeHtml(plan.slug)}-pricing"
+    >
+      ${plan.periods
+        .map(
+          (period, index) => `
+            <div
+              class="vendor-pricing-page__price-panel ${index === 0 ? "is-active" : ""}"
+              data-price-mode="${escapeHtml(period.key)}"
+            >
+              <span class="vendor-pricing-page__price-label">${escapeHtml(period.label)} billing</span>
+              <div class="vendor-pricing-page__price-row">
+                <span class="vendor-pricing-page__main-price">${escapeHtml(
+                  formatPrice(period.price)
+                )}</span>
+                <span class="vendor-pricing-page__price-term">${escapeHtml(period.termLabel)}</span>
+              </div>
+            </div>
+          `
+        )
+        .join("")}
+    </div>
+  `.trim();
+};
+
+const renderPlanCard = (plan: VendorPagePlan) => {
+  const planClasses = [
+    "vendor-pricing-page__plan",
+    plan.badgeVariant ? `vendor-pricing-page__plan--${plan.badgeVariant}` : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  const badgeClass = [
+    "vendor-pricing-page__plan-badge",
+    plan.badgeVariant
+      ? `vendor-pricing-page__plan-badge--${plan.badgeVariant}`
+      : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  const shouldCollapseFeatures = plan.features.length > 6;
+  const featuresClass = [
+    "vendor-pricing-page__features",
+    shouldCollapseFeatures
+      ? "vendor-pricing-page__features--collapsible"
+      : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  return `
+    <article class="${planClasses}">
+      <div class="vendor-pricing-page__plan-top">
+        <div>
+          <span class="vendor-pricing-page__plan-kicker">${escapeHtml(plan.kicker)}</span>
+        </div>
+        ${
+          plan.badge
+            ? `<span class="${badgeClass}">${escapeHtml(plan.badge)}</span>`
+            : ""
+        }
+      </div>
+
+      <h3>${escapeHtml(plan.name)} Plan</h3>
+      <p class="vendor-pricing-page__plan-copy">${escapeHtml(plan.summary)}</p>
+
+      ${renderPlanPeriodSelector(plan)}
+      ${renderPlanPricing(plan)}
+
+      <ul class="${featuresClass}" ${
+        shouldCollapseFeatures ? "data-collapsible-list" : ""
+      }>
+        ${plan.features.map(renderFeatureItem).join("")}
+      </ul>
+
+      ${
+        shouldCollapseFeatures
+          ? '<button class="vendor-pricing-page__more" type="button" data-collapsible-toggle>View all features</button>'
+          : ""
+      }
+
+      <div class="vendor-pricing-page__cta">
+        <a
+          class="vendor-pricing-page__button ${
+            plan.badgeVariant === "popular"
+              ? "vendor-pricing-page__button--primary"
+              : "vendor-pricing-page__button--secondary"
+          }"
+          href="${VENDOR_PORTAL_URL}"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          ${escapeHtml(plan.ctaLabel)}
+        </a>
+      </div>
+    </article>
+  `.trim();
+};
+
+const buildVendorPageHtml = (plans: VendorPagePlan[]) => `
+  <style>
+    .main-page-title.page-title {
+      display: none !important;
+    }
+
+    .page-width.page-width--narrow.section-template--21833919725807__main-padding {
+      max-width: min(1280px, 100%) !important;
+      padding-left: 2rem !important;
+      padding-right: 2rem !important;
+    }
+
+    .page-width.page-width--narrow.section-template--21833919725807__main-padding > .rte {
+      max-width: none !important;
+      margin: 0 !important;
+    }
+
+    .vendor-pricing-page {
+      --vp-accent: #5b8cff;
+      --vp-accent-strong: #3f72ff;
+      --vp-accent-soft: rgba(91, 140, 255, 0.14);
+      --vp-fg-rgb: var(--color-foreground);
+      --vp-text: rgb(var(--vp-fg-rgb));
+      --vp-muted: rgba(var(--vp-fg-rgb), 0.74);
+      --vp-soft-text: rgba(var(--vp-fg-rgb), 0.62);
+      --vp-surface: rgba(var(--vp-fg-rgb), 0.035);
+      --vp-surface-strong: rgba(var(--vp-fg-rgb), 0.06);
+      --vp-border: rgba(var(--vp-fg-rgb), 0.08);
+      --vp-border-strong: rgba(91, 140, 255, 0.34);
+      color: var(--vp-text);
+      padding: 2.5rem 0 5rem;
+    }
+
+    .vendor-pricing-page * {
+      box-sizing: border-box;
+    }
+
+    .vendor-pricing-page a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    .vendor-pricing-page__shell {
+      width: 100%;
+      margin: 0 auto;
+    }
+
+    .vendor-pricing-page__hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1.25fr) minmax(280px, 0.9fr);
+      gap: 2.25rem;
+      align-items: start;
+      padding: 0 0 3rem;
+      border-bottom: 1px solid var(--vp-border);
+    }
+
+    .vendor-pricing-page__eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+      color: var(--vp-muted);
+      font-size: 0.88rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .vendor-pricing-page__eyebrow-dot {
+      width: 0.6rem;
+      height: 0.6rem;
+      border-radius: 999px;
+      background: linear-gradient(135deg, var(--vp-accent), #89a8ff);
+      box-shadow: 0 0 0 0.35rem rgba(91, 140, 255, 0.14);
+    }
+
+    .vendor-pricing-page__hero h1,
+    .vendor-pricing-page__section-head h2,
+    .vendor-pricing-page__side-title,
+    .vendor-pricing-page__plan h3 {
+      color: var(--vp-text);
+    }
+
+    .vendor-pricing-page__hero h1 {
+      margin: 0 0 1rem;
+      max-width: 14ch;
+      font-size: clamp(3.25rem, 5.8vw, 5rem);
+      line-height: 0.98;
+      letter-spacing: 0;
+    }
+
+    .vendor-pricing-page__hero p,
+    .vendor-pricing-page__side-copy,
+    .vendor-pricing-page__plan-copy,
+    .vendor-pricing-page__section-head p,
+    .vendor-pricing-page__policy-card p,
+    .vendor-pricing-page__features li span {
+      color: var(--vp-muted);
+    }
+
+    .vendor-pricing-page__hero p {
+      margin: 0;
+      max-width: 48rem;
+      font-size: 1.12rem;
+      line-height: 1.8;
+    }
+
+    .vendor-pricing-page__hero-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+      margin-top: 1.75rem;
+    }
+
+    .vendor-pricing-page__button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 3.25rem;
+      padding: 0 1.5rem;
+      border-radius: 0.95rem;
+      font-size: 1rem;
+      font-weight: 700;
+      border: 1px solid transparent;
+      transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+    }
+
+    .vendor-pricing-page__button:hover {
+      transform: translateY(-1px);
+    }
+
+    .vendor-pricing-page__button--primary {
+      color: #ffffff !important;
+      background: linear-gradient(135deg, var(--vp-accent-strong), var(--vp-accent));
+      box-shadow: 0 14px 30px rgba(63, 114, 255, 0.28);
+    }
+
+    .vendor-pricing-page__button--secondary {
+      color: var(--vp-text) !important;
+      border-color: rgba(var(--vp-fg-rgb), 0.14);
+      background: rgba(var(--vp-fg-rgb), 0.045);
+    }
+
+    .vendor-pricing-page__proofs,
+    .vendor-pricing-page__policy-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 1rem;
+    }
+
+    .vendor-pricing-page__proof,
+    .vendor-pricing-page__hero-side,
+    .vendor-pricing-page__plan,
+    .vendor-pricing-page__policy-card {
+      border: 1px solid var(--vp-border);
+      background: linear-gradient(180deg, rgba(var(--vp-fg-rgb), 0.04), rgba(var(--vp-fg-rgb), 0.02));
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.18);
+      backdrop-filter: blur(14px);
+    }
+
+    .vendor-pricing-page__proof {
+      padding: 1.15rem 1.2rem;
+      border-radius: 1.1rem;
+      margin-top: 1.8rem;
+    }
+
+    .vendor-pricing-page__proof-label,
+    .vendor-pricing-page__side-label,
+    .vendor-pricing-page__price-label {
+      display: block;
+      margin-bottom: 0.4rem;
+      color: var(--vp-soft-text);
+      font-size: 0.82rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    .vendor-pricing-page__proof strong {
+      display: block;
+      margin-bottom: 0.35rem;
+      font-size: 1.18rem;
+    }
+
+    .vendor-pricing-page__proof span {
+      font-size: 1rem;
+      line-height: 1.6;
+      color: var(--vp-muted);
+    }
+
+    .vendor-pricing-page__hero-side {
+      border-radius: 1.4rem;
+      padding: 1.75rem;
+    }
+
+    .vendor-pricing-page__side-title {
+      margin: 0 0 0.75rem;
+      font-size: 2.1rem;
+      line-height: 1.15;
+    }
+
+    .vendor-pricing-page__side-copy {
+      margin: 0;
+      font-size: 1.03rem;
+      line-height: 1.8;
+    }
+
+    .vendor-pricing-page__side-list {
+      display: grid;
+      gap: 1rem;
+      margin-top: 1.4rem;
+    }
+
+    .vendor-pricing-page__side-item {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 0.9rem;
+      align-items: start;
+    }
+
+    .vendor-pricing-page__side-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 2.2rem;
+      height: 2.2rem;
+      border-radius: 999px;
+      font-size: 0.88rem;
+      font-weight: 700;
+      color: #ffffff;
+      background: linear-gradient(135deg, var(--vp-accent-strong), var(--vp-accent));
+    }
+
+    .vendor-pricing-page__side-item strong {
+      display: block;
+      margin-bottom: 0.25rem;
+      font-size: 1.08rem;
+    }
+
+    .vendor-pricing-page__side-item span {
+      font-size: 0.98rem;
+      line-height: 1.6;
+      color: var(--vp-muted);
+    }
+
+    .vendor-pricing-page__plans,
+    .vendor-pricing-page__policy {
+      padding-top: 3rem;
+    }
+
+    .vendor-pricing-page__section-head {
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 1rem;
+      margin-bottom: 1.85rem;
+    }
+
+    .vendor-pricing-page__section-head h2 {
+      margin: 0;
+      font-size: 2.45rem;
+      line-height: 1.1;
+    }
+
+    .vendor-pricing-page__section-head p {
+      margin: 0;
+      max-width: 44rem;
+      font-size: 1.08rem;
+      line-height: 1.7;
+    }
+
+    .vendor-pricing-page__grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 1.25rem;
+    }
+
+    .vendor-pricing-page__plan {
+      display: flex;
+      flex-direction: column;
+      min-height: 100%;
+      padding: 1.75rem;
+      border-radius: 1.35rem;
+    }
+
+    .vendor-pricing-page__plan--popular,
+    .vendor-pricing-page__plan--premium {
+      border-color: var(--vp-border-strong);
+      box-shadow: 0 24px 54px rgba(0, 0, 0, 0.24);
+    }
+
+    .vendor-pricing-page__plan-top {
+      display: flex;
+      align-items: start;
+      justify-content: space-between;
+      gap: 0.75rem;
+      margin-bottom: 1rem;
+    }
+
+    .vendor-pricing-page__plan-kicker,
+    .vendor-pricing-page__plan-badge,
+    .vendor-pricing-page__meta-pill {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 999px;
+      font-size: 0.82rem;
+      font-weight: 700;
+    }
+
+    .vendor-pricing-page__plan-kicker {
+      padding: 0.45rem 0.78rem;
+      color: var(--vp-muted);
+      background: rgba(var(--vp-fg-rgb), 0.06);
+    }
+
+    .vendor-pricing-page__plan-badge {
+      padding: 0.45rem 0.78rem;
+      color: var(--vp-text);
+      background: rgba(var(--vp-fg-rgb), 0.08);
+    }
+
+    .vendor-pricing-page__plan-badge--popular,
+    .vendor-pricing-page__meta-pill--popular {
+      color: #ffffff;
+      background: linear-gradient(135deg, var(--vp-accent-strong), var(--vp-accent));
+    }
+
+    .vendor-pricing-page__plan-badge--premium {
+      color: var(--vp-text);
+      background: rgba(91, 140, 255, 0.14);
+      border: 1px solid rgba(91, 140, 255, 0.32);
+    }
+
+    .vendor-pricing-page__plan h3 {
+      margin: 0 0 0.6rem;
+      font-size: 2rem;
+      line-height: 1.1;
+    }
+
+    .vendor-pricing-page__plan-copy {
+      margin: 0 0 1rem;
+      font-size: 1.18rem;
+      line-height: 1.65;
+      min-height: 7.5rem;
+    }
+
+    .vendor-pricing-page__toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      width: fit-content;
+      padding: 0.35rem;
+      margin-bottom: 1.15rem;
+      border-radius: 999px;
+      background: rgba(var(--vp-fg-rgb), 0.06);
+      border: 1px solid rgba(var(--vp-fg-rgb), 0.08);
+    }
+
+    .vendor-pricing-page__toggle button {
+      min-width: 6rem;
+      min-height: 2.45rem;
+      padding: 0 1rem;
+      border: 0;
+      border-radius: 999px;
+      background: transparent;
+      color: var(--vp-muted);
+      font: inherit;
+      font-size: 0.92rem;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .vendor-pricing-page__toggle button.is-active {
+      color: #ffffff;
+      background: linear-gradient(135deg, var(--vp-accent-strong), var(--vp-accent));
+      box-shadow: 0 8px 20px rgba(63, 114, 255, 0.3);
+    }
+
+    .vendor-pricing-page__price-panel {
+      display: none;
+    }
+
+    .vendor-pricing-page__price-panel.is-active {
+      display: block;
+    }
+
+    .vendor-pricing-page__price-row {
+      display: flex;
+      align-items: baseline;
+      gap: 0.4rem;
+      margin-bottom: 1rem;
+    }
+
+    .vendor-pricing-page__main-price {
+      font-size: 2.4rem;
+      font-weight: 700;
+      line-height: 1;
+      color: var(--vp-text);
+    }
+
+    .vendor-pricing-page__price-term {
+      font-size: 1rem;
+      color: var(--vp-muted);
+    }
+
+    .vendor-pricing-page__features {
+      list-style: none;
+      display: grid;
+      gap: 0.9rem;
+      padding: 0;
+      margin: 0;
+    }
+
+    .vendor-pricing-page__features--collapsible {
+      max-height: 20rem;
+      overflow: hidden;
+      transition: max-height 0.24s ease;
+    }
+
+    .vendor-pricing-page__features--expanded {
+      max-height: 80rem;
+    }
+
+    .vendor-pricing-page__features li {
+      position: relative;
+      padding-left: 1.7rem;
+      font-size: 1rem;
+      line-height: 1.7;
+      color: var(--vp-text);
+    }
+
+    .vendor-pricing-page__features li::before {
+      content: "";
+      position: absolute;
+      top: 0.52rem;
+      left: 0;
+      width: 0.65rem;
+      height: 0.65rem;
+      border-radius: 999px;
+      background: linear-gradient(135deg, var(--vp-accent-strong), var(--vp-accent));
+    }
+
+    .vendor-pricing-page__features li strong {
+      display: block;
+      margin-bottom: 0.2rem;
+      font-weight: 700;
+      color: var(--vp-text);
+    }
+
+    .vendor-pricing-page__features li span {
+      display: block;
+    }
+
+    .vendor-pricing-page__more {
+      margin-top: 1rem;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: #9db8ff;
+      font: inherit;
+      font-size: 0.96rem;
+      font-weight: 700;
+      cursor: pointer;
+      text-align: left;
+    }
+
+    .vendor-pricing-page__cta {
+      margin-top: auto;
+      padding-top: 1.25rem;
+    }
+
+    .vendor-pricing-page__cta .vendor-pricing-page__button {
+      width: 100%;
+    }
+
+    .vendor-pricing-page__policy-card {
+      padding: 1.35rem;
+      border-radius: 1.1rem;
+    }
+
+    .vendor-pricing-page__policy-card strong {
+      display: block;
+      margin-bottom: 0.45rem;
+      font-size: 1.05rem;
+    }
+
+    .vendor-pricing-page__policy-card p {
+      margin: 0;
+      font-size: 0.98rem;
+      line-height: 1.65;
+    }
+
+    @media screen and (max-width: 1100px) {
+      .vendor-pricing-page__hero,
+      .vendor-pricing-page__policy-grid {
+        grid-template-columns: 1fr 1fr;
+      }
+
+      .vendor-pricing-page__grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media screen and (max-width: 749px) {
+      .page-width.page-width--narrow.section-template--21833919725807__main-padding {
+        padding-left: 1.25rem !important;
+        padding-right: 1.25rem !important;
+      }
+
+      .vendor-pricing-page {
+        padding: 1rem 0 3rem;
+      }
+
+      .vendor-pricing-page__hero,
+      .vendor-pricing-page__policy-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .vendor-pricing-page__grid {
+        grid-template-columns: 1fr;
+      }
+
+      .vendor-pricing-page__hero h1 {
+        font-size: clamp(2.5rem, 11vw, 3.4rem);
+      }
+
+      .vendor-pricing-page__plan-copy {
+        min-height: auto;
+      }
+
+      .vendor-pricing-page__hero-actions {
+        flex-direction: column;
+      }
+
+      .vendor-pricing-page__button {
+        width: 100%;
+      }
+
+      .vendor-pricing-page__section-head {
+        flex-direction: column;
+        align-items: start;
+      }
+
+      .vendor-pricing-page__proofs {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+
+  <div class="vendor-pricing-page" data-page-id="${VENDOR_PAGE_ID}">
+    <div class="vendor-pricing-page__shell">
+      <section class="vendor-pricing-page__hero">
+        <div class="vendor-pricing-page__hero-main">
+          <span class="vendor-pricing-page__eyebrow">
+            <span class="vendor-pricing-page__eyebrow-dot"></span>
+            Vendor Plans
+          </span>
+          <h1>Choose the vendor plan that fits your marketplace growth.</h1>
+          <p>
+            Publish with the right mix of visibility, trust signals, and analytics so buyers can evaluate your products with more confidence and less friction.
+          </p>
+
+          <div class="vendor-pricing-page__hero-actions">
+            <a
+              class="vendor-pricing-page__button vendor-pricing-page__button--primary"
+              href="${VENDOR_PORTAL_URL}"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Join as Vendor
+            </a>
+            <a
+              class="vendor-pricing-page__button vendor-pricing-page__button--secondary"
+              href="${VENDOR_PORTAL_URL}"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Sign In
+            </a>
+          </div>
+
+          <div class="vendor-pricing-page__proofs">
+            <div class="vendor-pricing-page__proof">
+              <span class="vendor-pricing-page__proof-label">Built For Conversion</span>
+              <strong>Premium vendor presence</strong>
+              <span>Position your products with stronger visibility, clearer proof points, and a more polished buyer experience.</span>
+            </div>
+            <div class="vendor-pricing-page__proof">
+              <span class="vendor-pricing-page__proof-label">Trust Signals</span>
+              <strong>Earn buyer confidence faster</strong>
+              <span>Verification, branded presentation, and stronger support positioning help reduce hesitation during evaluation.</span>
+            </div>
+            <div class="vendor-pricing-page__proof">
+              <span class="vendor-pricing-page__proof-label">Growth Ready</span>
+              <strong>Scale your marketplace reach</strong>
+              <span>Unlock richer placement, analytics, and visibility upgrades as your product portfolio and demand grow.</span>
+            </div>
+          </div>
+        </div>
+
+        <aside class="vendor-pricing-page__hero-side">
+          <div>
+            <p class="vendor-pricing-page__side-label">What paid plans unlock</p>
+            <h2 class="vendor-pricing-page__side-title">Stronger visibility, trust signals, and decision support.</h2>
+            <p class="vendor-pricing-page__side-copy">
+              Move from a basic listing toward richer placement, higher buyer confidence, and better insight into how your products perform across ITMart24.
+            </p>
+          </div>
+
+          <div class="vendor-pricing-page__side-list">
+            <div class="vendor-pricing-page__side-item">
+              <span class="vendor-pricing-page__side-icon">01</span>
+              <div>
+                <strong>Trust and verification</strong>
+                <span>Highlight verified ownership, support expectations, refund clarity, and other signals that reduce buyer hesitation.</span>
+              </div>
+            </div>
+            <div class="vendor-pricing-page__side-item">
+              <span class="vendor-pricing-page__side-icon">02</span>
+              <div>
+                <strong>Better placement</strong>
+                <span>Unlock stronger comparison visibility, premium impressions, featured opportunities, and broader discovery surfaces.</span>
+              </div>
+            </div>
+            <div class="vendor-pricing-page__side-item">
+              <span class="vendor-pricing-page__side-icon">03</span>
+              <div>
+                <strong>Performance insight</strong>
+                <span>Track profile interest, product engagement, and higher-value lead signals as your visibility grows.</span>
+              </div>
+            </div>
+          </div>
+        </aside>
+      </section>
+
+      <section class="vendor-pricing-page__plans">
+        <div class="vendor-pricing-page__section-head">
+          <div>
+            <h2>Plans & Pricing</h2>
+            <p>
+              Pick the plan that matches your current growth stage and the level of visibility you want across ITMart24.
+            </p>
+          </div>
+        </div>
+
+        <div class="vendor-pricing-page__grid">
+          ${plans.map(renderPlanCard).join("")}
+        </div>
+      </section>
+
+      <section class="vendor-pricing-page__policy">
+        <div class="vendor-pricing-page__section-head">
+          <div>
+            <h2>Which plan fits best?</h2>
+            <p>
+              A quick guide to choosing the plan depth that matches your current marketplace goals.
+            </p>
+          </div>
+        </div>
+
+        <div class="vendor-pricing-page__policy-grid">
+          ${plans
+            .map(
+              (plan) => `
+                <div class="vendor-pricing-page__policy-card">
+                  <strong>${escapeHtml(plan.name)} Plan</strong>
+                  <p>${escapeHtml(plan.summary)}</p>
+                </div>
+              `
+            )
+            .join("")}
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      var root = document.querySelector('.vendor-pricing-page[data-page-id="${VENDOR_PAGE_ID}"]');
+
+      if (!root) {
+        return;
+      }
+
+      root.querySelectorAll('[data-collapsible-toggle]').forEach(function (button) {
+        button.addEventListener('click', function () {
+          var list = button.previousElementSibling;
+
+          if (!list || !list.classList.contains('vendor-pricing-page__features')) {
+            return;
+          }
+
+          var expanded = list.classList.toggle('vendor-pricing-page__features--expanded');
+          button.textContent = expanded ? 'Hide features' : 'View all features';
+        });
+      });
+
+      root.querySelectorAll('.vendor-pricing-page__toggle').forEach(function (toggle) {
+        var targetId = toggle.getAttribute('data-toggle-for');
+        var pricingBox = targetId ? root.querySelector('#' + targetId) : null;
+        var buttons = toggle.querySelectorAll('[data-mode-btn]');
+
+        if (!pricingBox || !buttons.length) {
+          return;
+        }
+
+        buttons.forEach(function (button) {
+          button.addEventListener('click', function () {
+            var mode = button.getAttribute('data-mode-btn');
+
+            if (!mode) {
+              return;
+            }
+
+            buttons.forEach(function (candidate) {
+              candidate.classList.toggle('is-active', candidate === button);
+            });
+
+            pricingBox.querySelectorAll('[data-price-mode]').forEach(function (panel) {
+              panel.classList.toggle('is-active', panel.getAttribute('data-price-mode') === mode);
+            });
+          });
+        });
+      });
+    })();
+  </script>
+`.trim();
+
+const loadVendorPageSpec = async (): Promise<PageSpec> => {
+  const snapshot = await firestore
+    .collection("subscription_plans")
+    .get();
+
+  const plans = snapshot.docs
+    .map((doc, index) =>
+      normalizeVendorPagePlan(
+        {
+          id: doc.id,
+          ...(doc.data() as RawSubscriptionPlan),
+        },
+        index
+      )
+    )
+    .filter((plan): plan is VendorPagePlan => Boolean(plan))
+    .sort((left, right) => left.sortOrder - right.sortOrder);
+
+  if (plans.length === 0) {
+    throw new Error("No active subscription plans found for vendor page.");
+  }
+
+  return {
+    legacyId: VENDOR_PAGE_ID,
+    title: "Vendor",
+    handle: "vendor",
+    bodyHtml: buildVendorPageHtml(plans),
+  };
+};
+
+const loadPageSpecs = async () => [
+  ...STATIC_PAGE_SPECS,
+  await loadVendorPageSpec(),
+];
 
 const MENU_ITEM_FIELDS = `
   id
@@ -75,7 +1231,7 @@ const MENU_ITEM_FIELDS = `
   }
 `;
 
-const PAGE_SPECS: PageSpec[] = [
+const STATIC_PAGE_SPECS: PageSpec[] = [
   {
     legacyId: "131222503663",
     title: "Terms & Conditions",
@@ -489,8 +1645,8 @@ const graphqlRequest = async <TData>(
   return response.data.data as TData;
 };
 
-const loadExistingPages = async () => {
-  const handlesQuery = PAGE_SPECS.map((page) => `handle:${page.handle}`)
+const loadExistingPages = async (pageSpecs: PageSpec[]) => {
+  const handlesQuery = pageSpecs.map((page) => `handle:${page.handle}`)
     .join(" OR ");
 
   const data = await graphqlRequest<{
@@ -510,7 +1666,7 @@ const loadExistingPages = async () => {
       }
     `,
     {
-      first: PAGE_SPECS.length + 10,
+      first: pageSpecs.length + 10,
       query: handlesQuery,
     }
   );
@@ -679,10 +1835,11 @@ const buildMenuItemInput = (item: MenuItemNode): Record<string, unknown> => {
 const updateMenuItems = (
   items: MenuItemNode[],
   menuHandle: string,
-  pageLookup: Map<string, PageRecord>
+  pageLookup: Map<string, PageRecord>,
+  pageSpecs: PageSpec[]
 ): MenuItemNode[] => {
   return items.map((item) => {
-    const matchingSpec = PAGE_SPECS.find((page) => {
+    const matchingSpec = pageSpecs.find((page) => {
       if (page.menuHandle !== menuHandle || !page.menuTitles) {
         return false;
       }
@@ -695,7 +1852,8 @@ const updateMenuItems = (
     const nestedItems: MenuItemNode[] = updateMenuItems(
       item.items ?? [],
       menuHandle,
-      pageLookup
+      pageLookup,
+      pageSpecs
     );
 
     if (!matchingSpec) {
@@ -780,11 +1938,13 @@ const saveMenu = async (
 };
 
 const main = async () => {
+  const pageSpecs = await loadPageSpecs();
+
   console.log("Loading existing Shopify pages...");
-  const existingPagesByHandle = await loadExistingPages();
+  const existingPagesByHandle = await loadExistingPages(pageSpecs);
   const syncedPages = new Map<string, PageRecord>();
 
-  for (const spec of PAGE_SPECS) {
+  for (const spec of pageSpecs) {
     const existingId = spec.legacyId
       ? `gid://shopify/Page/${spec.legacyId}`
       : existingPagesByHandle.get(spec.handle)?.id;
@@ -806,7 +1966,8 @@ const main = async () => {
     const nextItems = updateMenuItems(
       menu.items,
       menu.handle,
-      syncedPages
+      syncedPages,
+      pageSpecs
     );
 
     await saveMenu(menu, nextItems);

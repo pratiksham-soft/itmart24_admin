@@ -74,6 +74,13 @@ const SHOPIFY_GRAPHQL_PAGE_SIZE = 100;
 const ALLOW_ZERO_PRICE_FALLBACK = true;
 const CATEGORY_MAPPING_ALIASES = new Map<string, string>([
   ["earthwork estimating software", "Construction Estimating Software"],
+  ["hybrid events software", "Virtual Event Software"],
+  ["nps software", "Customer Feedback Software"],
+  ["nurse scheduling software", "Employee Scheduling Software"],
+  ["nursing home software", "Long Term Care Software"],
+  ["nutrition analysis software", "Medical Software"],
+  ["nutritionist software", "Medical Software"],
+  ["obgyn emr software", "Electronic Medical Records (EMR) Software"],
 ]);
 const DIRECT_LOGO_SOURCE_EXTENSIONS = new Set([
   ".png",
@@ -83,7 +90,6 @@ const DIRECT_LOGO_SOURCE_EXTENSIONS = new Set([
   ".webp",
   ".gif",
   ".bmp",
-  ".ico",
 ]);
 const RASTER_LOGO_SOURCE_EXTENSIONS = new Set([
   ".png",
@@ -91,8 +97,33 @@ const RASTER_LOGO_SOURCE_EXTENSIONS = new Set([
   ".jpeg",
   ".gif",
   ".bmp",
-  ".ico",
 ]);
+const DEFAULT_PRODUCT_CSV_HEADERS = [
+  "Handle",
+  "Title",
+  "Body (HTML)",
+  "Vendor",
+  "Product Category",
+  "Type",
+  "product.metafields.custom.plans_pricing",
+  "product.metafields.custom.product_features",
+  "product.metafields.custom.pros_cons",
+  "product.metafields.custom.custom",
+  "product.metafields.custom.logo_image",
+  "product.metafields.custom.target_use_case",
+  "product.metafields.custom.pricing_billing",
+  "product.metafields.custom.deployment_compatibility",
+  "product.metafields.custom.features_functionality",
+  "product.metafields.custom.security_backups",
+  "product.metafields.custom.performance_specs",
+  "product.metafields.custom.support",
+  "product.metafields.custom.team_collaboration",
+  "product.metafields.custom.developer_features",
+  "Variant Price",
+  "SEO Title",
+  "SEO Description",
+  "Status",
+] as const;
 
 type CsvRow = Record<string, string>;
 
@@ -131,6 +162,11 @@ type ImportTarget = {
   categoryMapping: CategoryMapping;
 };
 
+type SkippedFolder = {
+  folderName: string;
+  reason: string;
+};
+
 type PreparedProduct = {
   categoryFolder: string;
   sourceCsvPath: string;
@@ -164,7 +200,9 @@ type PreparedProduct = {
 
 type ImportStatus =
   | "imported"
-  | "skipped_existing"
+  | "skipped_existing_shopify"
+  | "skipped_existing_current_job"
+  | "updated_existing_type_multiple"
   | "skipped_missing_required_data"
   | "skipped_pricing_unavailable"
   | "failed";
@@ -194,7 +232,9 @@ type ImportLogRow = {
 type SummaryCounts = {
   totalRows: number;
   imported: number;
-  skipped_existing: number;
+  skipped_existing_shopify: number;
+  skipped_existing_current_job: number;
+  updated_existing_type_multiple: number;
   skipped_missing_required_data: number;
   skipped_pricing_unavailable: number;
   failed: number;
@@ -206,20 +246,156 @@ type ExistingExportIndex = {
   byCollectionHandle: Map<string, ExistingExportRow[]>;
 };
 
+type JobAction =
+  | {
+      kind: "create";
+      product: PreparedProduct;
+    }
+  | {
+      kind: "existing";
+      categoryFolder: string;
+      sourceCsvPath: string;
+      sourceTitle: string;
+      title: string;
+      handle: string;
+      vendor: string;
+      price: string;
+      officialUrl: string;
+      collectionTitle: string;
+      exportProductId: number | null;
+      reason: string;
+    };
+
+type ExistingProductState = {
+  productId: number;
+  title: string;
+  handle: string;
+  customTypeMultiple: string[];
+};
+
 const localLogoCache = new Map<string, Array<{ filePath: string; stem: string }>>();
+
+const normalizeRowKey = (value: string) =>
+  String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "");
+
+const getRowValue = (row: CsvRow, ...candidates: string[]) => {
+  for (const candidate of candidates) {
+    if (candidate in row) {
+      return String(row[candidate] ?? "").trim();
+    }
+  }
+
+  const normalizedCandidates = new Set(candidates.map(normalizeRowKey));
+  for (const [key, value] of Object.entries(row)) {
+    if (normalizedCandidates.has(normalizeRowKey(key))) {
+      return String(value ?? "").trim();
+    }
+  }
+
+  return "";
+};
+
+const getRowHandle = (row: CsvRow) => getRowValue(row, "Handle", "handle");
+const getRowTitle = (row: CsvRow) => getRowValue(row, "Title", "title");
+const getRowVendor = (row: CsvRow) => getRowValue(row, "Vendor", "vendor");
+const getRowBodyHtml = (row: CsvRow) =>
+  getRowValue(row, "Body (HTML)", "body_html");
+const getRowVariantPrice = (row: CsvRow) =>
+  getRowValue(row, "Variant Price", "variant_price");
+const getRowSeoTitle = (row: CsvRow) =>
+  getRowValue(row, "SEO Title", "seo_title");
+const getRowSeoDescription = (row: CsvRow) =>
+  getRowValue(row, "SEO Description", "seo_description");
+const getRowStatus = (row: CsvRow) => getRowValue(row, "Status", "status");
+const getRowOfficialUrl = (row: CsvRow) =>
+  getRowValue(
+    row,
+    "product.metafields.custom.custom",
+    "Product Metafields Custom Custom"
+  );
+const getRowLogoImage = (row: CsvRow) =>
+  getRowValue(
+    row,
+    "product.metafields.custom.logo_image",
+    "Product Metafields Custom Logo Image"
+  );
+const getRowTargetUseCase = (row: CsvRow) =>
+  getRowValue(
+    row,
+    "product.metafields.custom.target_use_case",
+    "Product Metafields Custom Target Use Case"
+  );
+const getRowPlansPricing = (row: CsvRow) =>
+  getRowValue(
+    row,
+    "product.metafields.custom.plans_pricing",
+    "Product Metafields Custom Plans Pricing"
+  );
+const getRowProductFeatures = (row: CsvRow) =>
+  getRowValue(
+    row,
+    "product.metafields.custom.product_features",
+    "Product Metafields Custom Product Features"
+  );
+
+const normalizeCsvRow = (row: Record<string, unknown>) =>
+  Object.fromEntries(
+    Object.entries(row).map(([key, value]) => [
+      key.replace(/^\uFEFF/, "").replace(/^"|"$/g, ""),
+      typeof value === "string" ? value.trim() : String(value ?? ""),
+    ])
+  );
+
+const isEmptyCsvRow = (row: CsvRow) =>
+  Object.keys(row).length === 0 ||
+  Object.values(row).every((value) => !String(value ?? "").trim());
+
+const shouldUseDefaultProductHeaders = (filePath: string, fileText: string) => {
+  const normalizedFilePath = path.normalize(filePath).toLowerCase();
+  const softwareProductsSegment = path
+    .normalize(path.join("exports", "software-products"))
+    .toLowerCase();
+  if (!normalizedFilePath.includes(softwareProductsSegment)) {
+    return false;
+  }
+
+  const firstNonEmptyLine =
+    fileText
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .find(Boolean) ?? "";
+
+  if (!firstNonEmptyLine) {
+    return false;
+  }
+
+  const normalizedFirstLine = firstNonEmptyLine.toLowerCase();
+  return !(
+    normalizedFirstLine.startsWith("handle,") ||
+    normalizedFirstLine.startsWith("\"handle\",") ||
+    normalizedFirstLine.startsWith("title,") ||
+    normalizedFirstLine.startsWith("\"title\",")
+  );
+};
 
 const readCsv = async (filePath: string) =>
   new Promise<CsvRow[]>((resolve, reject) => {
     const rows: CsvRow[] = [];
+    const rawFileText = fs.readFileSync(filePath, "utf8").replace(/^\uFEFF/, "");
+    const parserOptions = shouldUseDefaultProductHeaders(filePath, rawFileText)
+      ? { headers: [...DEFAULT_PRODUCT_CSV_HEADERS] }
+      : {};
+
     fs.createReadStream(filePath)
-      .pipe(csv())
+      .pipe(csv(parserOptions))
       .on("data", (row) => {
-        const normalizedRow = Object.fromEntries(
-          Object.entries(row).map(([key, value]) => [
-            key.replace(/^\uFEFF/, "").replace(/^"|"$/g, ""),
-            typeof value === "string" ? value.trim() : String(value ?? ""),
-          ])
-        );
+        const normalizedRow = normalizeCsvRow(row);
+        if (isEmptyCsvRow(normalizedRow)) {
+          return;
+        }
         rows.push(normalizedRow);
       })
       .on("end", () => resolve(rows))
@@ -375,6 +551,9 @@ const formatShopifyError = (error: unknown) => {
     : message;
 };
 
+const isHandleAlreadyTakenError = (error: unknown) =>
+  formatShopifyError(error).toLowerCase().includes("has already been taken");
+
 const extractFirstUrlCandidate = (value: string) => {
   const source = String(value ?? "").trim();
   if (!source) {
@@ -450,11 +629,11 @@ const cleanOfficialUrl = (value: string) => {
 const resolveOfficialUrl = (row: CsvRow, overrideOfficialUrl?: string | null) => {
   const prioritizedValues = [
     overrideOfficialUrl ?? "",
-    String(row["product.metafields.custom.custom"] ?? ""),
-    String(row["product.metafields.custom.logo_image"] ?? ""),
-    String(row["product.metafields.custom.target_use_case"] ?? ""),
-    String(row["Body (HTML)"] ?? ""),
-    String(row["SEO Description"] ?? ""),
+    getRowOfficialUrl(row),
+    getRowLogoImage(row),
+    getRowTargetUseCase(row),
+    getRowBodyHtml(row),
+    getRowSeoDescription(row),
     ...Object.values(row),
   ];
 
@@ -562,8 +741,15 @@ const buildSummaryCounts = (
 ): SummaryCounts => ({
   totalRows,
   imported: logRows.filter((row) => row.status === "imported").length,
-  skipped_existing: logRows.filter((row) => row.status === "skipped_existing")
-    .length,
+  skipped_existing_shopify: logRows.filter(
+    (row) => row.status === "skipped_existing_shopify"
+  ).length,
+  skipped_existing_current_job: logRows.filter(
+    (row) => row.status === "skipped_existing_current_job"
+  ).length,
+  updated_existing_type_multiple: logRows.filter(
+    (row) => row.status === "updated_existing_type_multiple"
+  ).length,
   skipped_missing_required_data: logRows.filter(
     (row) => row.status === "skipped_missing_required_data"
   ).length,
@@ -582,7 +768,8 @@ const csvEscape = (value: unknown) => {
 const writeJsonReport = async (
   sourceRowsCount: number,
   logRows: ImportLogRow[],
-  mode: "dry-run" | "apply"
+  mode: "dry-run" | "apply",
+  skippedFolders: SkippedFolder[]
 ) => {
   await ensureDir(EXPORTS_DIR);
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
@@ -597,6 +784,7 @@ const writeJsonReport = async (
       {
         mode,
         summary,
+        skippedFolders,
         rows: logRows,
       },
       null,
@@ -680,7 +868,7 @@ const resolveCategoryMapping = async (
   const csvStem = path.basename(sourceCsvPath, path.extname(sourceCsvPath)).replace(/_/g, " ");
   const sourceTypes = dedupe(
     sourceRows
-      .map((row) => String(row.Type ?? "").trim())
+      .map((row) => getRowValue(row, "Type", "type"))
       .filter(Boolean)
   );
   const aliasValues = dedupe(
@@ -751,6 +939,7 @@ const discoverImportTargets = async () => {
     withFileTypes: true,
   });
   const targets: ImportTarget[] = [];
+  const skippedFolders: SkippedFolder[] = [];
 
   for (const dirent of dirents
     .filter((entry) => entry.isDirectory())
@@ -762,6 +951,10 @@ const discoverImportTargets = async () => {
       .sort();
 
     if (csvFiles.length === 0) {
+      skippedFolders.push({
+        folderName: dirent.name,
+        reason: "No valid CSV file found in folder.",
+      });
       continue;
     }
 
@@ -773,11 +966,20 @@ const discoverImportTargets = async () => {
       ) ?? csvFiles[0];
 
     const sourceCsvPath = path.join(folderPath, preferredCsv);
-    const categoryMapping = await resolveCategoryMapping(
-      dirent.name,
-      sourceCsvPath,
-      softwareCategoryRows
-    );
+    let categoryMapping: CategoryMapping;
+    try {
+      categoryMapping = await resolveCategoryMapping(
+        dirent.name,
+        sourceCsvPath,
+        softwareCategoryRows
+      );
+    } catch (error) {
+      skippedFolders.push({
+        folderName: dirent.name,
+        reason: error instanceof Error ? error.message : String(error),
+      });
+      continue;
+    }
     const logoDirs = ["fabicon", "logos"]
       .map((name) => path.join(folderPath, name))
       .filter((logoDir) => fs.existsSync(logoDir));
@@ -791,7 +993,10 @@ const discoverImportTargets = async () => {
     });
   }
 
-  return targets;
+  return {
+    targets,
+    skippedFolders,
+  };
 };
 
 const loadExistingExport = async (): Promise<ExistingExportIndex> => {
@@ -828,7 +1033,7 @@ const findExistingMatch = (
   existing: ExistingExportIndex,
   collectionHandle: string
 ) => {
-  const sourceHandle = normalizeHandle(String(row.Handle ?? ""));
+  const sourceHandle = normalizeHandle(getRowHandle(row));
   if (sourceHandle) {
     const handleMatch = existing.byHandle.get(sourceHandle);
     if (handleMatch) {
@@ -836,9 +1041,9 @@ const findExistingMatch = (
     }
   }
 
-  const sourceVendor = normalizeText(String(row.Vendor ?? ""));
-  const comparableSourceVendor = normalizeComparableVendor(String(row.Vendor ?? ""));
-  const sourceTitle = normalizeComparableTitle(String(row.Title ?? ""));
+  const sourceVendor = normalizeText(getRowVendor(row));
+  const comparableSourceVendor = normalizeComparableVendor(getRowVendor(row));
+  const sourceTitle = normalizeComparableTitle(getRowTitle(row));
   const sourceUrl = resolveOfficialUrl(row);
 
   if (!sourceVendor || !sourceTitle || !sourceUrl) {
@@ -865,6 +1070,47 @@ const findExistingMatch = (
         candidateVendor.includes(comparableSourceVendor)
       );
     }) ?? null
+  );
+};
+
+const buildCurrentJobKeys = (row: CsvRow) => {
+  const handleKey = normalizeHandle(getRowHandle(row)) || normalizeHandle(getRowTitle(row));
+  const titleKey = normalizeComparableTitle(getRowTitle(row));
+  const officialUrl = resolveOfficialUrl(row);
+  const titleUrlKey =
+    titleKey && officialUrl ? `${titleKey}::${cleanOfficialUrl(officialUrl)}` : "";
+
+  return {
+    handleKey,
+    titleKey,
+    titleUrlKey,
+  };
+};
+
+const parseTypeMultipleValues = (value: string) => {
+  const trimmed = String(value ?? "").trim();
+  if (!trimmed) {
+    return [] as string[];
+  }
+
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (Array.isArray(parsed)) {
+      return dedupe(
+        parsed
+          .map((item) => String(item ?? "").trim())
+          .filter(Boolean)
+      );
+    }
+  } catch {
+    // ignore and fall back
+  }
+
+  return dedupe(
+    normalizeMultilineSourceText(trimmed)
+      .split("\n")
+      .map((item) => item.trim())
+      .filter(Boolean)
   );
 };
 
@@ -1141,6 +1387,10 @@ const loadLocalLogoFiles = async (logoDirs: string[]) => {
     const fileNames = await fs.promises.readdir(directory);
     fileNames.forEach((fileName) => {
       const fullPath = path.join(directory, fileName);
+      const extension = normalizeLogoExtension(path.extname(fileName));
+      if (!DIRECT_LOGO_SOURCE_EXTENSIONS.has(extension)) {
+        return;
+      }
       const stem = normalizeHandle(path.basename(fileName, path.extname(fileName)));
       entries.push({ filePath: fullPath, stem });
     });
@@ -1153,7 +1403,7 @@ const loadLocalLogoFiles = async (logoDirs: string[]) => {
 const findBestLocalLogo = async (row: CsvRow, logoDirs: string[]) => {
   const files = await loadLocalLogoFiles(logoDirs);
   const officialUrl = cleanOfficialUrl(
-    String(row["product.metafields.custom.custom"] ?? "")
+    getRowOfficialUrl(row)
   );
   const hostToken = (() => {
     try {
@@ -1165,9 +1415,9 @@ const findBestLocalLogo = async (row: CsvRow, logoDirs: string[]) => {
 
   const candidates = dedupe(
     [
-      normalizeHandle(String(row.Handle ?? "")),
-      normalizeHandle(String(row.Title ?? "")),
-      normalizeHandle(String(row.Vendor ?? "")),
+      normalizeHandle(getRowHandle(row)),
+      normalizeHandle(getRowTitle(row)),
+      normalizeHandle(getRowVendor(row)),
       hostToken,
     ].filter(Boolean)
   );
@@ -1214,6 +1464,23 @@ $image.Dispose();
   });
 };
 
+const convertRasterLogoToWebp120 = async (inputPath: string, outputPath: string) => {
+  await execFileAsync(
+    "magick",
+    [
+      inputPath,
+      "-resize",
+      "120x",
+      "-quality",
+      "90",
+      outputPath,
+    ],
+    {
+      windowsHide: true,
+    }
+  );
+};
+
 const prepareLocalLogoAsset = async (localPath: string) => {
   await ensureDir(LOGO_TEMP_ROOT);
   const extension = normalizeLogoExtension(path.extname(localPath));
@@ -1224,12 +1491,18 @@ const prepareLocalLogoAsset = async (localPath: string) => {
   }
 
   if (RASTER_LOGO_SOURCE_EXTENSIONS.has(extension)) {
-    const outputPath = path.join(LOGO_TEMP_ROOT, `${baseName}-120.png`);
+    const webpOutputPath = path.join(LOGO_TEMP_ROOT, `${baseName}-120.webp`);
+    const pngOutputPath = path.join(LOGO_TEMP_ROOT, `${baseName}-120.png`);
     try {
-      await resizeRasterLogoTo120(localPath, outputPath);
-      return outputPath;
+      await convertRasterLogoToWebp120(localPath, webpOutputPath);
+      return webpOutputPath;
     } catch {
-      return localPath;
+      try {
+        await resizeRasterLogoTo120(localPath, pngOutputPath);
+        return pngOutputPath;
+      } catch {
+        return localPath;
+      }
     }
   }
 
@@ -1251,7 +1524,8 @@ const extractLogoCandidates = (baseUrl: string, html: string) => {
     }
   });
 
-  candidates.push(absoluteUrl(baseUrl, "/favicon.ico"));
+  candidates.push(absoluteUrl(baseUrl, "/favicon.png"));
+  candidates.push(absoluteUrl(baseUrl, "/apple-touch-icon.png"));
   return dedupe(candidates);
 };
 
@@ -1555,6 +1829,123 @@ const fetchProductByHandle = async (handle: string) => {
   return products[0] ?? null;
 };
 
+const fetchExistingProductStateById = async (
+  productId: number
+): Promise<ExistingProductState | null> => {
+  const { shopifyGraphQL } = await getShopifyClients();
+  const response = await withShopifyRetries(
+    `fetch existing product state ${productId}`,
+    () =>
+      shopifyGraphQL.post("", {
+        query: `
+          query ExistingProductState($id: ID!) {
+            product(id: $id) {
+              id
+              legacyResourceId
+              title
+              handle
+              typeMultiple: metafield(namespace: "custom", key: "type_multiple") {
+                value
+              }
+            }
+          }
+        `,
+        variables: {
+          id: PRODUCT_GID(productId),
+        },
+      })
+  );
+
+  const product = response.data?.data?.product;
+  const legacyResourceId = Number(product?.legacyResourceId ?? 0);
+  if (!legacyResourceId) {
+    return null;
+  }
+
+  return {
+    productId: legacyResourceId,
+    title: String(product?.title ?? "").trim(),
+    handle: String(product?.handle ?? "").trim(),
+    customTypeMultiple: parseTypeMultipleValues(
+      String(product?.typeMultiple?.value ?? "")
+    ),
+  };
+};
+
+const updateTypeMultipleMetafield = async (
+  productId: number,
+  values: string[]
+) => {
+  const { shopifyGraphQL } = await getShopifyClients();
+  const response = await withShopifyRetries(
+    `update type_multiple for ${productId}`,
+    () =>
+      shopifyGraphQL.post("", {
+        query: `
+          mutation UpdateTypeMultiple($metafields: [MetafieldsSetInput!]!) {
+            metafieldsSet(metafields: $metafields) {
+              userErrors {
+                field
+                message
+              }
+            }
+          }
+        `,
+        variables: {
+          metafields: [
+            {
+              ownerId: PRODUCT_GID(productId),
+              namespace: "custom",
+              key: "type_multiple",
+              type: "list.single_line_text_field",
+              value: JSON.stringify(dedupe(values.filter(Boolean))),
+            },
+          ],
+        },
+      })
+  );
+
+  const errors = response.data?.data?.metafieldsSet?.userErrors ?? [];
+  if (errors.length > 0) {
+    throw new Error(`Type multiple update failed: ${JSON.stringify(errors)}`);
+  }
+};
+
+const resolveExistingProductAfterHandleConflict = async (
+  product: PreparedProduct
+) => {
+  for (let attempt = 1; attempt <= 4; attempt += 1) {
+    const liveExisting = await fetchProductByHandle(product.handle);
+    if (liveExisting?.id) {
+      const existingState = await fetchExistingProductStateById(
+        Number(liveExisting.id)
+      );
+      const mergedTypeMultiple = dedupe([
+        ...(existingState?.customTypeMultiple ?? []),
+        product.collectionTitle,
+      ]);
+      const changed =
+        existingState !== null &&
+        mergedTypeMultiple.length !== existingState.customTypeMultiple.length;
+
+      if (changed) {
+        await updateTypeMultipleMetafield(Number(liveExisting.id), mergedTypeMultiple);
+      }
+
+      return {
+        productId: Number(liveExisting.id),
+        title: String(existingState?.title ?? liveExisting.title ?? product.title).trim(),
+        handle: String(existingState?.handle ?? liveExisting.handle ?? product.handle).trim(),
+        changed,
+      };
+    }
+
+    await sleep(attempt * 1500);
+  }
+
+  return null;
+};
+
 const createShopifyProduct = async (product: PreparedProduct) => {
   const { shopifyRest } = await getShopifyClients();
   const response = await withShopifyRetries(`create product ${product.handle}`, () =>
@@ -1591,9 +1982,69 @@ const createShopifyProduct = async (product: PreparedProduct) => {
   return productId;
 };
 
+const findExistingShopifyFileUrl = async (fileName: string) => {
+  const { shopifyGraphQL } = await getShopifyClients();
+  const response = await withShopifyRetries(`find Shopify file ${fileName}`, () =>
+    shopifyGraphQL.post("", {
+      query: `
+        query FindExistingFile($first: Int!, $query: String!) {
+          files(first: $first, query: $query) {
+            nodes {
+              __typename
+              ... on MediaImage {
+                image {
+                  url
+                }
+              }
+              ... on GenericFile {
+                url
+              }
+            }
+          }
+        }
+      `,
+      variables: {
+        first: 20,
+        query: fileName,
+      },
+    })
+  );
+
+  const nodes = Array.isArray(response.data?.data?.files?.nodes)
+    ? response.data.data.files.nodes
+    : [];
+
+  for (const node of nodes) {
+    const candidateUrl =
+      typeof node?.image?.url === "string"
+        ? node.image.url
+        : typeof node?.url === "string"
+        ? node.url
+        : "";
+    if (!candidateUrl) {
+      continue;
+    }
+
+    try {
+      const candidateName = path.posix.basename(new URL(candidateUrl).pathname);
+      if (candidateName === fileName) {
+        return candidateUrl;
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  return null;
+};
+
 const uploadFileToShopify = async (localPath: string, altText: string) => {
   const { shopifyGraphQL } = await getShopifyClients();
   const fileName = path.basename(localPath);
+  const existingUrl = await findExistingShopifyFileUrl(fileName);
+  if (existingUrl) {
+    return existingUrl;
+  }
   const mimeType = mimeTypeFromPath(localPath);
   const fileBytes = await fs.promises.readFile(localPath);
   const stagedUploadResponse = await withShopifyRetries(
@@ -1877,38 +2328,34 @@ const prepareProduct = async (
   target: ImportTarget,
   filterDefinitions: Map<string, FilterDefinition>
 ) => {
-  const normalizedSourceHandle = normalizeHandle(String(row.Handle ?? ""));
+  const normalizedSourceHandle = normalizeHandle(getRowHandle(row));
   const override = getProductImportOverride(normalizedSourceHandle);
-  const title = String(row.Title ?? "").trim();
-  const vendor = String(row.Vendor ?? "").trim();
+  const title = getRowTitle(row);
+  const vendor = getRowVendor(row);
   const sourceBodyText = override?.bodyText
     ? override.bodyText
-    : stripHtml(String(row["Body (HTML)"] ?? ""));
+    : stripHtml(getRowBodyHtml(row));
   const officialUrl = resolveOfficialUrl(row, override?.officialUrl ?? null);
   const featureLines = override?.featureLines
     ? [...override.featureLines]
-    : extractCleanLines(
-        String(row["product.metafields.custom.product_features"] ?? "")
-      );
+    : extractCleanLines(getRowProductFeatures(row));
   const pricingLines = override?.pricingLines
     ? [...override.pricingLines]
-    : extractCleanLines(
-        String(row["product.metafields.custom.plans_pricing"] ?? "")
-      );
+    : extractCleanLines(getRowPlansPricing(row));
   const explicitPrice =
     typeof override?.price === "number"
       ? override.price
-      : parsePositivePrice(String(row["Variant Price"] ?? ""));
-  const rawNumericPrice = parseAnyNumericPrice(String(row["Variant Price"] ?? ""));
+      : parsePositivePrice(getRowVariantPrice(row));
+  const rawNumericPrice = parseAnyNumericPrice(getRowVariantPrice(row));
   const zeroPriceFallbackUsed =
     explicitPrice === null && shouldUseZeroPriceFallback(rawNumericPrice, pricingLines);
   const priceValue = explicitPrice ?? (zeroPriceFallbackUsed ? 0 : null);
-  const handle = normalizeHandle(String(row.Handle ?? "")) || normalizeHandle(title);
+  const handle = normalizeHandle(getRowHandle(row)) || normalizeHandle(title);
   const localLogoPath = await findBestLocalLogo(row, target.logoDirs);
 
   const missingFields = [
-    !title || /^title$/i.test(title) ? "Title" : "",
-    !vendor || /^vendor$/i.test(vendor) ? "Vendor" : "",
+    !title || /^title$/i.test(title) || title.length > 255 ? "Title" : "",
+    !vendor || /^vendor$/i.test(vendor) || vendor.length > 255 ? "Vendor" : "",
     !handle || /^handle$/i.test(handle) ? "Handle" : "",
     !officialUrl ? "product.metafields.custom.custom" : "",
     featureLines.length === 0 ? "product.metafields.custom.product_features" : "",
@@ -1963,11 +2410,11 @@ const prepareProduct = async (
   );
   const seoTitle =
     override?.seoTitle ??
-    String(row["SEO Title"] ?? "").trim() ??
+    getRowSeoTitle(row) ??
     `${title} | ${vendor} ${target.categoryMapping.collectionTitle}`;
   const seoDescription =
     override?.seoDescription ??
-    String(row["SEO Description"] ?? "").trim() ??
+    getRowSeoDescription(row) ??
     `${title} for ${target.categoryMapping.collectionTitle.toLowerCase()} buyers with pricing, features, and workflow support.`;
   const imageAltText = `${title} ${target.categoryMapping.collectionTitle.toLowerCase()} logo`;
 
@@ -2008,14 +2455,17 @@ const prepareProduct = async (
 };
 
 const buildDryRunRows = async () => {
-  const [targets, filterDefinitions, existing] = await Promise.all([
+  const [{ targets, skippedFolders }, filterDefinitions, existing] = await Promise.all([
     discoverImportTargets(),
     loadFilterDefinitions(),
     loadExistingExport(),
   ]);
 
-  const preparedRows: PreparedProduct[] = [];
+  const jobActions: JobAction[] = [];
   const logRows: ImportLogRow[] = [];
+  const handledHandleKeys = new Set<string>();
+  const handledTitleUrlKeys = new Set<string>();
+  const handledTitleKeys = new Set<string>();
   let totalRows = 0;
 
   for (const target of targets) {
@@ -2023,30 +2473,69 @@ const buildDryRunRows = async () => {
     totalRows += sourceRows.length;
 
     for (const row of sourceRows) {
+      const currentJobKeys = buildCurrentJobKeys(row);
+      const alreadyHandledInCurrentJob =
+        (currentJobKeys.handleKey && handledHandleKeys.has(currentJobKeys.handleKey)) ||
+        (currentJobKeys.titleUrlKey &&
+          handledTitleUrlKeys.has(currentJobKeys.titleUrlKey)) ||
+        (!currentJobKeys.titleUrlKey &&
+          currentJobKeys.titleKey &&
+          handledTitleKeys.has(currentJobKeys.titleKey));
+
+      if (alreadyHandledInCurrentJob) {
+        logRows.push({
+          categoryFolder: target.folderName,
+          sourceCsvPath: target.sourceCsvPath,
+          sourceTitle: getRowTitle(row),
+          title: getRowTitle(row),
+          handle: normalizeHandle(getRowHandle(row)),
+          vendor: getRowVendor(row),
+          status: "skipped_existing_current_job",
+          price:
+            parseAnyNumericPrice(getRowVariantPrice(row)) === 0
+              ? "0"
+              : getRowVariantPrice(row),
+          officialUrl: resolveOfficialUrl(row),
+          shopifyProductId: null,
+          reason: "Duplicate row detected within the current import job.",
+          logoSource: null,
+          logoStatus: "existing_not_checked",
+          reportNotes: [],
+        });
+        continue;
+      }
+
+      if (currentJobKeys.handleKey) {
+        handledHandleKeys.add(currentJobKeys.handleKey);
+      }
+      if (currentJobKeys.titleUrlKey) {
+        handledTitleUrlKeys.add(currentJobKeys.titleUrlKey);
+      } else if (currentJobKeys.titleKey) {
+        handledTitleKeys.add(currentJobKeys.titleKey);
+      }
+
       const existingMatch = findExistingMatch(
         row,
         existing,
         target.categoryMapping.collectionHandle
       );
       if (existingMatch) {
-        logRows.push({
+        jobActions.push({
+          kind: "existing",
           categoryFolder: target.folderName,
           sourceCsvPath: target.sourceCsvPath,
-          sourceTitle: String(row.Title ?? "").trim(),
-          title: String(row.Title ?? "").trim(),
-          handle: normalizeHandle(String(row.Handle ?? "")),
-          vendor: String(row.Vendor ?? "").trim(),
-          status: "skipped_existing",
+          sourceTitle: getRowTitle(row),
+          title: getRowTitle(row),
+          handle: normalizeHandle(getRowHandle(row)),
+          vendor: getRowVendor(row),
           price:
-            parseAnyNumericPrice(String(row["Variant Price"] ?? "")) === 0
+            parseAnyNumericPrice(getRowVariantPrice(row)) === 0
               ? "0"
-              : String(row["Variant Price"] ?? "").trim(),
+              : getRowVariantPrice(row),
           officialUrl: resolveOfficialUrl(row),
-          shopifyProductId: Number(existingMatch.shopify_product_id ?? 0) || null,
+          collectionTitle: target.categoryMapping.collectionTitle,
+          exportProductId: Number(existingMatch.shopify_product_id ?? 0) || null,
           reason: `Matched existing Shopify export row ${existingMatch.handle}`,
-          logoSource: null,
-          logoStatus: "existing_not_checked",
-          reportNotes: [],
         });
         continue;
       }
@@ -2056,15 +2545,15 @@ const buildDryRunRows = async () => {
         logRows.push({
           categoryFolder: target.folderName,
           sourceCsvPath: target.sourceCsvPath,
-          sourceTitle: String(row.Title ?? "").trim(),
-          title: String(row.Title ?? "").trim(),
-          handle: normalizeHandle(String(row.Handle ?? "")),
-          vendor: String(row.Vendor ?? "").trim(),
+          sourceTitle: getRowTitle(row),
+          title: getRowTitle(row),
+          handle: normalizeHandle(getRowHandle(row)),
+          vendor: getRowVendor(row),
           status: preparedResult.skipStatus ?? "failed",
           price:
-            parseAnyNumericPrice(String(row["Variant Price"] ?? "")) === 0
+            parseAnyNumericPrice(getRowVariantPrice(row)) === 0
               ? "0"
-              : String(row["Variant Price"] ?? "").trim(),
+              : getRowVariantPrice(row),
           officialUrl: resolveOfficialUrl(row),
           shopifyProductId: null,
           reason: preparedResult.reason || "Unable to prepare row",
@@ -2075,24 +2564,31 @@ const buildDryRunRows = async () => {
         continue;
       }
 
-      preparedRows.push(preparedResult.prepared);
+      jobActions.push({
+        kind: "create",
+        product: preparedResult.prepared,
+      });
     }
   }
 
   return {
     totalRows,
-    preparedRows,
+    jobActions,
     logRows,
+    skippedFolders,
   };
 };
 
 const applyImport = async (
-  preparedRows: PreparedProduct[],
+  jobActions: JobAction[],
   initialLogRows: ImportLogRow[],
-  totalRows: number
+  totalRows: number,
+  skippedFolders: SkippedFolder[]
 ) => {
   const filterKeys = dedupe(
-    preparedRows.flatMap((row) => Object.keys(row.filterValues ?? {}))
+    jobActions.flatMap((action) =>
+      action.kind === "create" ? Object.keys(action.product.filterValues ?? {}) : []
+    )
   );
   const marketplaceFilterReferences =
     filterKeys.length > 0
@@ -2100,22 +2596,78 @@ const applyImport = async (
       : {};
   const logRows = [...initialLogRows];
 
-  for (const product of preparedRows) {
+  for (const action of jobActions) {
+    const currentCreateProduct = action.kind === "create" ? action.product : null;
     try {
-      const liveExisting = await fetchProductByHandle(product.handle);
-      if (liveExisting?.id) {
+      if (action.kind === "existing") {
+        if (!action.exportProductId) {
+          logRows.push({
+            categoryFolder: action.categoryFolder,
+            sourceCsvPath: action.sourceCsvPath,
+            sourceTitle: action.sourceTitle,
+            title: action.title,
+            handle: action.handle,
+            vendor: action.vendor,
+            status: "skipped_existing_shopify",
+            price: action.price,
+            officialUrl: action.officialUrl,
+            shopifyProductId: null,
+            reason: action.reason,
+            logoSource: null,
+            logoStatus: "existing_not_checked",
+            reportNotes: [],
+          });
+          continue;
+        }
+
+        const existingState = await fetchExistingProductStateById(action.exportProductId);
+        if (!existingState?.productId) {
+          logRows.push({
+            categoryFolder: action.categoryFolder,
+            sourceCsvPath: action.sourceCsvPath,
+            sourceTitle: action.sourceTitle,
+            title: action.title,
+            handle: action.handle,
+            vendor: action.vendor,
+            status: "skipped_existing_shopify",
+            price: action.price,
+            officialUrl: action.officialUrl,
+            shopifyProductId: action.exportProductId,
+            reason: `${action.reason}. Existing product was not available for update.`,
+            logoSource: null,
+            logoStatus: "existing_not_checked",
+            reportNotes: [],
+          });
+          continue;
+        }
+
+        const mergedTypeMultiple = dedupe([
+          ...existingState.customTypeMultiple,
+          action.collectionTitle,
+        ]);
+        const changed =
+          mergedTypeMultiple.length !== existingState.customTypeMultiple.length;
+
+        if (changed) {
+          await updateTypeMultipleMetafield(existingState.productId, mergedTypeMultiple);
+        }
+
         logRows.push({
-          categoryFolder: product.categoryFolder,
-          sourceCsvPath: product.sourceCsvPath,
-          sourceTitle: product.sourceTitle,
-          title: product.title,
-          handle: product.handle,
-          vendor: product.vendor,
-          status: "skipped_existing",
-          price: product.price,
-          officialUrl: product.officialUrl,
-          shopifyProductId: Number(liveExisting.id),
-          reason: `Handle already exists in Shopify as ${product.handle}`,
+          categoryFolder: action.categoryFolder,
+          sourceCsvPath: action.sourceCsvPath,
+          sourceTitle: action.sourceTitle,
+          title: existingState.title || action.title,
+          handle: existingState.handle || action.handle,
+          vendor: action.vendor,
+          status: changed
+            ? "updated_existing_type_multiple"
+            : "skipped_existing_shopify",
+          price: action.price,
+          officialUrl: action.officialUrl,
+          shopifyProductId: existingState.productId,
+          reason: changed
+            ? `Added ${action.collectionTitle} to custom.type_multiple.`
+            : action.reason,
           logoSource: null,
           logoStatus: "existing_not_checked",
           reportNotes: [],
@@ -2123,12 +2675,52 @@ const applyImport = async (
         continue;
       }
 
+      const product = action.product;
+      const liveExisting = await fetchProductByHandle(product.handle);
+      if (liveExisting?.id) {
+        const existingState = await fetchExistingProductStateById(Number(liveExisting.id));
+        const mergedTypeMultiple = dedupe([
+          ...(existingState?.customTypeMultiple ?? []),
+          product.collectionTitle,
+        ]);
+        const changed =
+          existingState !== null &&
+          mergedTypeMultiple.length !== existingState.customTypeMultiple.length;
+
+        if (changed) {
+          await updateTypeMultipleMetafield(Number(liveExisting.id), mergedTypeMultiple);
+        }
+
+        logRows.push({
+          categoryFolder: product.categoryFolder,
+          sourceCsvPath: product.sourceCsvPath,
+          sourceTitle: product.sourceTitle,
+          title: product.title,
+          handle: product.handle,
+          vendor: product.vendor,
+          status: changed
+            ? "updated_existing_type_multiple"
+            : "skipped_existing_shopify",
+          price: product.price,
+          officialUrl: product.officialUrl,
+          shopifyProductId: Number(liveExisting.id),
+          reason: changed
+            ? `Added ${product.collectionTitle} to custom.type_multiple.`
+            : `Handle already exists in Shopify as ${product.handle}`,
+          logoSource: null,
+          logoStatus: "existing_not_checked",
+          reportNotes: [],
+        });
+        continue;
+      }
+
+      const productId = await createShopifyProduct(product);
       let logoFileUrl: string | null = null;
       let logoSource: string | null = product.localLogoPath;
       let logoStatus: LogoStatus = "missing";
       const reportNotes: string[] = [
         `Collection mapping: ${product.collectionTitle}`,
-        `Filters: ${Object.keys(product.filterValues).join(", ") || "none"}`,
+          `Filters: ${Object.keys(product.filterValues).join(", ") || "none"}`,
       ];
 
       try {
@@ -2149,8 +2741,6 @@ const applyImport = async (
           }`
         );
       }
-
-      const productId = await createShopifyProduct(product);
       await setShopifyMetafields(
         productId,
         product,
@@ -2176,26 +2766,60 @@ const applyImport = async (
         reportNotes,
       });
     } catch (error) {
+      if (!currentCreateProduct) {
+        throw error;
+      }
+
+      if (isHandleAlreadyTakenError(error)) {
+        const resolvedExisting = await resolveExistingProductAfterHandleConflict(
+          currentCreateProduct
+        );
+
+        if (resolvedExisting) {
+          logRows.push({
+            categoryFolder: currentCreateProduct.categoryFolder,
+            sourceCsvPath: currentCreateProduct.sourceCsvPath,
+            sourceTitle: currentCreateProduct.sourceTitle,
+            title: resolvedExisting.title,
+            handle: resolvedExisting.handle,
+            vendor: currentCreateProduct.vendor,
+            status: resolvedExisting.changed
+              ? "updated_existing_type_multiple"
+              : "skipped_existing_shopify",
+            price: currentCreateProduct.price,
+            officialUrl: currentCreateProduct.officialUrl,
+            shopifyProductId: resolvedExisting.productId,
+            reason: resolvedExisting.changed
+              ? `Added ${currentCreateProduct.collectionTitle} to custom.type_multiple after Shopify reported an existing handle.`
+              : `Handle already exists in Shopify as ${resolvedExisting.handle}.`,
+            logoSource: null,
+            logoStatus: "existing_not_checked",
+            reportNotes: [],
+          });
+          continue;
+        }
+      }
+
       logRows.push({
-        categoryFolder: product.categoryFolder,
-        sourceCsvPath: product.sourceCsvPath,
-        sourceTitle: product.sourceTitle,
-        title: product.title,
-        handle: product.handle,
-        vendor: product.vendor,
+        categoryFolder: currentCreateProduct.categoryFolder,
+        sourceCsvPath: currentCreateProduct.sourceCsvPath,
+        sourceTitle: currentCreateProduct.sourceTitle,
+        title: currentCreateProduct.title,
+        handle: currentCreateProduct.handle,
+        vendor: currentCreateProduct.vendor,
         status: "failed",
-        price: product.price,
-        officialUrl: product.officialUrl,
+        price: currentCreateProduct.price,
+        officialUrl: currentCreateProduct.officialUrl,
         shopifyProductId: null,
         reason: formatShopifyError(error),
-        logoSource: product.localLogoPath,
+        logoSource: currentCreateProduct.localLogoPath,
         logoStatus: "missing",
         reportNotes: [],
       });
     }
   }
 
-  const jsonReport = await writeJsonReport(totalRows, logRows, "apply");
+  const jsonReport = await writeJsonReport(totalRows, logRows, "apply", skippedFolders);
   const attentionCsvPath = await writeAttentionCsvReport(
     logRows,
     jsonReport.timestamp
@@ -2209,16 +2833,24 @@ const applyImport = async (
 
 const main = async () => {
   const shouldApply = process.argv.includes("--apply");
-  const { totalRows, preparedRows, logRows } = await buildDryRunRows();
+  const { totalRows, jobActions, logRows, skippedFolders } = await buildDryRunRows();
 
   if (!shouldApply) {
-    const report = await writeJsonReport(totalRows, logRows, "dry-run");
+    const report = await writeJsonReport(totalRows, logRows, "dry-run", skippedFolders);
     console.log(`Import root: ${SOFTWARE_PRODUCTS_ROOT}`);
     console.log(`Existing export: ${EXISTING_EXPORT_CSV_PATH}`);
     console.log(`Report: ${report.reportPath}`);
     console.log(`Total rows: ${report.summary.totalRows}`);
     console.log(`Imported: ${report.summary.imported}`);
-    console.log(`Skipped existing: ${report.summary.skipped_existing}`);
+    console.log(
+      `Skipped existing in Shopify: ${report.summary.skipped_existing_shopify}`
+    );
+    console.log(
+      `Skipped existing in current job: ${report.summary.skipped_existing_current_job}`
+    );
+    console.log(
+      `Updated existing type_multiple: ${report.summary.updated_existing_type_multiple}`
+    );
     console.log(
       `Skipped missing required data: ${report.summary.skipped_missing_required_data}`
     );
@@ -2226,18 +2858,29 @@ const main = async () => {
       `Skipped pricing unavailable: ${report.summary.skipped_pricing_unavailable}`
     );
     console.log(`Failed: ${report.summary.failed}`);
-    console.log(`Ready to import on apply: ${preparedRows.length}`);
+    console.log(
+      `Action rows ready on apply: ${jobActions.length}`
+    );
+    console.log(`Folders skipped: ${skippedFolders.length}`);
     return;
   }
 
-  const report = await applyImport(preparedRows, logRows, totalRows);
+  const report = await applyImport(jobActions, logRows, totalRows, skippedFolders);
   console.log(`Import root: ${SOFTWARE_PRODUCTS_ROOT}`);
   console.log(`Existing export: ${EXISTING_EXPORT_CSV_PATH}`);
   console.log(`Report: ${report.reportPath}`);
   console.log(`Attention CSV: ${report.attentionCsvPath}`);
   console.log(`Total rows: ${report.summary.totalRows}`);
   console.log(`Imported: ${report.summary.imported}`);
-  console.log(`Skipped existing: ${report.summary.skipped_existing}`);
+  console.log(
+    `Skipped existing in Shopify: ${report.summary.skipped_existing_shopify}`
+  );
+  console.log(
+    `Skipped existing in current job: ${report.summary.skipped_existing_current_job}`
+  );
+  console.log(
+    `Updated existing type_multiple: ${report.summary.updated_existing_type_multiple}`
+  );
   console.log(
     `Skipped missing required data: ${report.summary.skipped_missing_required_data}`
   );
@@ -2245,6 +2888,7 @@ const main = async () => {
     `Skipped pricing unavailable: ${report.summary.skipped_pricing_unavailable}`
   );
   console.log(`Failed: ${report.summary.failed}`);
+  console.log(`Folders skipped: ${skippedFolders.length}`);
 };
 
 main().catch((error) => {

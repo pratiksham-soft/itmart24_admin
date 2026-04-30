@@ -30,7 +30,7 @@ const MIN_WORDS_ARG = process.argv.find((arg) =>
 );
 const MIN_WORDS = MIN_WORDS_ARG
   ? Math.max(0, Number(MIN_WORDS_ARG.split("=")[1]) || 0)
-  : 400;
+  : 90;
 const CONCURRENCY_ARG = process.argv.find((arg) =>
   arg.startsWith("--concurrency=")
 );
@@ -177,15 +177,44 @@ type ProductUpdatePreview = {
     | "web search"
     | "multi-source web"
     | "search snippets"
+    | "category fallback"
     | "insufficient";
   sourceUrl: string | null;
   currentWordCount: number;
   generatedWordCount: number;
   updated: boolean;
+  bodyUpdated: boolean;
+  seoUpdated: boolean;
+  hasOfficialSource: boolean;
+  removedBadPhrases: string[];
   skippedReason: string | null;
   seoTitle: string;
   seoDescription: string;
 };
+
+type ExistingContentAudit = {
+  badPhrases: string[];
+  hasStructuredSections: boolean;
+  bodyNeedsRewrite: boolean;
+  seoNeedsRefresh: boolean;
+};
+
+const BANNED_DESCRIPTION_PHRASES = [
+  "shopify price field",
+  "metafield",
+  "marketplace price",
+  "this listing",
+  "internal logic",
+  "shopify internal product id",
+];
+
+const REQUIRED_SECTION_HEADINGS = [
+  "overview",
+  "key features",
+  "best for",
+  "pricing & plan notes",
+  "before you choose",
+];
 
 const normalizeWhitespace = (value: string) =>
   value.replace(/\s+/g, " ").trim();
@@ -262,6 +291,11 @@ const tokenize = (value: string | null | undefined) =>
     .split(" ")
     .filter((token) => token.length > 1);
 
+const containsAnyPhrase = (value: string, phrases: string[]) => {
+  const lowered = value.toLowerCase();
+  return phrases.filter((phrase) => lowered.includes(phrase));
+};
+
 const toUniqueList = (values: string[]) => {
   const seen = new Set<string>();
   const result: string[] = [];
@@ -300,6 +334,110 @@ const extractCoreProductName = (value: string) => {
   const chosen =
     candidates.sort((left, right) => left.length - right.length)[0] ?? trimmed;
   return chosen.length <= 70 ? chosen : truncateSmart(chosen, 70);
+};
+
+const hasRequiredDescriptionSections = (html: string) => {
+  const lowered = html.toLowerCase();
+  return REQUIRED_SECTION_HEADINGS.every((heading) =>
+    lowered.includes(`<h2>${heading}</h2>`)
+  );
+};
+
+const isLikelyCategoryLevelTitle = (product: ShopifyProductRecord) => {
+  const normalizedTitle = normalizeKey(product.title);
+  const normalizedType = normalizeKey(product.productType);
+
+  return Boolean(
+    normalizedType &&
+      normalizedTitle &&
+      (normalizedTitle === normalizedType ||
+        normalizedTitle === normalizeKey(`${product.productType} software`) ||
+        normalizedTitle === normalizeKey(`${product.productType} tools`))
+  );
+};
+
+const isStageOneProductSeoTitle = (value: string) => {
+  const lowered = normalizeWhitespace(value).toLowerCase();
+  return (
+    lowered.includes("| itmart24") &&
+    (lowered.includes("worth it") ||
+      lowered.includes("review (2026)") ||
+      lowered.includes("vs alternatives") ||
+      lowered.includes("why choose "))
+  );
+};
+
+const isStageOneCategorySeoTitle = (value: string) => {
+  const lowered = normalizeWhitespace(value).toLowerCase();
+  return (
+    lowered.includes("| itmart24") &&
+    lowered.includes("best ") &&
+    lowered.includes("compare & choose the right one")
+  );
+};
+
+const analyzeExistingContent = (
+  product: ShopifyProductRecord
+): ExistingContentAudit => {
+  const badPhrases = containsAnyPhrase(
+    product.descriptionText,
+    BANNED_DESCRIPTION_PHRASES
+  );
+  const hasStructuredSections = hasRequiredDescriptionSections(
+    product.descriptionHtml
+  );
+  const bodyNeedsRewrite =
+    badPhrases.length > 0 ||
+    product.descriptionWordCount < MIN_WORDS ||
+    !hasStructuredSections;
+  const seoNeedsRefresh = isLikelyCategoryLevelTitle(product)
+    ? !isStageOneCategorySeoTitle(product.seoTitle) ||
+      product.seoDescription.trim() === "" ||
+      product.seoDescription.length > 160
+    : !isStageOneProductSeoTitle(product.seoTitle) ||
+      product.seoDescription.trim() === "" ||
+      product.seoDescription.length > 160;
+
+  return {
+    badPhrases,
+    hasStructuredSections,
+    bodyNeedsRewrite,
+    seoNeedsRefresh,
+  };
+};
+
+const buildCategoryFallbackProfile = (
+  product: ShopifyProductRecord
+): SourceProfile => {
+  const category = humanizeCategory(product);
+  const family = inferProductFamily(product);
+  const paragraphs =
+    family === "infrastructure"
+      ? [
+          `${product.title} is part of the ${category} category and is usually reviewed for reliability, scalability, and day-to-day ease of management.`,
+          `Buyers in this category typically compare setup requirements, support expectations, and long-term operating fit before choosing a provider.`,
+        ]
+      : family === "ai"
+        ? [
+            `${product.title} belongs to the ${category} category and is commonly evaluated for workflow fit, output quality, and ease of adoption.`,
+            `Teams usually compare how well tools in this space support repeatable work, collaboration, and practical day-to-day use.`,
+          ]
+        : [
+            `${product.title} belongs to the ${category} category and is commonly compared for usability, feature coverage, and business fit.`,
+            `Most buyers review plan structure, workflow support, and implementation effort before shortlisting software in this segment.`,
+          ];
+
+  return {
+    url: "",
+    domain: "",
+    pageTitle: product.title,
+    metaDescription: `${product.title} is listed in the ${category} category.`,
+    headings: [product.title, category],
+    paragraphs,
+    featureBullets: [],
+    text: [product.title, category, ...paragraphs].join(" "),
+    wordCount: countWords([product.title, category, ...paragraphs].join(" ")),
+  };
 };
 
 const stripPlanModifiers = (value: string) =>
@@ -615,6 +753,10 @@ const buildSelectionSummary = (products: ShopifyProductRecord[]) => {
   const belowWordTarget = activeProducts.filter(
     (product) => product.descriptionWordCount < MIN_WORDS
   ).length;
+  const activeAudits = activeProducts.map((product) => ({
+    product,
+    audit: analyzeExistingContent(product),
+  }));
 
   return {
     totalProducts: products.length,
@@ -623,6 +765,15 @@ const buildSelectionSummary = (products: ShopifyProductRecord[]) => {
     activeWithCustomUrl: withCustomUrl.length,
     activeWithoutCustomUrl: withoutCustomUrl,
     activeBelowWordTarget: belowWordTarget,
+    activeNeedingBodyRewrite: activeAudits.filter(
+      ({ audit }) => audit.bodyNeedsRewrite
+    ).length,
+    activeNeedingSeoRefresh: activeAudits.filter(
+      ({ audit }) => audit.seoNeedsRefresh
+    ).length,
+    activeWithBadInternalWording: activeAudits.filter(
+      ({ audit }) => audit.badPhrases.length > 0
+    ).length,
   };
 };
 
@@ -1661,6 +1812,85 @@ const summarizeAudience = (
   return "business teams evaluating practical software for daily operations";
 };
 
+const buildCategoryFallbackOverview = (product: ShopifyProductRecord) => {
+  const category = humanizeCategory(product).toLowerCase();
+  const family = inferProductFamily(product);
+
+  if (family === "infrastructure") {
+    return `${product.title} belongs to the ${category} category and is typically evaluated by teams comparing uptime, deployment flexibility, and day-to-day management requirements.`;
+  }
+
+  if (family === "ai") {
+    return `${product.title} fits into the ${category} category and is usually reviewed by buyers who want practical automation, faster output, and clearer workflow support.`;
+  }
+
+  return `${product.title} sits in the ${category} category and is commonly compared for feature depth, ease of adoption, and fit for everyday business workflows.`;
+};
+
+const buildProfessionalOverview = ({
+  product,
+  profile,
+  seed,
+}: {
+  product: ShopifyProductRecord;
+  profile: SourceProfile;
+  seed: number;
+}) => {
+  const category = humanizeCategory(product).toLowerCase();
+  const audience = summarizeAudience(product, profile);
+  const targetWords = 90 + (seed % 211);
+  const sourceSummary = (
+    profile.metaDescription ||
+    profile.paragraphs[0] ||
+    profile.headings[0] ||
+    ""
+  )
+    .replace(/[.]+$/g, "")
+    .trim();
+  const featurePool = buildFeaturePool(product, profile);
+  const featureLead = featurePool[0]
+    ? cleanListItem(featurePool[0], 95).replace(/[.]+$/g, "")
+    : "";
+  const featureSecond = featurePool[1]
+    ? cleanListItem(featurePool[1], 95).replace(/[.]+$/g, "")
+    : "";
+
+  const sentences = toUniqueList([
+    `${product.title} is a ${category} for ${audience}.`,
+    product.vendor
+      ? `${product.vendor} presents it as a practical option for teams that want a tool they can evaluate in terms of everyday usefulness, not just headline claims.`
+      : `${product.title} reads like a practical option for teams that want a tool they can evaluate in terms of everyday usefulness, not just headline claims.`,
+    sourceSummary
+      ? `The current product messaging points to a clear focus: ${sourceSummary}.`
+      : buildCategoryFallbackOverview(product),
+    featureLead
+      ? `From the available product details, one of the stronger signals is ${featureLead.toLowerCase()}, which helps explain where the product may fit in a real workflow.`
+      : `The strongest buying signal usually comes from how clearly the product maps to a real workflow, a defined team need, and a manageable rollout path.`,
+    featureSecond
+      ? `Another detail buyers may want to review closely is ${featureSecond.toLowerCase()}, especially when comparing similar tools with overlapping feature sets.`
+      : `It is also worth checking how the product handles setup, day-to-day administration, and ongoing team adoption before making a final decision.`,
+    `For most buyers in this category, the most useful comparison points are workflow fit, plan structure, implementation effort, and how well the product supports consistent work over time.`,
+    `That kind of review usually gives a better picture of long-term value than a short feature list alone, especially when the product will be used by more than one team or across recurring processes.`,
+    `A careful evaluation should also look at integration needs, support expectations, and whether the product feels well suited to the way your team already works.`,
+  ]);
+
+  const overviewParts: string[] = [];
+  for (const sentence of sentences) {
+    if (countWords(overviewParts.join(" ")) >= targetWords) {
+      break;
+    }
+    overviewParts.push(sentence);
+  }
+
+  while (countWords(overviewParts.join(" ")) < 90) {
+    overviewParts.push(
+      `In practice, buyers tend to get the best results when they compare the product against their actual requirements, internal workflow complexity, and the level of visibility they need after adoption.`
+    );
+  }
+
+  return truncateSmart(overviewParts.join(" "), 1800);
+};
+
 const buildFeaturePool = (
   product: ShopifyProductRecord,
   profile: SourceProfile
@@ -1718,6 +1948,102 @@ const rewriteFeatureSentence = ({
   ];
 
   return pickVariant(stems, seed);
+};
+
+const cleanListItem = (value: string, maxLength = 110) =>
+  truncateSmart(
+    normalizeWhitespace(
+      value
+        .replace(/^[•*-]\s*/, "")
+        .replace(/\b(learn more|contact sales|request a demo)\b/gi, "")
+        .replace(/[.;:,]+$/g, "")
+    ),
+    maxLength
+  );
+
+const buildFeatureList = ({
+  product,
+  profile,
+}: {
+  product: ShopifyProductRecord;
+  profile: SourceProfile;
+}) => {
+  const features = toUniqueList(
+    buildFeaturePool(product, profile)
+      .map((feature) => cleanListItem(feature))
+      .filter((feature) => feature.length >= 12)
+  ).slice(0, 4);
+
+  if (features.length >= 3) {
+    return features.slice(0, 3);
+  }
+
+  const category = humanizeCategory(product).toLowerCase();
+  return [
+    `Focused ${category} workflows for practical day-to-day use`,
+    `Feature set aimed at improving speed, clarity, or operational control`,
+    `Evaluation-friendly positioning for buyers comparing multiple options`,
+  ];
+};
+
+const buildBestForList = ({
+  product,
+  profile,
+}: {
+  product: ShopifyProductRecord;
+  profile: SourceProfile;
+}) =>
+  toUniqueList([
+    `Teams evaluating ${humanizeCategory(product).toLowerCase()} options for ${summarizeAudience(product, profile)}`,
+    `Buyers comparing workflow fit, feature depth, and long-term usability`,
+    `Shortlists where practical use cases matter more than generic marketing claims`,
+  ]).slice(0, 2);
+
+const buildPricingNotesHtml = ({
+  product,
+  seed,
+}: {
+  product: ShopifyProductRecord;
+  seed: number;
+}) => {
+  const category = humanizeCategory(product).toLowerCase();
+  const notes = [
+    `Plan names, feature limits, and billing terms can vary over time. Use "Get Now" to review the latest ${category} pricing details on the official website.`,
+    `Vendors often separate plans by features, users, usage volume, or support level. Check the official website for current pricing and plan differences before you decide.`,
+    `Pricing for ${product.title} may depend on plan tier, usage needs, or contract terms. Visit the official website to confirm the latest commercial details.`,
+    `Before purchase, it is worth reviewing billing cycles, plan inclusions, and any usage thresholds on the official website so expectations stay clear from the start.`,
+  ];
+
+  return `<p>${escapeHtml(pickVariant(notes, seed))}</p>`;
+};
+
+const buildBeforeChooseHtml = ({
+  seed,
+}: {
+  seed: number;
+}) => {
+  const optionSets = [
+    [
+      "Review feature limits, integrations, and onboarding requirements",
+      "Compare support options and billing terms before final selection",
+    ],
+    [
+      "Check how the product fits your existing workflow and team size",
+      "Compare similar tools if you need more specialized functionality",
+    ],
+    [
+      "Confirm plan limits, implementation effort, and user access needs",
+      "Review cancellation terms, support coverage, and upgrade paths",
+    ],
+    [
+      "Validate integration needs, reporting expectations, and daily usability",
+      "Shortlist alternatives if your workflow has niche compliance or operational requirements",
+    ],
+  ];
+  const chosen = pickVariant(optionSets, seed);
+  return `<ul>${chosen
+    .map((item) => `<li>${escapeHtml(item)}</li>`)
+    .join("")}</ul>`;
 };
 
 const buildUseCaseSentences = ({
@@ -2000,26 +2326,24 @@ const buildSeoTitle = ({
   featurePool: string[];
 }) => {
   const coreName = extractCoreProductName(product.title);
-  const qualifier = deriveSeoQualifier({
-    product,
-    profile,
-    featurePool,
-  });
+  if (isLikelyCategoryLevelTitle(product)) {
+    return truncateSmart(
+      `Best ${coreName} Tools (2026) - Compare & Choose the Right One | ITMart24`,
+      78
+    );
+  }
 
-  const candidates = toUniqueList(
-    [
-      [coreName, qualifier].filter(Boolean).join(" | "),
-      [coreName, product.vendor].filter(Boolean).join(" | "),
-      [coreName, humanizeCategory(product)].filter(Boolean).join(" | "),
-    ].map((candidate) =>
-      normalizeWhitespace(candidate).replace(/\s+[|:-]\s*$/g, "")
-    )
+  const seed = hashString(
+    `${product.productId}-${profile.url}-${featurePool.join("|")}`
   );
+  const candidates = [
+    `Is ${coreName} Worth It? Features, Pricing & Alternatives | ITMart24`,
+    `${coreName} Review (2026): Features, Pricing & Alternatives | ITMart24`,
+    `${coreName} vs Alternatives: Features, Pricing & Comparison | ITMart24`,
+    `Why Choose ${coreName}? Features, Pricing & Alternatives | ITMart24`,
+  ];
 
-  const chosen =
-    candidates.find((candidate) => candidate.length <= 68) ?? candidates[0] ?? coreName;
-
-  return truncateSmart(chosen, 68).replace(/\s+[|:-]\s*$/g, "");
+  return truncateSmart(pickVariant(candidates, seed), 78);
 };
 
 const buildSeoDescription = ({
@@ -2032,59 +2356,54 @@ const buildSeoDescription = ({
   audience: string;
 }) => {
   const coreName = extractCoreProductName(product.title);
-  const qualifier = deriveSeoQualifier({
-    product,
-    profile,
-    featurePool: buildFeaturePool(product, profile),
-  }).toLowerCase();
-  const shortAudience = truncateSmart(audience, 48);
-  const sourceHint =
-    profile.featureBullets[0] || profile.headings[0] || profile.metaDescription;
-  const hintPhrase = sourceHint
-    ? truncateSmart(
-        sourceHint
-          .replace(/[.]+$/g, "")
-          .split(" ")
-          .slice(0, 8)
-          .join(" "),
-        48
-      ).toLowerCase()
-    : "";
+  if (isLikelyCategoryLevelTitle(product)) {
+    return truncateWithEllipsis(
+      `Find the best ${coreName} tools. Compare features, pricing, and use cases to choose the right solution for your needs.`,
+      158
+    );
+  }
 
-  const candidates = toUniqueList([
-    `${coreName} is ${withIndefiniteArticle(qualifier)}. Review its features, workflow fit, and overall value before you compare options.`,
-    `${coreName} helps ${shortAudience}. See how its ${hintPhrase || "core workflow"} supports evaluation before you shortlist a new platform.`,
-    `${coreName} is built for ${shortAudience}. Explore the product story, standout capabilities, and fit before making a buying decision.`,
-  ]);
+  const seed = hashString(`${product.productId}-${profile.url}`);
+  const candidates = [
+    `Looking for ${coreName}? See features, pricing, pros & cons, and compare alternatives before visiting the official website. | ITMart24`,
+    `Explore ${coreName} features, pricing, pros & cons, and alternatives before you visit the official website. | ITMart24`,
+    `Research ${coreName} with key features, pricing notes, pros & cons, and alternatives before visiting the official website. | ITMart24`,
+  ];
 
-  return (
-    candidates.find((candidate) => candidate.length <= 158) ??
-    truncateWithEllipsis(candidates[0], 158)
-  );
+  return truncateWithEllipsis(pickVariant(candidates, seed), 158);
 };
 
 const buildBodyHtml = ({
-  introParagraphs,
-  featureSentences,
-  useCaseSentences,
-  closingParagraph,
+  overview,
+  featureItems,
+  bestForItems,
+  pricingNotesHtml,
+  beforeChooseHtml,
 }: {
-  introParagraphs: string[];
-  featureSentences: string[];
-  useCaseSentences: string[];
-  closingParagraph: string;
+  overview: string;
+  featureItems: string[];
+  bestForItems: string[];
+  pricingNotesHtml: string;
+  beforeChooseHtml: string;
 }) => {
-  const featureItems = featureSentences
-    .map((sentence) => `<li>${escapeHtml(sentence)}</li>`)
+  const featureHtml = featureItems
+    .map((item) => `<li>${escapeHtml(item)}</li>`)
+    .join("");
+  const bestForHtml = bestForItems
+    .map((item) => `<li>${escapeHtml(item)}</li>`)
     .join("");
 
   return [
-    ...introParagraphs.map((paragraph) => `<p>${escapeHtml(paragraph)}</p>`),
-    `<h2>Key Capabilities</h2>`,
-    `<ul>${featureItems}</ul>`,
-    ...useCaseSentences.map((sentence) => `<p>${escapeHtml(sentence)}</p>`),
-    `<h2>Why It Deserves Attention</h2>`,
-    `<p>${escapeHtml(closingParagraph)}</p>`,
+    `<h2>Overview</h2>`,
+    `<p>${escapeHtml(overview)}</p>`,
+    `<h2>Key Features</h2>`,
+    `<ul>${featureHtml}</ul>`,
+    `<h2>Best For</h2>`,
+    `<ul>${bestForHtml}</ul>`,
+    `<h2>Pricing & Plan Notes</h2>`,
+    pricingNotesHtml,
+    `<h2>Before You Choose</h2>`,
+    beforeChooseHtml,
   ].join("");
 };
 
@@ -2095,53 +2414,24 @@ const createContentPackage = ({
   product: ShopifyProductRecord;
   profile: SourceProfile;
 }): ContentPackage => {
-  const seed = hashString(`${product.productId}-${profile.url}`);
   const category = humanizeCategory(product);
   const audience = summarizeAudience(product, profile);
   const featurePool = buildFeaturePool(product, profile);
-  const openingLines = [
-    `${product.title} is a ${category.toLowerCase()} that appears to be built for ${audience}. Based on the official messaging and the supporting product language available online, the platform is positioned around practical value rather than vague feature inflation.`,
-    product.vendor
-      ? `${product.vendor} frames ${product.title} as a product with a defined role inside a larger workflow, which is useful for buyers who want to understand where the tool can save time, improve visibility, or strengthen execution before committing to a new platform.`
-      : `${product.title} is presented with enough product context to show where it belongs inside a broader workflow, which matters for buyers who want to move past surface-level positioning and judge the product on fit.`,
-    profile.metaDescription
-      ? `The strongest signals on the source site point toward a product that is being marketed with a clear promise: ${truncateSmart(profile.metaDescription, 220)}. That promise is more credible when it is supported by concrete feature references, workflow language, and implementation clues rather than headline marketing alone.`
-      : `Even without relying on hype-heavy language, the source material gives a useful picture of how ${product.title} is expected to support day-to-day work, what problems it aims to reduce, and why the product may deserve a place on a serious shortlist.`,
-  ];
-
-  const featureSentences = (
-    featurePool.length > 0
-      ? featurePool.slice(0, 5).map((feature, index) =>
-          rewriteFeatureSentence({
-            feature,
-            product,
-            seed: seed + index,
-          })
-        )
-      : [
-          `${product.title} is presented as a more focused option than many generic entries in the same category, which can be useful for buyers who want a tighter match with a known workflow or business need.`,
-          `The official positioning also suggests that the product is meant to contribute to repeatable execution, not just one-off experimentation, which is often a sign of stronger operational fit.`,
-          `A closer review should focus on how the platform handles configuration, review steps, and adoption inside existing processes, because those details usually shape long-term value more than headline claims.`,
-        ]
-  ).slice(0, 5);
-
-  const useCaseSentences = buildUseCaseSentences({
+  const seed = hashString(
+    `${product.productId}-${product.title}-${profile.url}-${product.customUrl ?? ""}`
+  );
+  const overview = buildProfessionalOverview({
     product,
     profile,
     seed,
   });
-  const closingParagraph = buildClosingParagraph({ product, profile });
-  const paddedIntroParagraphs = padBodyText({
-    paragraphs: openingLines,
-    product,
-    profile,
-  });
 
   const bodyHtml = buildBodyHtml({
-    introParagraphs: paddedIntroParagraphs,
-    featureSentences,
-    useCaseSentences,
-    closingParagraph,
+    overview,
+    featureItems: buildFeatureList({ product, profile }),
+    bestForItems: buildBestForList({ product, profile }),
+    pricingNotesHtml: buildPricingNotesHtml({ product, seed }),
+    beforeChooseHtml: buildBeforeChooseHtml({ seed }),
   });
   const bodyText = stripHtml(bodyHtml);
   const bodyWordCount = countWords(bodyText);
@@ -2171,14 +2461,8 @@ const shouldSkipWithoutForce = (
     return false;
   }
 
-  return (
-    product.descriptionWordCount >= MIN_WORDS &&
-    product.seoTitle.trim() !== "" &&
-    product.seoDescription.trim() !== "" &&
-    product.descriptionText === content.bodyText &&
-    product.seoTitle === content.seoTitle &&
-    product.seoDescription === content.seoDescription
-  );
+  const audit = analyzeExistingContent(product);
+  return !audit.bodyNeedsRewrite && !audit.seoNeedsRefresh;
 };
 
 const updateShopifyProduct = async ({
@@ -2218,7 +2502,14 @@ const writeReportFiles = async (updates: ProductUpdatePreview[]) => {
     forceRewrite: FORCE_REWRITE,
     processedCount: updates.length,
     updatedCount: updates.filter((item) => item.updated).length,
+    bodyUpdatedCount: updates.filter((item) => item.bodyUpdated).length,
+    seoUpdatedCount: updates.filter((item) => item.seoUpdated).length,
     skippedCount: updates.filter((item) => !item.updated).length,
+    missingOfficialSourceCount: updates.filter((item) => !item.hasOfficialSource)
+      .length,
+    removedBadWordingCount: updates.filter(
+      (item) => item.removedBadPhrases.length > 0
+    ).length,
     sourceMethodBreakdown: updates.reduce<Record<string, number>>(
       (accumulator, item) => {
         accumulator[item.sourceMethod] =
@@ -2246,6 +2537,10 @@ const writeReportFiles = async (updates: ProductUpdatePreview[]) => {
       "current_word_count",
       "generated_word_count",
       "updated",
+      "body_updated",
+      "seo_updated",
+      "has_official_source",
+      "removed_bad_phrases",
       "skipped_reason",
       "seo_title",
       "seo_description",
@@ -2262,6 +2557,10 @@ const writeReportFiles = async (updates: ProductUpdatePreview[]) => {
         item.currentWordCount,
         item.generatedWordCount,
         item.updated,
+        item.bodyUpdated,
+        item.seoUpdated,
+        item.hasOfficialSource,
+        item.removedBadPhrases.join("; "),
         item.skippedReason,
         item.seoTitle,
         item.seoDescription,
@@ -2292,9 +2591,18 @@ const processProduct = async ({
     `[${index + 1}/${total}] Preparing SEO copy for ${product.productId}: ${product.title}`
   );
 
-  const source = await resolveSourceForProduct(product);
+  const resolvedSource = await resolveSourceForProduct(product);
+  const existingAudit = analyzeExistingContent(product);
+  const source =
+    resolvedSource.profile || isLikelyHttpUrl(product.customUrl)
+      ? resolvedSource
+      : {
+          sourceMethod: "category fallback" as const,
+          sourceUrl: null,
+          profile: buildCategoryFallbackProfile(product),
+        };
 
-  if (!source.profile) {
+  if (!source.profile && (existingAudit.bodyNeedsRewrite || existingAudit.seoNeedsRefresh)) {
     return {
       productId: product.productId,
       title: product.title,
@@ -2304,18 +2612,51 @@ const processProduct = async ({
       currentWordCount: product.descriptionWordCount,
       generatedWordCount: 0,
       updated: false,
+      bodyUpdated: false,
+      seoUpdated: false,
+      hasOfficialSource: Boolean(product.customUrl),
+      removedBadPhrases: existingAudit.badPhrases,
       skippedReason: "Could not gather enough trustworthy source material",
       seoTitle: product.seoTitle,
       seoDescription: product.seoDescription,
     };
   }
 
-  const content = createContentPackage({
+  if (!source.profile) {
+    return {
+      productId: product.productId,
+      title: product.title,
+      status: product.status,
+      sourceMethod: source.sourceMethod,
+      sourceUrl: source.sourceUrl,
+      currentWordCount: product.descriptionWordCount,
+      generatedWordCount: product.descriptionWordCount,
+      updated: false,
+      bodyUpdated: false,
+      seoUpdated: false,
+      hasOfficialSource: Boolean(product.customUrl),
+      removedBadPhrases: existingAudit.badPhrases,
+      skippedReason: "Existing content already meets Stage 1 SEO and description rules",
+      seoTitle: product.seoTitle,
+      seoDescription: product.seoDescription,
+    };
+  }
+
+  const generatedContent = createContentPackage({
     product,
     profile: source.profile,
   });
+  const content =
+    existingAudit.bodyNeedsRewrite || FORCE_REWRITE
+      ? generatedContent
+      : {
+          ...generatedContent,
+          bodyHtml: product.descriptionHtml,
+          bodyText: product.descriptionText,
+          bodyWordCount: product.descriptionWordCount,
+        };
 
-  if (content.bodyWordCount < MIN_WORDS) {
+  if ((existingAudit.bodyNeedsRewrite || FORCE_REWRITE) && content.bodyWordCount < MIN_WORDS) {
     return {
       productId: product.productId,
       title: product.title,
@@ -2325,6 +2666,10 @@ const processProduct = async ({
       currentWordCount: product.descriptionWordCount,
       generatedWordCount: content.bodyWordCount,
       updated: false,
+      bodyUpdated: false,
+      seoUpdated: false,
+      hasOfficialSource: Boolean(product.customUrl),
+      removedBadPhrases: existingAudit.badPhrases,
       skippedReason: `Generated copy stayed below the ${MIN_WORDS}-word minimum`,
       seoTitle: content.seoTitle,
       seoDescription: content.seoDescription,
@@ -2341,7 +2686,11 @@ const processProduct = async ({
       currentWordCount: product.descriptionWordCount,
       generatedWordCount: content.bodyWordCount,
       updated: false,
-      skippedReason: "Existing Shopify content already matches the generated output",
+      bodyUpdated: false,
+      seoUpdated: false,
+      hasOfficialSource: Boolean(product.customUrl),
+      removedBadPhrases: existingAudit.badPhrases,
+      skippedReason: "Existing content already meets Stage 1 SEO and description rules",
       seoTitle: content.seoTitle,
       seoDescription: content.seoDescription,
     };
@@ -2364,6 +2713,12 @@ const processProduct = async ({
     currentWordCount: product.descriptionWordCount,
     generatedWordCount: content.bodyWordCount,
     updated: true,
+    bodyUpdated: existingAudit.bodyNeedsRewrite || FORCE_REWRITE,
+    seoUpdated:
+      product.seoTitle !== content.seoTitle ||
+      product.seoDescription !== content.seoDescription,
+    hasOfficialSource: Boolean(product.customUrl),
+    removedBadPhrases: existingAudit.badPhrases,
     skippedReason: null,
     seoTitle: content.seoTitle,
     seoDescription: content.seoDescription,
@@ -2409,7 +2764,7 @@ const main = async () => {
   const allProducts = await fetchAllProducts();
   const selectionSummary = buildSelectionSummary(allProducts);
   console.log(
-    `Catalog summary: total=${selectionSummary.totalProducts}, active=${selectionSummary.activeProducts}, active_with_custom_url=${selectionSummary.activeWithCustomUrl}, active_without_custom_url=${selectionSummary.activeWithoutCustomUrl}, active_below_${MIN_WORDS}_words=${selectionSummary.activeBelowWordTarget}`
+    `Catalog summary: total=${selectionSummary.totalProducts}, active=${selectionSummary.activeProducts}, active_with_custom_url=${selectionSummary.activeWithCustomUrl}, active_without_custom_url=${selectionSummary.activeWithoutCustomUrl}, active_below_${MIN_WORDS}_words=${selectionSummary.activeBelowWordTarget}, active_needing_body_rewrite=${selectionSummary.activeNeedingBodyRewrite}, active_needing_seo_refresh=${selectionSummary.activeNeedingSeoRefresh}, active_with_bad_internal_wording=${selectionSummary.activeWithBadInternalWording}`
   );
 
   if (SUMMARY_ONLY) {

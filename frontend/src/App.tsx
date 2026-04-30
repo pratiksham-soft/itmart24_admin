@@ -32,6 +32,10 @@ import ShopifyProducts from "./pages/Shopify/ShopifyProducts";
 import ShopifyCollections from "./pages/Shopify/ShopifyCollections";
 import Support from "./pages/Support/Support";
 import Notifications from "./pages/Notifications/Notifications";
+import BlogJobs from "./pages/Marketing/BlogManager/BlogJobs";
+import Blogs from "./pages/Marketing/BlogManager/Blogs";
+import SmManager from "./pages/Marketing/SmManager";
+import Settings from "./pages/Marketing/Settings";
 
 
 export default function App() {
@@ -67,6 +71,10 @@ export default function App() {
               element={<Notifications />}
             />
             <Route path="/vendors" element={<Vendors />} />
+            <Route path="/marketing/blog-manager/jobs" element={<BlogJobs />} />
+            <Route path="/marketing/blog-manager/blogs" element={<Blogs />} />
+            <Route path="/marketing/sm-manager" element={<SmManager />} />
+            <Route path="/marketing/settings" element={<Settings />} />
 
             {/* Shopify */}
             <Route path="/shopify/products" element={<ShopifyProducts />} />

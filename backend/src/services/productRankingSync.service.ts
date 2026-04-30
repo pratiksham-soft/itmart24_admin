@@ -1,8 +1,8 @@
 import { firestore } from "../config/firebaseAdmin";
 import { shopifyGraphQL } from "./shopifyHttp";
 import { setCustomProductMetafields } from "./shopifyMetafields";
+import { listAnalyticsPreaggregated } from "./analyticsPostgres.service";
 
-const ANALYTICS_COLLECTION = "analytics_preaggregated";
 const PRODUCTS_COLLECTION = "products";
 const SHOPIFY_QUERY_BATCH_SIZE = 50;
 const SHOPIFY_UPDATE_CONCURRENCY = 4;
@@ -559,16 +559,18 @@ export const syncProductRankingToShopify =
       missingShopifyNode: 0,
     };
 
-    const analyticsSnapshot = await firestore
-      .collection(ANALYTICS_COLLECTION)
-      .where("success", "==", true)
-      .where("range", "==", "30d")
-      .get();
+    const analyticsRows = await listAnalyticsPreaggregated("30d", true);
 
     const aggregatedAnalytics = new Map<string, AnalyticsAggregate>();
 
-    analyticsSnapshot.docs.forEach((doc) => {
-      const data = doc.data() as Record<string, unknown>;
+    analyticsRows.forEach((row: Record<string, unknown>) => {
+      const data = {
+        productId: row.productId,
+        vendorId: row.vendorId,
+        range: row.range,
+        success: row.success,
+        totals: row.totals,
+      } satisfies Record<string, unknown>;
       const firestoreProductId = normalizeText(data.productId);
 
       if (!firestoreProductId) {
@@ -791,7 +793,7 @@ export const syncProductRankingToShopify =
     return {
       startedAt,
       completedAt: new Date().toISOString(),
-      analyticsDocumentsRead: analyticsSnapshot.size,
+      analyticsDocumentsRead: analyticsRows.length,
       analyticsProductsAggregated: analyticsByProductId.length,
       eligibleProducts: rankingEntries.length,
       syncedProducts,

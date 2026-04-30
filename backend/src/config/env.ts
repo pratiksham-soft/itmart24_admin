@@ -53,13 +53,16 @@ function readAppEnvironmentFile(): AppEnvironment {
 }
 
 export const APP_ENV =
+  readAppEnvironmentFile() ??
   normalizeEnvironment(process.env.APP_ENV) ??
-  normalizeEnvironment(process.env.NODE_ENV) ??
-  readAppEnvironmentFile();
+  normalizeEnvironment(process.env.NODE_ENV);
 
 export const NODE_ENV =
   process.env.NODE_ENV ??
   (APP_ENV === "production" ? "production" : "development");
+
+process.env.APP_ENV = APP_ENV;
+process.env.NODE_ENV = NODE_ENV;
 
 const envFiles = [
   path.join(BACKEND_ROOT, `.env.${APP_ENV}`),
@@ -72,6 +75,6 @@ const envFiles = [
 
 for (const envFile of envFiles) {
   if (fs.existsSync(envFile)) {
-    dotenv.config({ path: envFile });
+    dotenv.config({ path: envFile, override: true });
   }
 }
