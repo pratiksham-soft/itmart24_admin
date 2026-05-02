@@ -7,7 +7,7 @@ export default function SignIn() {
     <>
       <PageMeta
         title="Sign In | ITMart24 Admin"
-        description="Sign in to the ITMart24 admin dashboard with Firebase Authentication."
+        description="Sign in to the ITMart24 admin dashboard with your PostgreSQL admin account."
       />
       <AuthLayout>
         <SignInForm />

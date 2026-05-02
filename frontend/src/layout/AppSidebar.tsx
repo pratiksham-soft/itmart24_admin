@@ -192,6 +192,7 @@ const navItems: NavItem[] = [
       { name: "Active Products", path: "/products/active" },
       { name: "Rejected Products", path: "/products/rejected" },
       { name: "On Hold Products", path: "/products/on-hold" },
+      { name: "Delete Products", path: "/products/delete" },
     ],
   },
   {
@@ -243,6 +244,9 @@ const navItems: NavItem[] = [
       { name: "Product Category Master", path: "/master/product-category-master" },
     ],
   },
+];
+
+const othersItems: NavItem[] = [
   {
     icon: <CalenderIcon />,
     name: "Calendar",
@@ -266,9 +270,6 @@ const navItems: NavItem[] = [
       { name: "404 Error", path: "/error-404" },
     ],
   },
-];
-
-const othersItems: NavItem[] = [
   {
     icon: <PieChartIcon />,
     name: "Charts",

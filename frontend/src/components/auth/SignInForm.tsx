@@ -95,7 +95,7 @@ export default function SignInForm() {
       </div>
       <div className="flex flex-col justify-center flex-1 w-full max-w-xl px-6 mx-auto sm:px-8">
         <div className="rounded-3xl border border-gray-200 bg-white p-6 shadow-xl shadow-gray-100/50 dark:border-white/10 dark:bg-white/5 dark:shadow-none sm:p-8">
-          <AuthBrand subtitle="Sign in to the isolated ITMart24 admin workspace powered by Firebase Authentication." />
+          <AuthBrand subtitle="Sign in to the ITMart24 admin workspace with your PostgreSQL-backed admin account." />
 
           <div className="mt-8 mb-6">
             <h2 className="text-2xl font-semibold text-gray-900 dark:text-white">
@@ -132,7 +132,6 @@ export default function SignInForm() {
                   value={formValues.email}
                   onChange={(event) => updateField("email", event.target.value)}
                   error={Boolean(fieldErrors.email)}
-                  success={Boolean(formValues.email.trim()) && !fieldErrors.email}
                   hint={fieldErrors.email}
                   disabled={isSubmitting}
                 />
@@ -183,9 +182,6 @@ export default function SignInForm() {
                     Keep me logged in
                   </span>
                 </div>
-                <span className="text-xs text-gray-400 dark:text-gray-500">
-                  Firebase email/password access
-                </span>
               </div>
 
               <Button className="w-full" size="sm" disabled={isSubmitting}>

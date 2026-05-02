@@ -10,6 +10,8 @@ import dashboardRoutes from "./routes/dashboard.routes";
 import monthlyTargetsRoutes from "./routes/monthlyTargets.routes";
 import blogManagerRoutes from "./routes/blogManager.routes";
 import healthRoutes from "./routes/health.routes";
+import authRoutes from "./routes/auth.routes";
+import adminAuthRoutes from "./routes/adminAuth.routes";
 
 
 
@@ -21,6 +23,8 @@ app.use("/api/products", productsRoutes);
 app.use("/api/shopify", shopifyRoutes);
 app.use("/api/vendors", vendorsRoutes);
 app.use("/api/notifications", notificationsRoutes);
+app.use("/api/auth", authRoutes);
+app.use("/api/admin/auth", adminAuthRoutes);
 app.use("/api/subscription-plans", subscriptionPlansRoutes);
 app.use("/api/product-categories", productCategoriesRoutes);
 app.use("/api/dashboard", dashboardRoutes);

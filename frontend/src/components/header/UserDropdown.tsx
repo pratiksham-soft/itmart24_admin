@@ -1,18 +1,73 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router";
 import { DropdownItem } from "../ui/dropdown/DropdownItem";
 import { Dropdown } from "../ui/dropdown/Dropdown";
-import { Link } from "react-router";
+import {
+  type AdminUser,
+  getCurrentAdminProfile,
+  logoutAdmin,
+} from "../../services/adminAuth.service";
 
 export default function UserDropdown() {
+  const navigate = useNavigate();
   const [isOpen, setIsOpen] = useState(false);
+  const [profile, setProfile] = useState<AdminUser | null>(null);
+  const [isSigningOut, setIsSigningOut] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const hydrateProfile = async () => {
+      try {
+        const nextProfile = await getCurrentAdminProfile();
+
+        if (!isMounted) {
+          return;
+        }
+
+        setProfile(nextProfile);
+      } catch {
+        if (isMounted) {
+          setProfile(null);
+        }
+      }
+    };
+
+    void hydrateProfile();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   function toggleDropdown() {
-    setIsOpen(!isOpen);
+    setIsOpen((current) => !current);
   }
 
   function closeDropdown() {
     setIsOpen(false);
   }
+
+  const displayName = useMemo(() => {
+    return String(profile?.name ?? profile?.email ?? "Admin User").trim() || "Admin User";
+  }, [profile]);
+
+  const roleLabel = String(profile?.role ?? "admin")
+    .replace(/[_-]/g, " ")
+    .replace(/^./, (value) => value.toUpperCase());
+
+  const handleSignOut = async () => {
+    setIsSigningOut(true);
+
+    try {
+      await logoutAdmin();
+      closeDropdown();
+      navigate("/signin", { replace: true });
+    } finally {
+      setIsSigningOut(false);
+    }
+  };
+
   return (
     <div className="relative">
       <button
@@ -23,7 +78,9 @@ export default function UserDropdown() {
           <img src="/images/user/owner.jpg" alt="User" />
         </span>
 
-        <span className="block mr-1 font-medium text-theme-sm">Pratiksham</span>
+        <span className="block mr-1 font-medium text-theme-sm">
+          {displayName}
+        </span>
         <svg
           className={`stroke-gray-500 dark:stroke-gray-400 transition-transform duration-200 ${
             isOpen ? "rotate-180" : ""
@@ -51,10 +108,13 @@ export default function UserDropdown() {
       >
         <div>
           <span className="block font-medium text-gray-700 text-theme-sm dark:text-gray-400">
-            Pratiksham Softwares
+            {displayName}
           </span>
           <span className="mt-0.5 block text-theme-xs text-gray-500 dark:text-gray-400">
-            dir.it@pratiksham.com
+            {profile?.email || "admin@itmart24.com"}
+          </span>
+          <span className="mt-1 block text-theme-xs text-gray-400 dark:text-gray-500">
+            {roleLabel}
           </span>
         </div>
 
@@ -113,7 +173,7 @@ export default function UserDropdown() {
             <DropdownItem
               onItemClick={closeDropdown}
               tag="a"
-              to="/profile"
+              to="/support"
               className="flex items-center gap-3 px-3 py-2 font-medium text-gray-700 rounded-lg group text-theme-sm hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-300"
             >
               <svg
@@ -135,9 +195,11 @@ export default function UserDropdown() {
             </DropdownItem>
           </li>
         </ul>
-        <Link
-          to="/signin"
-          className="flex items-center gap-3 px-3 py-2 mt-3 font-medium text-gray-700 rounded-lg group text-theme-sm hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-300"
+        <DropdownItem
+          tag="button"
+          onClick={handleSignOut}
+          onItemClick={closeDropdown}
+          className="mt-3 flex items-center gap-3 px-3 py-2 font-medium text-gray-700 rounded-lg group text-theme-sm hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-300"
         >
           <svg
             className="fill-gray-500 group-hover:fill-gray-700 dark:group-hover:fill-gray-300"
@@ -154,8 +216,8 @@ export default function UserDropdown() {
               fill=""
             />
           </svg>
-          Sign out
-        </Link>
+          {isSigningOut ? "Signing out..." : "Sign out"}
+        </DropdownItem>
       </Dropdown>
     </div>
   );

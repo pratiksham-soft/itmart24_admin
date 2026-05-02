@@ -16,6 +16,7 @@ import BasicTables from "./pages/Tables/BasicTables";
 import FormElements from "./pages/Forms/FormElements";
 import Blank from "./pages/Blank";
 import AppLayout from "./layout/AppLayout";
+import AuthGuard from "./auth/AuthGuard";
 import { ScrollToTop } from "./components/common/ScrollToTop";
 import Home from "./pages/Dashboard/Home";
 import PendingProducts from "./pages/Products/PendingProducts";
@@ -23,6 +24,7 @@ import ActiveProducts from "./pages/Products/ActiveProducts";
 import RejectedProducts from "./pages/Products/RejectedProducts";
 import OnHoldProducts from "./pages/Products/OnHoldProducts";
 import ClaimedProducts from "./pages/Products/ClaimedProducts";
+import DeleteProducts from "./pages/Products/DeleteProducts";
 import Sync from "./pages/Master/Sync";
 import ManagePlans from "./pages/Master/ManagePlans/ManagePlans";
 import ProductCategoryMaster from "./pages/Master/ProductMaster/ProductCategoryMaster";
@@ -45,7 +47,13 @@ export default function App() {
         <ScrollToTop />
         <Routes>
           {/* Dashboard Layout */}
-          <Route element={<AppLayout />}>
+          <Route
+            element={
+              <AuthGuard>
+                <AppLayout />
+              </AuthGuard>
+            }
+          >
             <Route index path="/" element={<Home />} />
 
             {/* Others Page */}
@@ -65,6 +73,7 @@ export default function App() {
             <Route path="/products/rejected" element={<RejectedProducts />} />
             <Route path="/products/on-hold" element={<OnHoldProducts />} />
             <Route path="/products/claimed" element={<ClaimedProducts />} />
+            <Route path="/products/delete" element={<DeleteProducts />} />
             <Route path="/support" element={<Support />} />
             <Route
               path="/notifications"

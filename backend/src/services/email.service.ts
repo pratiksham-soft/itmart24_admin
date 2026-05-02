@@ -10,6 +10,15 @@ type NotificationEmailInput = {
   relatedRoute: string | null;
 };
 
+type SmtpEmailInput = {
+  to: string;
+  subject: string;
+  text: string;
+  html?: string;
+  fromEmail?: string;
+  fromName?: string;
+};
+
 type SmtpConfig = {
   host: string;
   port: number;
@@ -73,16 +82,13 @@ const getSmtpConfig = (): SmtpConfig | null => {
   };
 };
 
-export async function sendNotificationEmail(
-  input: NotificationEmailInput
-) {
+export async function sendSmtpEmail(input: SmtpEmailInput) {
   const config = getSmtpConfig();
 
   if (!config) {
-    console.error(
-      "[notifications] SMTP email skipped because one or more required env vars are missing."
+    throw new Error(
+      "SMTP email is not configured. Set SMTP_HOST, SMTP_PORT, SMTP_SECURE, SMTP_USER, SMTP_PASS, SMTP_FROM_EMAIL, and SMTP_FROM_NAME."
     );
-    return;
   }
 
   const transporter = nodemailer.createTransport({
@@ -94,6 +100,27 @@ export async function sendNotificationEmail(
       pass: config.pass,
     },
   });
+
+  await transporter.sendMail({
+    from: `"${input.fromName ?? config.fromName}" <${input.fromEmail ?? config.fromEmail}>`,
+    to: input.to,
+    subject: input.subject,
+    text: input.text,
+    ...(input.html ? { html: input.html } : {}),
+  });
+}
+
+export async function sendNotificationEmail(
+  input: NotificationEmailInput
+) {
+  const config = getSmtpConfig();
+
+  if (!config) {
+    console.error(
+      "[notifications] SMTP email skipped because one or more required env vars are missing."
+    );
+    return;
+  }
 
   const typeLabel = NOTIFICATION_TYPE_LABELS[input.type];
   const subject = `[ITMart24 Alerts] ${typeLabel}`;
@@ -108,10 +135,11 @@ export async function sendNotificationEmail(
     `Route: ${routeLine}`,
   ].join("\n");
 
-  await transporter.sendMail({
-    from: `"${config.fromName}" <${config.fromEmail}>`,
+  await sendSmtpEmail({
     to: config.toEmail,
     subject,
     text,
+    fromEmail: config.fromEmail,
+    fromName: config.fromName,
   });
 }

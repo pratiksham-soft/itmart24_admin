@@ -5,6 +5,14 @@ export type StatusProductRow = {
   vendorId: string;
   businessName: string;
   shopifyProductURL: string | null;
+  shopifyStatus?: string;
+  shopifyProductId?: number | null;
+  shopifyHandle?: string | null;
+  activeSubscription?: {
+    hasActiveSubscription: boolean;
+    activeSubscriptionCount: number;
+    activeSubscriptionMessage: string | null;
+  };
   vendor?: {
     basic?: {
       subCategoryName?: string;

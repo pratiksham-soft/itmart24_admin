@@ -7,7 +7,7 @@ export default function SignUp() {
     <>
       <PageMeta
         title="Sign Up | ITMart24 Admin"
-        description="Create a secure ITMart24 admin account with Firebase Authentication."
+        description="Create a secure ITMart24 admin account stored in PostgreSQL."
       />
       <AuthLayout>
         <SignUpForm />

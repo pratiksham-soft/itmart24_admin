@@ -1,9 +1,8 @@
 export type SignUpFormValues = {
-  firstName: string;
-  lastName: string;
+  name: string;
   email: string;
   password: string;
-  acceptTerms: boolean;
+  confirmPassword: string;
 };
 
 export type SignInFormValues = {
@@ -26,12 +25,8 @@ function isStrongEnoughPassword(password: string): boolean {
 export function validateSignUpForm(values: SignUpFormValues): AuthFormErrors {
   const errors: AuthFormErrors = {};
 
-  if (!values.firstName.trim()) {
-    errors.firstName = "First name is required.";
-  }
-
-  if (!values.lastName.trim()) {
-    errors.lastName = "Last name is required.";
+  if (!values.name.trim()) {
+    errors.name = "Name is required.";
   }
 
   if (!values.email.trim()) {
@@ -46,8 +41,10 @@ export function validateSignUpForm(values: SignUpFormValues): AuthFormErrors {
     errors.password = "Use at least 8 characters with letters and numbers.";
   }
 
-  if (!values.acceptTerms) {
-    errors.acceptTerms = "You need to accept the terms to continue.";
+  if (!values.confirmPassword) {
+    errors.confirmPassword = "Confirm password is required.";
+  } else if (values.password !== values.confirmPassword) {
+    errors.confirmPassword = "Password and confirm password must match.";
   }
 
   return errors;
@@ -68,4 +65,3 @@ export function validateSignInForm(values: SignInFormValues): AuthFormErrors {
 
   return errors;
 }
-

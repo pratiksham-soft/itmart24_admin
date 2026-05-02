@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { ChevronLeftIcon, EyeCloseIcon, EyeIcon } from "../../icons";
 import {
@@ -12,18 +12,17 @@ import {
 import AuthBrand from "./AuthBrand";
 import Label from "../form/Label";
 import Input from "../form/input/InputField";
-import Checkbox from "../form/input/Checkbox";
 import Button from "../ui/button/Button";
 
 export default function SignUpForm() {
   const navigate = useNavigate();
   const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [formValues, setFormValues] = useState({
-    firstName: "",
-    lastName: "",
+    name: "",
     email: "",
     password: "",
-    acceptTerms: false,
+    confirmPassword: "",
   });
   const [fieldErrors, setFieldErrors] = useState<AuthFormErrors>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -32,12 +31,7 @@ export default function SignUpForm() {
     message: string;
   } | null>(null);
 
-  const hasValidationErrors = useMemo(
-    () => Object.keys(fieldErrors).length > 0,
-    [fieldErrors]
-  );
-
-  const updateField = (field: string, value: string | boolean) => {
+  const updateField = (field: string, value: string) => {
     setFormValues((current) => ({ ...current, [field]: value }));
     setFieldErrors((current) => {
       if (!current[field]) {
@@ -66,19 +60,18 @@ export default function SignUpForm() {
 
     try {
       await signUpAdmin({
-        firstName: formValues.firstName.trim(),
-        lastName: formValues.lastName.trim(),
+        name: formValues.name.trim(),
         email: formValues.email.trim(),
         password: formValues.password,
       });
 
       setStatus({
         type: "success",
-        message: "Admin account created successfully. Redirecting to dashboard...",
+        message: "Admin account created successfully. Redirecting to sign in...",
       });
 
       window.setTimeout(() => {
-        navigate("/", { replace: true });
+        navigate("/signin", { replace: true });
       }, 900);
     } catch (error) {
       setStatus({
@@ -110,7 +103,7 @@ export default function SignUpForm() {
               Sign Up
             </h2>
             <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-              Use your work email and a strong password to set up admin access.
+              Use your admin name, work email, and a strong password to create access.
             </p>
           </div>
 
@@ -128,45 +121,21 @@ export default function SignUpForm() {
 
           <form onSubmit={handleSubmit} noValidate>
             <div className="space-y-5">
-              <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-                <div>
-                  <Label>
-                    First Name<span className="text-error-500">*</span>
-                  </Label>
-                  <Input
-                    id="firstName"
-                    name="firstName"
-                    type="text"
-                    placeholder="Pratik"
-                    value={formValues.firstName}
-                    onChange={(event) =>
-                      updateField("firstName", event.target.value)
-                    }
-                    error={Boolean(fieldErrors.firstName)}
-                    success={Boolean(formValues.firstName.trim()) && !fieldErrors.firstName}
-                    hint={fieldErrors.firstName}
-                    disabled={isSubmitting}
-                  />
-                </div>
-                <div>
-                  <Label>
-                    Last Name<span className="text-error-500">*</span>
-                  </Label>
-                  <Input
-                    id="lastName"
-                    name="lastName"
-                    type="text"
-                    placeholder="Shah"
-                    value={formValues.lastName}
-                    onChange={(event) =>
-                      updateField("lastName", event.target.value)
-                    }
-                    error={Boolean(fieldErrors.lastName)}
-                    success={Boolean(formValues.lastName.trim()) && !fieldErrors.lastName}
-                    hint={fieldErrors.lastName}
-                    disabled={isSubmitting}
-                  />
-                </div>
+              <div>
+                <Label>
+                  Name<span className="text-error-500">*</span>
+                </Label>
+                <Input
+                  id="name"
+                  name="name"
+                  type="text"
+                  placeholder="Admin User"
+                  value={formValues.name}
+                  onChange={(event) => updateField("name", event.target.value)}
+                  error={Boolean(fieldErrors.name)}
+                  hint={fieldErrors.name}
+                  disabled={isSubmitting}
+                />
               </div>
 
               <div>
@@ -181,7 +150,6 @@ export default function SignUpForm() {
                   value={formValues.email}
                   onChange={(event) => updateField("email", event.target.value)}
                   error={Boolean(fieldErrors.email)}
-                  success={Boolean(formValues.email.trim()) && !fieldErrors.email}
                   hint={fieldErrors.email}
                   disabled={isSubmitting}
                 />
@@ -202,8 +170,10 @@ export default function SignUpForm() {
                       updateField("password", event.target.value)
                     }
                     error={Boolean(fieldErrors.password)}
-                    success={Boolean(formValues.password) && !fieldErrors.password}
-                    hint={fieldErrors.password ?? "Use at least 8 characters with letters and numbers."}
+                    hint={
+                      fieldErrors.password ??
+                      "Use at least 8 characters with letters and numbers."
+                    }
                     disabled={isSubmitting}
                     className="pr-11"
                   />
@@ -223,30 +193,46 @@ export default function SignUpForm() {
               </div>
 
               <div>
-                <div className="flex items-start gap-3">
-                  <Checkbox
-                    className="mt-0.5"
-                    checked={formValues.acceptTerms}
-                    onChange={(checked) => updateField("acceptTerms", checked)}
+                <Label>
+                  Confirm Password<span className="text-error-500">*</span>
+                </Label>
+                <div className="relative">
+                  <Input
+                    id="confirmPassword"
+                    name="confirmPassword"
+                    type={showConfirmPassword ? "text" : "password"}
+                    placeholder="Re-enter your password"
+                    value={formValues.confirmPassword}
+                    onChange={(event) =>
+                      updateField("confirmPassword", event.target.value)
+                    }
+                    error={Boolean(fieldErrors.confirmPassword)}
+                    hint={fieldErrors.confirmPassword}
                     disabled={isSubmitting}
+                    className="pr-11"
                   />
-                  <p className="text-sm text-gray-500 dark:text-gray-400">
-                    I agree to use this account for authorized ITMart24 admin work
-                    and to follow internal security and privacy policies.
-                  </p>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setShowConfirmPassword((current) => !current)
+                    }
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 transition hover:text-gray-600 dark:hover:text-gray-200"
+                    aria-label={
+                      showConfirmPassword
+                        ? "Hide confirm password"
+                        : "Show confirm password"
+                    }
+                  >
+                    {showConfirmPassword ? (
+                      <EyeIcon className="fill-current size-5" />
+                    ) : (
+                      <EyeCloseIcon className="fill-current size-5" />
+                    )}
+                  </button>
                 </div>
-                {fieldErrors.acceptTerms && (
-                  <p className="mt-2 text-xs text-error-500">
-                    {fieldErrors.acceptTerms}
-                  </p>
-                )}
               </div>
 
-              <Button
-                className="w-full"
-                size="sm"
-                disabled={isSubmitting || hasValidationErrors}
-              >
+              <Button className="w-full" size="sm" disabled={isSubmitting}>
                 {isSubmitting ? "Creating account..." : "Create admin account"}
               </Button>
             </div>

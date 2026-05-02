@@ -1,7 +1,10 @@
 import { Router } from "express";
 import { firestore } from "../config/firebase";
 import admin from "firebase-admin";
-import { syncProductWithShopify } from "../services/shopifyProductSync";
+import {
+  getShopifyProductHandle,
+  syncProductWithShopify,
+} from "../services/shopifyProductSync";
 import { enrichProductsWithVendors } from "../utils/enrichProductsWithVendors";
 import {
   importShopifyProductsToFirestore,
@@ -22,6 +25,11 @@ import {
   buildFirestoreExport,
   listFirestoreRootCollections,
 } from "../services/firestoreExport.service";
+import {
+  buildActiveSubscriptionLookup,
+  deleteProductEverywhere,
+  normalizeDeleteListItem,
+} from "../services/productDeletion.service";
 
 type FirestoreProductData = {
   vendorId: string;
@@ -100,6 +108,29 @@ type FirestoreProduct = FirestoreProductData & {
 const router = Router();
 const PRODUCT_ADMIN_LIST_PAGE_SIZE = 25;
 const PRODUCT_ADMIN_LIST_MAX_PAGE_SIZE = 100;
+const getStorefrontProductUrl = (handle: string) => {
+  const storefrontDomain =
+    process.env.SHOPIFY_STOREFRONT_DOMAIN ||
+    process.env.SHOPIFY_STORE_DOMAIN;
+
+  if (!storefrontDomain) {
+    throw new Error("Shopify storefront domain is not configured.");
+  }
+
+  return `https://${storefrontDomain.replace(/^https?:\/\//, "").replace(/\/$/, "")}/products/${handle}`;
+};
+const parseShopifyProductId = (value: unknown) => {
+  const numericId =
+    typeof value === "number"
+      ? value
+      : Number(String(value ?? "").split("/").pop());
+
+  if (!numericId || Number.isNaN(numericId)) {
+    throw new Error("Shopify product ID is invalid for this item.");
+  }
+
+  return numericId;
+};
 
 type FirestoreTimestampLike =
   | admin.firestore.Timestamp
@@ -273,6 +304,17 @@ type ProductAdminListItem = {
   };
 };
 
+type ProductDeleteListItem = ProductAdminListItem & {
+  shopifyStatus: string;
+  shopifyProductId: number | null;
+  shopifyHandle: string | null;
+  activeSubscription: {
+    hasActiveSubscription: boolean;
+    activeSubscriptionCount: number;
+    activeSubscriptionMessage: string | null;
+  };
+};
+
 const parsePositiveIntegerQuery = (
   value: unknown,
   fallback: number,
@@ -320,6 +362,36 @@ const filterAdminProductsBySearch = (
       product.basic?.description,
       product.pricing?.selectedPlan,
       product.pricing?.price,
+    ].some((value) => normalizeSearchValue(value).includes(normalizedQuery))
+  );
+};
+
+const filterDeleteProductsBySearch = (
+  products: ProductDeleteListItem[],
+  searchQuery: string
+) => {
+  const normalizedQuery = searchQuery.trim().toLowerCase();
+
+  if (!normalizedQuery) {
+    return products;
+  }
+
+  return products.filter((product) =>
+    [
+      product.id,
+      product.vendorId,
+      product.businessName,
+      product.status,
+      product.shopifyStatus,
+      product.shopifyProductId,
+      product.shopifyHandle,
+      product.shopifyProductURL,
+      product.vendor?.basic?.subCategoryName,
+      product.basic?.productName,
+      product.basic?.category,
+      product.basic?.description,
+      product.pricing?.selectedPlan,
+      product.activeSubscription?.activeSubscriptionMessage,
     ].some((value) => normalizeSearchValue(value).includes(normalizedQuery))
   );
 };
@@ -381,6 +453,39 @@ const buildAdminProductListItems = async (
   return enrichedProducts.map((product: any) =>
     normalizeAdminProductListItem(product)
   );
+};
+
+const buildDeleteAdminProductListItems = async (
+  docs: FirebaseFirestore.QueryDocumentSnapshot[]
+) => {
+  const products: FirestoreProduct[] = docs.map((doc) => {
+    const data = doc.data() as FirestoreProductData;
+
+    return {
+      id: doc.id,
+      ...data,
+    };
+  });
+
+  const enrichedProducts = await enrichProductsWithVendors(products);
+  const activeSubscriptionLookup =
+    await buildActiveSubscriptionLookup(enrichedProducts as any[]);
+
+  return enrichedProducts.map((product: any) => {
+    const normalizedItem = normalizeDeleteListItem(
+      product,
+      activeSubscriptionLookup.get(product.id) ?? {
+        hasActiveSubscription: false,
+        activeSubscriptionCount: 0,
+        activeSubscriptionMessage: null,
+      }
+    );
+
+    return {
+      ...normalizedItem,
+      businessName: product.vendorResolved?.businessName ?? "",
+    } satisfies ProductDeleteListItem;
+  });
 };
 
 const sendPaginatedAdminProductsResponse = async ({
@@ -575,6 +680,73 @@ router.post(
     }
   }
 );
+
+router.get("/delete-list", async (req, res) => {
+  const pageSize = parsePositiveIntegerQuery(
+    req.query.pageSize,
+    PRODUCT_ADMIN_LIST_PAGE_SIZE,
+    PRODUCT_ADMIN_LIST_MAX_PAGE_SIZE
+  );
+  const requestedPage = parsePositiveIntegerQuery(req.query.page, 1);
+  const searchQuery =
+    typeof req.query.search === "string" ? req.query.search.trim() : "";
+
+  try {
+    const productsQuery = firestore
+      .collection("products")
+      .orderBy("createdAt", "desc");
+
+    if (searchQuery) {
+      const snapshot = await productsQuery.get();
+      const filteredProducts = filterDeleteProductsBySearch(
+        await buildDeleteAdminProductListItems(snapshot.docs),
+        searchQuery
+      );
+      const totalCount = filteredProducts.length;
+      const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+      const page = Math.min(requestedPage, totalPages);
+      const startIndex = (page - 1) * pageSize;
+
+      res.json({
+        success: true,
+        count: totalCount,
+        data: filteredProducts.slice(startIndex, startIndex + pageSize),
+        page,
+        pageSize,
+        totalPages,
+        hasMore: page < totalPages,
+        nextCursor: null,
+      });
+      return;
+    }
+
+    const countSnapshot = await firestore.collection("products").count().get();
+    const totalCount = Number(countSnapshot.data().count ?? 0);
+    const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+    const page = Math.min(requestedPage, totalPages);
+    const snapshot = await productsQuery
+      .offset((page - 1) * pageSize)
+      .limit(pageSize)
+      .get();
+
+    res.json({
+      success: true,
+      count: totalCount,
+      data: await buildDeleteAdminProductListItems(snapshot.docs),
+      page,
+      pageSize,
+      totalPages,
+      hasMore: page < totalPages,
+      nextCursor: null,
+    });
+  } catch (error: any) {
+    console.error("Failed to fetch delete products list", error);
+    res.status(500).json({
+      success: false,
+      message: error.message || "Failed to fetch delete products list",
+    });
+  }
+});
 
 /**
  * GET /api/products/pending
@@ -1221,13 +1393,21 @@ router.post("/:id/status", async (req, res) => {
   baseProduct.lifecycleStatus ?? "pending";
     const previousShopifyStatus =
       baseProduct.shopify?.shopifyStatus ?? "draft";
+    const existingShopifyProductId =
+      baseProduct.shopify?.productId ??
+      baseProduct.shopifyProductId ??
+      (baseProduct.shopify as any)?.identifiers?.productId ??
+      null;
+    const numericShopifyProductId = existingShopifyProductId
+      ? parseShopifyProductId(existingShopifyProductId)
+      : null;
     const shopifyApiStatus: "active" | "draft" =
   lifecycleStatus === "active" ? "active" : "draft";
 
     if (
       previousLifecycleStatus === lifecycleStatus &&
       previousShopifyStatus === shopifyApiStatus &&
-      (lifecycleStatus !== "active" || Boolean(baseProduct.shopify?.productId))
+      (lifecycleStatus !== "active" || Boolean(numericShopifyProductId))
     ) {
       return res.json({
         success: true,
@@ -1245,11 +1425,18 @@ router.post("/:id/status", async (req, res) => {
       try {
 
         console.log("Attempting Shopify sync for product:", id);
-        if (baseProduct.shopify?.productId) {
-          console.log(
-            "Shopify product already exists, skipping CREATE",
-            baseProduct.shopify.productId
-          );
+        if (!numericShopifyProductId) {
+          const missingShopifyMessage =
+            "Shopify product is missing for this item. Please create/sync it from vendor_portal first.";
+
+          await productRef.update({
+            "shopify.lastError": missingShopifyMessage,
+          });
+
+          return res.status(400).json({
+            success: false,
+            message: missingShopifyMessage,
+          });
         }
 
         const normalizedProduct = {
@@ -1279,17 +1466,22 @@ router.post("/:id/status", async (req, res) => {
               ...normalizedProduct,
               shopify: {
                 ...normalizedProduct.shopify,
-                productId:
-                  normalizedProduct.shopify?.productId ?? null,
+                productId: numericShopifyProductId,
               },
             },
             shopifyApiStatus,
+            allowCreate: false,
           });
 
         const nextHandle =
-          baseProduct.shopify?.handle ?? shopifyResult.handle ?? null;
+          baseProduct.shopify?.handle ??
+          baseProduct.shopifyHandle ??
+          shopifyResult.handle ??
+          (await getShopifyProductHandle(numericShopifyProductId));
+        const storefrontProductUrl = getStorefrontProductUrl(nextHandle);
 
         await productRef.update({
+          status: lifecycleStatus,
           lifecycleStatus,
           source: baseProduct.source ?? "vendor",
           ownership: {
@@ -1303,21 +1495,23 @@ router.post("/:id/status", async (req, res) => {
           "verification.isProductActive": true,
           "verification.productVerified": true,
           "shopify.productId":
-            baseProduct.shopify?.productId ??
-            shopifyResult.shopifyProductId,
+            numericShopifyProductId,
           "shopify.graphqlId":
             baseProduct.shopify?.graphqlId ??
             shopifyResult.shopifyGraphqlId ??
             null,
           "shopify.handle": nextHandle,
-          "shopify.shopifyProductURL":
-            nextHandle
-              ? `https://${process.env.SHOPIFY_STORE_DOMAIN}/products/${nextHandle}`
-              : null,
+          "shopify.shopifyProductURL": storefrontProductUrl,
+          "shopify.shopifyProductUrl": storefrontProductUrl,
           "shopify.shopifyStatus": "active",
           "shopify.syncAction": shopifyResult.action,
           "shopify.syncedAt": admin.firestore.FieldValue.serverTimestamp(),
           "shopify.lastError": admin.firestore.FieldValue.delete(),
+          shopifyProductId: numericShopifyProductId,
+          shopifyHandle: nextHandle,
+          shopifyProductURL: storefrontProductUrl,
+          shopifyProductUrl: storefrontProductUrl,
+          shopifyStatus: "active",
         });
 
         console.log("Shopify sync SUCCESS:", shopifyResult);
@@ -1355,12 +1549,14 @@ router.post("/:id/status", async (req, res) => {
     });
 
     await productRef.update({
+      status: lifecycleStatus,
       lifecycleStatus,
       "shopify.shopifyStatus":
         shopifyApiStatus === "active" ? "active" : "draft",
       "shopify.syncAction": shopifyResult.action,
       "shopify.syncedAt": admin.firestore.FieldValue.serverTimestamp(),
       "shopify.lastError": admin.firestore.FieldValue.delete(),
+      shopifyStatus: shopifyApiStatus === "active" ? "active" : "draft",
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     });
 
@@ -1515,6 +1711,43 @@ router.post("/import/shopify", async (_req, res) => {
         error.message || "Shopify import failed",
       log,
       progress: failedProgress,
+    });
+  }
+});
+
+router.delete("/:id", async (req, res) => {
+  try {
+    const confirmationName =
+      typeof req.body?.confirmationName === "string"
+        ? req.body.confirmationName
+        : "";
+    const result = await deleteProductEverywhere({
+      productId: req.params.id,
+      confirmationName,
+    });
+
+    res.json({
+      success: true,
+      message:
+        result.warnings.length > 0
+          ? `Product "${result.deletedProductName}" deleted with warnings`
+          : `Product "${result.deletedProductName}" deleted successfully`,
+      data: result,
+    });
+  } catch (error: any) {
+    const message = error.message || "Failed to delete product";
+    const status =
+      message === "Product not found"
+        ? 404
+        : message === "Product name confirmation is required" ||
+            message === "Typed product name does not match exactly"
+          ? 400
+          : 500;
+
+    console.error("Failed to delete product", error);
+    res.status(status).json({
+      success: false,
+      message,
     });
   }
 });
