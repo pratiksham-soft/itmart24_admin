@@ -1,0 +1,21 @@
+name: Deploy Admin Live
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy live on server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.ADMIN_SERVER_HOST }}
+          username: root
+          key: ${{ secrets.ADMIN_SERVER_SSH_KEY }}
+          port: 22
+          script: |
+            /var/www/shavi.itmart24.com/deploy-live.sh
