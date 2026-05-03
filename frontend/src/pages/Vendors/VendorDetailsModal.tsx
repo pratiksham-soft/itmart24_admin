@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Badge from "../../components/ui/badge/Badge";
 import { Modal } from "../../components/ui/modal";
+import { API_BASE_URL } from "../../config/api";
 
 type Props = {
   isOpen: boolean;
@@ -59,7 +60,7 @@ const VendorDetailsModal = ({ isOpen, vendorId, onClose, onUpdated }: Props) => 
       setError(null);
       setMessage(null);
       try {
-        const response = await fetch(`http://localhost:5000/api/vendors/${vendorId}`);
+        const response = await fetch(`${API_BASE_URL}/api/vendors/${vendorId}`);
         const result = await response.json();
         if (!response.ok || !result.success) {
           throw new Error(result.message || "Failed to fetch vendor details");
@@ -127,7 +128,7 @@ const VendorDetailsModal = ({ isOpen, vendorId, onClose, onUpdated }: Props) => 
     setError(null);
     setMessage(null);
     try {
-      const response = await fetch(`http://localhost:5000/api/vendors/${vendorId}`, {
+      const response = await fetch(`${API_BASE_URL}/api/vendors/${vendorId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),

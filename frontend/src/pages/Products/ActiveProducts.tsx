@@ -13,6 +13,7 @@ import Badge from "../../components/ui/badge/Badge";
 import ProductSearchBar from "./ProductSearchBar";
 import ProductDetailsModal from "./ProductDetailsModal";
 import { usePaginatedStatusProducts } from "./usePaginatedStatusProducts";
+import { API_BASE_URL } from "../../config/api";
 
 type LifecycleStatus =
   | "active"
@@ -42,7 +43,7 @@ const ActiveProducts = () => {
     handlePageClick,
     refetchProducts,
   } = usePaginatedStatusProducts({
-    endpoint: "http://localhost:5000/api/products/active",
+    endpoint: `${API_BASE_URL}/api/products/active`,
   });
   const areAllVisibleSelected =
     products.length > 0 &&

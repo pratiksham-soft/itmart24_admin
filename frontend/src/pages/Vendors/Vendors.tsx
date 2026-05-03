@@ -10,6 +10,7 @@ import {
 } from "../../components/ui/table";
 import ProductSearchBar from "../Products/ProductSearchBar";
 import VendorDetailsModal from "./VendorDetailsModal";
+import { API_BASE_URL } from "../../config/api";
 
 type Vendor = {
   id: string;
@@ -163,7 +164,7 @@ const Vendors = () => {
     setLoading(true);
 
     try {
-      const response = await fetch("http://localhost:5000/api/vendors");
+      const response = await fetch(`${API_BASE_URL}/api/vendors`);
       const result = await response.json();
 
       if (result.success) {
@@ -253,7 +254,7 @@ const Vendors = () => {
 
     try {
       const response = await fetch(
-        `http://localhost:5000/api/vendors/${vendorToDelete.id}`,
+        `${API_BASE_URL}/api/vendors/${vendorToDelete.id}`,
         {
           method: "DELETE",
           headers: {

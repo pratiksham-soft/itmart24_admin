@@ -4,6 +4,7 @@ import ComponentCard from "../../components/common/ComponentCard";
 import { Modal } from "../../components/ui/modal";
 import ProductSearchBar from "./ProductSearchBar";
 import { usePaginatedStatusProducts } from "./usePaginatedStatusProducts";
+import { API_BASE_URL } from "../../config/api";
 import {
   Table,
   TableBody,
@@ -185,7 +186,7 @@ const DeleteProducts = () => {
     handlePageClick,
     refetchProducts,
   } = usePaginatedStatusProducts({
-    endpoint: "http://localhost:5000/api/products/delete-list",
+    endpoint: `${API_BASE_URL}/api/products/delete-list`,
   });
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [productToDelete, setProductToDelete] =
@@ -225,7 +226,7 @@ const DeleteProducts = () => {
 
     try {
       const response = await fetch(
-        `http://localhost:5000/api/products/${productToDelete.id}`,
+        `${API_BASE_URL}/api/products/${productToDelete.id}`,
         {
           method: "DELETE",
           headers: {

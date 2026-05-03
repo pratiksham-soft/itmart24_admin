@@ -1,4 +1,5 @@
-const API_BASE_URL = "http://localhost:5000";
+import { API_BASE_URL } from "../config/api";
+
 const LOCAL_TOKEN_KEY = "itmart24_admin_session_token";
 const SESSION_TOKEN_KEY = "itmart24_admin_session_token_session";
 

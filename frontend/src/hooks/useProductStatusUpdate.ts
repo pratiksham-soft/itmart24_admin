@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { API_BASE_URL } from "../config/api";
 
 type LifecycleStatus =
   | "active"
@@ -31,7 +32,7 @@ export const useProductStatusUpdate = ({
 
     try {
       const response = await fetch(
-        `http://localhost:5000/api/products/${productId}/status`,
+        `${API_BASE_URL}/api/products/${productId}/status`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -83,7 +84,7 @@ export const useProductStatusUpdate = ({
   try {
     await Promise.all(
       productIds.map(async (productId) => {
-        const response = await fetch(`http://localhost:5000/api/products/${productId}/status`, {
+        const response = await fetch(`${API_BASE_URL}/api/products/${productId}/status`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
