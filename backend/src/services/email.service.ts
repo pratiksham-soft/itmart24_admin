@@ -27,7 +27,6 @@ type SmtpConfig = {
   pass: string;
   fromEmail: string;
   fromName: string;
-  toEmail: string;
 };
 
 const NOTIFICATION_TYPE_LABELS: Record<NotificationType, string> = {
@@ -57,15 +56,13 @@ const getSmtpConfig = (): SmtpConfig | null => {
   const pass = readEnv("SMTP_PASS");
   const fromEmail = readEnv("SMTP_FROM_EMAIL");
   const fromName = readEnv("SMTP_FROM_NAME");
-  const toEmail = readEnv("NOTIFICATION_ALERT_EMAIL_TO");
 
   if (
     !host ||
     !user ||
     !pass ||
     !fromEmail ||
-    !fromName ||
-    !toEmail
+    !fromName
   ) {
     return null;
   }
@@ -78,7 +75,6 @@ const getSmtpConfig = (): SmtpConfig | null => {
     pass,
     fromEmail,
     fromName,
-    toEmail,
   };
 };
 
@@ -114,8 +110,9 @@ export async function sendNotificationEmail(
   input: NotificationEmailInput
 ) {
   const config = getSmtpConfig();
+  const toEmail = readEnv("NOTIFICATION_ALERT_EMAIL_TO");
 
-  if (!config) {
+  if (!config || !toEmail) {
     console.error(
       "[notifications] SMTP email skipped because one or more required env vars are missing."
     );
@@ -136,7 +133,7 @@ export async function sendNotificationEmail(
   ].join("\n");
 
   await sendSmtpEmail({
-    to: config.toEmail,
+    to: toEmail,
     subject,
     text,
     fromEmail: config.fromEmail,

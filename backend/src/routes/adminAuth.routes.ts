@@ -100,6 +100,10 @@ router.post("/change-password", async (req, res) => {
   try {
     const result = await changeAdminPassword({
       sessionToken: getBearerToken(req.headers.authorization),
+      currentPassword:
+        typeof req.body?.currentPassword === "string"
+          ? req.body.currentPassword
+          : "",
       newPassword:
         typeof req.body?.newPassword === "string" ? req.body.newPassword : "",
     });
@@ -108,7 +112,7 @@ router.post("/change-password", async (req, res) => {
   } catch (error: any) {
     const message = error.message || "Unable to change password right now.";
     const status =
-      /authentication is required|expired|required|characters with letters and numbers/i.test(
+      /authentication is required|expired|required|incorrect|characters with letters and numbers/i.test(
         message
       )
         ? 400

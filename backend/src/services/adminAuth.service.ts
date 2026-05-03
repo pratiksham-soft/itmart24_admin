@@ -20,6 +20,7 @@ type SignInPayload = {
 
 type ChangePasswordPayload = {
   sessionToken: string;
+  currentPassword: string;
   newPassword: string;
 };
 
@@ -58,6 +59,35 @@ const mapAdminRecord = (row: Record<string, unknown>): AdminRecord => ({
 
 const getSessionExpiry = (rememberMe: boolean) =>
   new Date(Date.now() + (rememberMe ? THIRTY_DAYS_MS : ONE_DAY_MS));
+
+export async function createAdminSessionForAdmin(
+  admin: Record<string, unknown>,
+  rememberMe = true
+) {
+  if (String(admin.status ?? "").toLowerCase() !== "active") {
+    throw new Error("This admin account is inactive. Contact the system administrator.");
+  }
+
+  const sessionToken = createSessionToken();
+  const tokenHash = hashSessionToken(sessionToken);
+  const expiresAt = getSessionExpiry(Boolean(rememberMe));
+  const pool = await getAnalyticsPool();
+
+  await pool.query(
+    `
+      INSERT INTO admin_sessions (admin_id, token_hash, expires_at)
+      VALUES ($1, $2, $3)
+    `,
+    [admin.id, tokenHash, expiresAt]
+  );
+
+  return {
+    success: true,
+    sessionToken,
+    user: mapAdminRecord(admin),
+    expiresAt: expiresAt.toISOString(),
+  };
+}
 
 export async function signUpAdmin({
   name,
@@ -162,24 +192,7 @@ export async function signInAdmin({
     throw new Error("Invalid email or password.");
   }
 
-  const sessionToken = createSessionToken();
-  const tokenHash = hashSessionToken(sessionToken);
-  const expiresAt = getSessionExpiry(Boolean(rememberMe));
-
-  await pool.query(
-    `
-      INSERT INTO admin_sessions (admin_id, token_hash, expires_at)
-      VALUES ($1, $2, $3)
-    `,
-    [admin.id, tokenHash, expiresAt]
-  );
-
-  return {
-    success: true,
-    sessionToken,
-    user: mapAdminRecord(admin),
-    expiresAt: expiresAt.toISOString(),
-  };
+  return createAdminSessionForAdmin(admin, Boolean(rememberMe));
 }
 
 export async function getAdminProfile(sessionToken: string) {
@@ -252,8 +265,13 @@ export async function logoutAdmin(sessionToken: string) {
 
 export async function changeAdminPassword({
   sessionToken,
+  currentPassword,
   newPassword,
 }: ChangePasswordPayload) {
+  if (!currentPassword) {
+    throw new Error("Current password is required.");
+  }
+
   if (!newPassword) {
     throw new Error("New password is required.");
   }
@@ -265,12 +283,22 @@ export async function changeAdminPassword({
   const profile = await getAdminProfile(sessionToken);
   const pool = await getAnalyticsPool();
   const adminResult = await pool.query(
-    "SELECT id FROM admins WHERE id = $1 LIMIT 1",
+    "SELECT id, password_hash FROM admins WHERE id = $1 LIMIT 1",
     [profile.user.id]
   );
 
   if (adminResult.rowCount === 0) {
     throw new Error("Authentication is required.");
+  }
+
+  const admin = adminResult.rows[0] as Record<string, unknown>;
+  const currentPasswordMatches = await bcrypt.compare(
+    currentPassword,
+    String(admin.password_hash ?? "")
+  );
+
+  if (!currentPasswordMatches) {
+    throw new Error("Current password is incorrect.");
   }
 
   const newPasswordHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
