@@ -279,6 +279,208 @@ type ShopifySyncResult = {
   handle: string | null;
 };
 
+const fetchPublicationIds = async () => {
+  const publicationIds: string[] = [];
+  let cursor: string | null = null;
+  let hasNextPage = true;
+
+  while (hasNextPage) {
+    const response: any = await shopifyRest.post("/graphql.json", {
+      query: `
+        query FetchPublications($first: Int!, $after: String) {
+          publications(first: $first, after: $after) {
+            nodes {
+              id
+            }
+            pageInfo {
+              hasNextPage
+              endCursor
+            }
+          }
+        }
+      `,
+      variables: {
+        first: 50,
+        after: cursor,
+      },
+    });
+
+    const graphQLErrors = response.data?.errors ?? [];
+    if (graphQLErrors.length) {
+      throw new Error(
+        `Shopify publications query failed: ${graphQLErrors
+          .map((error: any) => error.message)
+          .join(", ")}`
+      );
+    }
+
+    const connection: any = response.data?.data?.publications;
+    const nodes = Array.isArray(connection?.nodes) ? connection.nodes : [];
+
+    nodes.forEach((node: any) => {
+      if (node?.id) {
+        publicationIds.push(String(node.id));
+      }
+    });
+
+    hasNextPage = Boolean(connection?.pageInfo?.hasNextPage);
+    cursor = connection?.pageInfo?.endCursor ?? null;
+  }
+
+  return Array.from(new Set(publicationIds));
+};
+
+const normalizeImageUrlForCompare = (value: unknown) =>
+  normalizeText(value).replace(/^https?:/i, "").split("?")[0];
+
+const getProductImageUrls = (product: any) => {
+  const urls: string[] = [];
+  const thumbnailUrl = normalizeOptionalUrl(product.media?.thumbnailUrl);
+  const gallery = Array.isArray(product.media?.gallery)
+    ? product.media.gallery
+    : [];
+
+  if (thumbnailUrl) {
+    urls.push(thumbnailUrl);
+  }
+
+  gallery.forEach((item: any) => {
+    if (item?.type && item.type !== "image") {
+      return;
+    }
+
+    const imageUrl = normalizeOptionalUrl(item?.url || item?.previewUrl);
+    if (imageUrl) {
+      urls.push(imageUrl);
+    }
+  });
+
+  const seen = new Set<string>();
+  return urls.filter((url) => {
+    const key = normalizeImageUrlForCompare(url);
+    if (!key || seen.has(key)) {
+      return false;
+    }
+
+    seen.add(key);
+    return true;
+  });
+};
+
+const syncProductImages = async (
+  shopifyProductId: number,
+  imageUrls: string[]
+) => {
+  if (!imageUrls.length) {
+    return null;
+  }
+
+  const imagesResponse = await shopifyRest.get(
+    `/products/${shopifyProductId}/images.json`,
+    {
+      params: {
+        fields: "id,src,position",
+      },
+    }
+  );
+  const images = Array.isArray(imagesResponse.data?.images)
+    ? imagesResponse.data.images
+    : [];
+  let firstImage = null;
+
+  for (let index = 0; index < imageUrls.length; index += 1) {
+    const imageUrl = imageUrls[index];
+    const position = index + 1;
+    const targetUrl = normalizeImageUrlForCompare(imageUrl);
+    const existingImage = images.find(
+      (image: any) => normalizeImageUrlForCompare(image?.src) === targetUrl
+    );
+
+    if (existingImage?.id) {
+      if (existingImage.position !== position) {
+        await shopifyRest.put(
+          `/products/${shopifyProductId}/images/${existingImage.id}.json`,
+          {
+            image: {
+              id: existingImage.id,
+              position,
+            },
+          }
+        );
+      }
+
+      if (index === 0) {
+        firstImage = existingImage;
+      }
+
+      continue;
+    }
+
+    const createResponse = await shopifyRest.post(
+      `/products/${shopifyProductId}/images.json`,
+      {
+        image: {
+          src: imageUrl,
+          position,
+        },
+      }
+    );
+
+    if (index === 0) {
+      firstImage = createResponse.data?.image ?? null;
+    }
+  }
+
+  return firstImage;
+};
+
+const publishProductToAllPublications = async (shopifyProductId: number) => {
+  const publicationIds = await fetchPublicationIds();
+
+  if (!publicationIds.length) {
+    return;
+  }
+
+  const response = await shopifyRest.post("/graphql.json", {
+    query: `
+      mutation PublishProduct($id: ID!, $input: [PublicationInput!]!) {
+        publishablePublish(id: $id, input: $input) {
+          userErrors {
+            field
+            message
+          }
+        }
+      }
+    `,
+    variables: {
+      id: toProductGid(shopifyProductId),
+      input: publicationIds.map((publicationId) => ({ publicationId })),
+    },
+  });
+
+  const graphQLErrors = response.data?.errors ?? [];
+  if (graphQLErrors.length) {
+    throw new Error(
+      `Shopify publication failed: ${graphQLErrors
+        .map((error: any) => error.message)
+        .join(", ")}`
+    );
+  }
+
+  const userErrors = response.data?.data?.publishablePublish?.userErrors ?? [];
+  const blockingErrors = userErrors.filter(
+    (error: any) => !/already|has already been taken|exists/i.test(error?.message ?? "")
+  );
+
+  if (blockingErrors.length) {
+    throw new Error(
+      `Shopify publication failed: ${blockingErrors
+        .map((error: any) => error.message)
+        .join(", ")}`
+    );
+  }
+};
+
 /**
  * 🔐 Safety guard — NEVER allow dry-run in production
  */
@@ -404,9 +606,11 @@ type ShopifyApiStatus = "active" | "draft";
 export const syncProductWithShopify = async ({
   product,
   shopifyApiStatus,
+  allowCreate = true,
 }: {
   product: any;
   shopifyApiStatus: ShopifyApiStatus;
+  allowCreate?: boolean;
 }) => {
   const vendorName = await resolveVendorName(product);
   const normalizedProduct = {
@@ -491,11 +695,15 @@ console.log("🔍 DEBUG: typeof shopifyProductId =", typeof shopifyProductId);
       console.log("URL:", `/products/${shopifyProductId}.json`);
       console.log("BODY:", JSON.stringify(updatePayload, null, 2));
 
+      let updatedProductHandle = payload.product.handle ?? null;
+
       if (!SHOPIFY_DRY_RUN) {
-        await shopifyRest.put(
+        const updateResponse = await shopifyRest.put(
           `/products/${shopifyProductId}.json`,
           updatePayload
         );
+        updatedProductHandle =
+          updateResponse.data?.product?.handle ?? updatedProductHandle;
       }
 
       await setProductMetafields({
@@ -514,19 +722,24 @@ console.log("🔍 DEBUG: typeof shopifyProductId =", typeof shopifyProductId);
         vendorId,
         vendorProfileUrl,
         productId,
+        publishStatus: shopifyApiStatus,
       });
+
+      await syncProductImages(shopifyProductId, getProductImageUrls(normalizedProduct));
 
       if (shopifyApiStatus === "draft") {
         await unpublishProductFromAllPublications(
           toProductGid(shopifyProductId)
         );
+      } else {
+        await publishProductToAllPublications(shopifyProductId);
       }
 
       return {
         action: shopifyApiStatus === "draft" ? "unlisted" : "updated",
         shopifyProductId,
         shopifyGraphqlId: toProductGid(shopifyProductId),
-        handle: payload.product.handle ?? null,
+        handle: updatedProductHandle,
       };
     } catch (err: any) {
       if (
@@ -546,6 +759,12 @@ console.log("🔍 DEBUG: typeof shopifyProductId =", typeof shopifyProductId);
 
   /* ---------- CREATE ACTIVE ---------- */
   if (isActive) {
+    if (!allowCreate) {
+      throw new Error(
+        "Shopify product is missing for this item. Please create/sync it from vendor_portal first."
+      );
+    }
+
     if (shopifyProductId) {
       return {
         action: "skipped-existing-product",
@@ -582,7 +801,12 @@ console.log("🔍 DEBUG: typeof shopifyProductId =", typeof shopifyProductId);
         vendorId,
         vendorProfileUrl,
         productId,
+        publishStatus: shopifyApiStatus,
       });
+
+      await syncProductImages(createdId, getProductImageUrls(normalizedProduct));
+
+      await publishProductToAllPublications(createdId);
 
       return {
         action: "created",
@@ -608,4 +832,20 @@ console.log("🔍 DEBUG: typeof shopifyProductId =", typeof shopifyProductId);
     shopifyGraphqlId: null,
     handle: null,
   };
+};
+
+export const getShopifyProductHandle = async (shopifyProductId: number) => {
+  const response = await shopifyRest.get(`/products/${shopifyProductId}.json`, {
+    params: {
+      fields: "id,handle",
+    },
+  });
+
+  const handle = response.data?.product?.handle;
+
+  if (typeof handle !== "string" || !handle.trim()) {
+    throw new Error("Shopify product handle is missing after activation.");
+  }
+
+  return handle.trim();
 };

@@ -933,7 +933,11 @@ const ShopifyProducts = () => {
   };
 
   if (loading) {
-    return <div>Loading Shopify products...</div>;
+    return (
+      <div className="text-sm text-gray-500 dark:text-gray-400">
+        Loading Shopify products...
+      </div>
+    );
   }
 
   return (
@@ -1072,6 +1076,12 @@ const ShopifyProducts = () => {
           <div className="rounded-2xl border border-success-200 bg-success-50 px-4 py-3 text-sm text-success-700 dark:border-success-500/20 dark:bg-success-500/10 dark:text-success-300">
             {successMessage}
           </div>
+        ) : null}
+
+        {isRefreshing ? (
+          <p className="text-sm text-gray-500">
+            Loading page {page} of Shopify products...
+          </p>
         ) : null}
 
         {error ? <p className="text-sm text-red-600">{error}</p> : null}

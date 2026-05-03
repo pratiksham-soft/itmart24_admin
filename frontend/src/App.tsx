@@ -16,6 +16,7 @@ import BasicTables from "./pages/Tables/BasicTables";
 import FormElements from "./pages/Forms/FormElements";
 import Blank from "./pages/Blank";
 import AppLayout from "./layout/AppLayout";
+import AuthGuard from "./auth/AuthGuard";
 import { ScrollToTop } from "./components/common/ScrollToTop";
 import Home from "./pages/Dashboard/Home";
 import PendingProducts from "./pages/Products/PendingProducts";
@@ -23,13 +24,20 @@ import ActiveProducts from "./pages/Products/ActiveProducts";
 import RejectedProducts from "./pages/Products/RejectedProducts";
 import OnHoldProducts from "./pages/Products/OnHoldProducts";
 import ClaimedProducts from "./pages/Products/ClaimedProducts";
+import DeleteProducts from "./pages/Products/DeleteProducts";
 import Sync from "./pages/Master/Sync";
 import ManagePlans from "./pages/Master/ManagePlans/ManagePlans";
 import ProductCategoryMaster from "./pages/Master/ProductMaster/ProductCategoryMaster";
+import MonthlyTargetMaster from "./pages/Master/MonthlyTarget/MonthlyTargetMaster";
 import Vendors from "./pages/Vendors/Vendors";
 import ShopifyProducts from "./pages/Shopify/ShopifyProducts";
 import ShopifyCollections from "./pages/Shopify/ShopifyCollections";
 import Support from "./pages/Support/Support";
+import Notifications from "./pages/Notifications/Notifications";
+import BlogJobs from "./pages/Marketing/BlogManager/BlogJobs";
+import Blogs from "./pages/Marketing/BlogManager/Blogs";
+import SmManager from "./pages/Marketing/SmManager";
+import Settings from "./pages/Marketing/Settings";
 
 
 export default function App() {
@@ -39,7 +47,13 @@ export default function App() {
         <ScrollToTop />
         <Routes>
           {/* Dashboard Layout */}
-          <Route element={<AppLayout />}>
+          <Route
+            element={
+              <AuthGuard>
+                <AppLayout />
+              </AuthGuard>
+            }
+          >
             <Route index path="/" element={<Home />} />
 
             {/* Others Page */}
@@ -59,8 +73,17 @@ export default function App() {
             <Route path="/products/rejected" element={<RejectedProducts />} />
             <Route path="/products/on-hold" element={<OnHoldProducts />} />
             <Route path="/products/claimed" element={<ClaimedProducts />} />
+            <Route path="/products/delete" element={<DeleteProducts />} />
             <Route path="/support" element={<Support />} />
+            <Route
+              path="/notifications"
+              element={<Notifications />}
+            />
             <Route path="/vendors" element={<Vendors />} />
+            <Route path="/marketing/blog-manager/jobs" element={<BlogJobs />} />
+            <Route path="/marketing/blog-manager/blogs" element={<Blogs />} />
+            <Route path="/marketing/sm-manager" element={<SmManager />} />
+            <Route path="/marketing/settings" element={<Settings />} />
 
             {/* Shopify */}
             <Route path="/shopify/products" element={<ShopifyProducts />} />
@@ -72,6 +95,10 @@ export default function App() {
             {/* Master */}
             <Route path="master/sync" element={<Sync />} />
             <Route path="master/manage-plans" element={<ManagePlans />} />
+            <Route
+              path="/master/monthly-target"
+              element={<MonthlyTargetMaster />}
+            />
             <Route path="/master/product-category-master" element={<ProductCategoryMaster />}
 />
 

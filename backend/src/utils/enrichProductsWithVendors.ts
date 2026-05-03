@@ -1,5 +1,36 @@
 import { firestore } from "../config/firebase";
 
+const VENDOR_PROFILE_COLLECTION = "vendor_profile";
+const VENDOR_BATCH_SIZE = 250;
+const vendorProfileCache = new Map<string, any>();
+
+const chunk = <T>(items: T[], size: number) => {
+  const chunks: T[][] = [];
+
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size));
+  }
+
+  return chunks;
+};
+
+const loadVendorProfiles = async (vendorIds: string[]) => {
+  const uncachedVendorIds = vendorIds.filter(
+    (vendorId) => !vendorProfileCache.has(vendorId)
+  );
+
+  for (const vendorIdChunk of chunk(uncachedVendorIds, VENDOR_BATCH_SIZE)) {
+    const refs = vendorIdChunk.map((vendorId) =>
+      firestore.collection(VENDOR_PROFILE_COLLECTION).doc(vendorId)
+    );
+    const snapshots = await firestore.getAll(...refs);
+
+    snapshots.forEach((snapshot) => {
+      vendorProfileCache.set(snapshot.id, snapshot.exists ? snapshot.data() : null);
+    });
+  }
+};
+
 export const enrichProductsWithVendors = async (products: any[]) => {
   if (!products.length) return [];
 
@@ -12,19 +43,12 @@ export const enrichProductsWithVendors = async (products: any[]) => {
     )
   );
 
-  // Fetch vendor profiles
-  const vendorSnapshots = await Promise.all(
-    vendorIds.map((id) =>
-      firestore.collection("vendor_profile").doc(id).get()
-    )
-  );
+  await loadVendorProfiles(vendorIds);
 
   // Build vendor lookup map
   const vendorMap: Record<string, any> = {};
-  vendorSnapshots.forEach((snap) => {
-    if (snap.exists) {
-      vendorMap[snap.id] = snap.data();
-    }
+  vendorIds.forEach((vendorId) => {
+    vendorMap[vendorId] = vendorProfileCache.get(vendorId) ?? null;
   });
 
   // Enrich products

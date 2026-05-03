@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useState } from "react";
 import ComponentCard from "../../components/common/ComponentCard";
+import { Modal } from "../../components/ui/modal";
 import {
   Table,
   TableBody,
@@ -33,6 +34,117 @@ type Vendor = {
 };
 
 const PAGE_SIZE = 25;
+const inputClassName =
+  "w-full rounded-2xl border border-gray-300 bg-white px-4 py-3 text-sm text-gray-800 outline-none transition focus:border-brand-300 focus:ring-4 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90";
+
+const DeleteVendorModal = ({
+  isOpen,
+  vendor,
+  confirmationName,
+  error,
+  isDeleting,
+  onConfirmationNameChange,
+  onClose,
+  onSubmit,
+}: {
+  isOpen: boolean;
+  vendor: Vendor | null;
+  confirmationName: string;
+  error: string | null;
+  isDeleting: boolean;
+  onConfirmationNameChange: (value: string) => void;
+  onClose: () => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+}) => {
+  const confirmationTarget = vendor?.businessName?.trim() || vendor?.id || "";
+  const isMatch = Boolean(confirmationTarget) && confirmationName === confirmationTarget;
+
+  return (
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      className="mx-4 w-full max-w-2xl overflow-hidden rounded-3xl"
+    >
+      <div className="border-b border-gray-200 bg-gradient-to-r from-error-50 to-white px-6 py-6 dark:border-gray-800 dark:from-error-500/10 dark:to-gray-900 sm:px-8">
+        <div className="pr-12">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-error-600 dark:text-error-300">
+            Permanent Delete
+          </p>
+          <h3 className="mt-2 text-2xl font-semibold text-gray-900 dark:text-white">
+            Delete Vendor
+          </h3>
+          <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+            This removes the vendor profile permanently. Type the exact vendor name below to unlock delete.
+          </p>
+        </div>
+      </div>
+
+      <form onSubmit={onSubmit} className="space-y-6 px-6 py-6 sm:px-8">
+        <div className="rounded-3xl border border-error-200 bg-error-50/70 p-5 dark:border-error-500/20 dark:bg-error-500/10">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-error-600 dark:text-error-300">
+            Vendor To Delete
+          </p>
+          <h4 className="mt-2 text-lg font-semibold text-gray-900 dark:text-white">
+            {vendor?.businessName || "Unnamed Vendor"}
+          </h4>
+          <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
+            ID: {vendor?.id ?? "-"}
+          </p>
+          <p className="mt-3 text-sm text-gray-600 dark:text-gray-300">
+            Type exactly:
+          </p>
+          <div className="mt-3 inline-flex rounded-xl bg-white px-3 py-2 text-sm font-semibold text-error-700 shadow-sm dark:bg-gray-900 dark:text-error-300">
+            {confirmationTarget || "-"}
+          </div>
+        </div>
+
+        <div>
+          <label
+            htmlFor="vendor-delete-confirmation"
+            className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+          >
+            Confirm Vendor Name
+          </label>
+          <input
+            id="vendor-delete-confirmation"
+            type="text"
+            value={confirmationName}
+            onChange={(event) => onConfirmationNameChange(event.target.value)}
+            placeholder="Type the exact vendor name"
+            className={inputClassName}
+            autoFocus
+          />
+          <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+            Deletion stays disabled until the value matches exactly, including capitalization and spaces.
+          </p>
+        </div>
+
+        {error ? (
+          <div className="rounded-2xl border border-error-200 bg-error-50 px-4 py-3 text-sm text-error-700 dark:border-error-500/20 dark:bg-error-500/10 dark:text-error-300">
+            {error}
+          </div>
+        ) : null}
+
+        <div className="flex flex-col-reverse gap-3 border-t border-gray-200 pt-5 sm:flex-row sm:items-center sm:justify-end dark:border-gray-800">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-2xl border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={!isMatch || isDeleting}
+            className="rounded-2xl bg-error-500 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-error-600 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {isDeleting ? "Deleting..." : "Delete Vendor"}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+};
 
 const Vendors = () => {
   const [vendors, setVendors] = useState<Vendor[]>([]);
@@ -40,6 +152,12 @@ const Vendors = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [page, setPage] = useState(1);
   const [selectedVendorId, setSelectedVendorId] = useState<string | null>(null);
+  const [isDeleteOpen, setIsDeleteOpen] = useState(false);
+  const [vendorToDelete, setVendorToDelete] = useState<Vendor | null>(null);
+  const [deleteConfirmationName, setDeleteConfirmationName] = useState("");
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deleteSuccess, setDeleteSuccess] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const fetchVendors = async () => {
     setLoading(true);
@@ -113,6 +231,67 @@ const Vendors = () => {
     }
   }, [page, totalPages]);
 
+  const closeDeleteModal = () => {
+    setIsDeleteOpen(false);
+    setVendorToDelete(null);
+    setDeleteConfirmationName("");
+    setDeleteError(null);
+    setIsDeleting(false);
+  };
+
+  const handleDeleteVendor = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (!vendorToDelete) {
+      setDeleteError("Select a vendor to delete.");
+      return;
+    }
+
+    setIsDeleting(true);
+    setDeleteError(null);
+    setDeleteSuccess(null);
+
+    try {
+      const response = await fetch(
+        `http://localhost:5000/api/vendors/${vendorToDelete.id}`,
+        {
+          method: "DELETE",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            confirmationName: deleteConfirmationName,
+          }),
+        }
+      );
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.message || "Failed to delete vendor");
+      }
+
+      if (selectedVendorId === vendorToDelete.id) {
+        setSelectedVendorId(null);
+      }
+
+      setVendors((currentVendors) =>
+        currentVendors.filter((vendor) => vendor.id !== vendorToDelete.id)
+      );
+      setDeleteSuccess(
+        `Vendor "${vendorToDelete.businessName || vendorToDelete.id}" was deleted successfully.`
+      );
+      closeDeleteModal();
+    } catch (submitError) {
+      console.error("Failed to delete vendor", submitError);
+      setDeleteError(
+        submitError instanceof Error
+          ? submitError.message
+          : "Failed to delete vendor"
+      );
+      setIsDeleting(false);
+    }
+  };
+
   if (loading) {
     return <div>Loading vendors...</div>;
   }
@@ -132,6 +311,12 @@ const Vendors = () => {
             placeholder="Search by business, contact, email, phone, country, type, or ID"
           />
         </div>
+
+        {deleteSuccess ? (
+          <div className="rounded-2xl border border-success-200 bg-success-50 px-4 py-3 text-sm text-success-700 dark:border-success-500/20 dark:bg-success-500/10 dark:text-success-300">
+            {deleteSuccess}
+          </div>
+        ) : null}
 
         {searchQuery && (
           <p className="text-sm text-gray-500">
@@ -204,6 +389,19 @@ const Vendors = () => {
                           >
                             View
                           </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDeleteSuccess(null);
+                              setDeleteError(null);
+                              setVendorToDelete(vendor);
+                              setDeleteConfirmationName("");
+                              setIsDeleteOpen(true);
+                            }}
+                            className="rounded-xl border border-error-200 px-3 py-1.5 text-theme-xs font-medium text-error-600 transition hover:bg-error-50 dark:border-error-500/20 dark:text-error-300 dark:hover:bg-error-500/10"
+                          >
+                            Delete
+                          </button>
                         </div>
                       </TableCell>
                     </TableRow>
@@ -264,6 +462,17 @@ const Vendors = () => {
         vendorId={selectedVendorId}
         onClose={() => setSelectedVendorId(null)}
         onUpdated={fetchVendors}
+      />
+
+      <DeleteVendorModal
+        isOpen={isDeleteOpen}
+        vendor={vendorToDelete}
+        confirmationName={deleteConfirmationName}
+        error={deleteError}
+        isDeleting={isDeleting}
+        onConfirmationNameChange={setDeleteConfirmationName}
+        onClose={closeDeleteModal}
+        onSubmit={handleDeleteVendor}
       />
     </div>
   );

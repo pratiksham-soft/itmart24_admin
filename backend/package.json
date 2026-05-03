@@ -4,12 +4,13 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
+    "dev": "set APP_ENV=development&& ts-node-dev --respawn --transpile-only src/server.ts",
     "staging": "set APP_ENV=development&& ts-node-dev --respawn --transpile-only src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
     "production": "set NODE_ENV=production&& set APP_ENV=production&& npm run build&& node dist/server.js",
     "copy:staging-data": "ts-node src/scripts/copyFirestoreCollections.ts",
+    "shopify:upsert-content-pages": "ts-node src/scripts/upsertShopifyContentPages.ts",
     "shopify:refresh-seo-copy": "ts-node src/scripts/refreshShopifyProductSeoCopy.ts",
     "shopify:sync-rankings": "ts-node src/scripts/syncProductRanking.ts",
     "test": "echo \"Error: no test specified\" && exit 1"
@@ -18,13 +19,17 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@types/nodemailer": "^8.0.0",
     "axios": "^1.13.3",
+    "bcrypt": "^6.0.0",
     "cors": "^2.8.6",
     "csv-parser": "^3.2.0",
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
     "firebase-admin": "^13.6.1",
-    "form-data": "^4.0.5"
+    "form-data": "^4.0.5",
+    "nodemailer": "^8.0.5",
+    "pg": "^8.20.0"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",

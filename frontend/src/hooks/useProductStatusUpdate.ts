@@ -43,8 +43,17 @@ export const useProductStatusUpdate = ({
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error("STATUS UPDATE ERROR:", errorText);
-        throw new Error(errorText || "Status update failed");
+        let errorMessage = errorText || "Status update failed";
+
+        try {
+          const parsedError = JSON.parse(errorText);
+          errorMessage = parsedError.message || errorMessage;
+        } catch {
+          // Keep the original response text.
+        }
+
+        console.error("STATUS UPDATE ERROR:", errorMessage);
+        throw new Error(errorMessage);
       }
 
       if (onSuccess) {
@@ -73,15 +82,29 @@ export const useProductStatusUpdate = ({
 
   try {
     await Promise.all(
-      productIds.map((productId) =>
-        fetch(`http://localhost:5000/api/products/${productId}/status`, {
+      productIds.map(async (productId) => {
+        const response = await fetch(`http://localhost:5000/api/products/${productId}/status`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             lifecycleStatus: status,
           }),
-        })
-      )
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          let errorMessage = errorText || "Status update failed";
+
+          try {
+            const parsedError = JSON.parse(errorText);
+            errorMessage = parsedError.message || errorMessage;
+          } catch {
+            // Keep the original response text.
+          }
+
+          throw new Error(errorMessage);
+        }
+      })
     );
 
     if (onSuccess) {

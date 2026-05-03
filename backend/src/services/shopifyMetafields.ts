@@ -16,6 +16,7 @@ type MetafieldInput = {
   productId?: string | null;
   supportResponseSlaBadge?: boolean | null;
   refundClarityBadge?: boolean | null;
+  publishStatus?: "active" | "draft" | null;
 };
 
 type ShopifyMetafield = {
@@ -103,6 +104,7 @@ export const setProductMetafields = async ({
   productId,
   supportResponseSlaBadge,
   refundClarityBadge,
+  publishStatus,
 }: MetafieldInput) => {
   if (!shopifyProductId || isNaN(shopifyProductId)) {
     throw new Error(
@@ -131,6 +133,7 @@ export const setProductMetafields = async ({
     createTextMetafield("vendor_id", "single_line_text_field", vendorId),
     createTextMetafield("vendor_profile_url", "url", vendorProfileUrl),
     createTextMetafield("product_id", "single_line_text_field", productId),
+    createTextMetafield("publish_status", "single_line_text_field", publishStatus),
   ].filter((metafield): metafield is ShopifyMetafield => Boolean(metafield));
 
   await setCustomProductMetafields({

@@ -1,0 +1,26 @@
+name: Deploy Admin Staging
+
+on:
+  push:
+    branches:
+      - staging
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Connect to Tailscale
+        uses: tailscale/github-action@v2
+        with:
+          authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
+
+      - name: Deploy staging on server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.ADMIN_SERVER_HOST }}
+          username: root
+          key: ${{ secrets.ADMIN_SERVER_SSH_KEY }}
+          port: 22
+          script: |
+            /var/www/shavi.itmart24.com/deploy-staging.sh

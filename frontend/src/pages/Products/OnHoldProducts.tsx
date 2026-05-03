@@ -12,47 +12,38 @@ import {
 import Badge from "../../components/ui/badge/Badge";
 import ProductSearchBar from "./ProductSearchBar";
 import ProductDetailsModal from "./ProductDetailsModal";
-import { filterProductsByQuery } from "./productSearch";
-
-type Product = {
-  id: string;
-  vendorId: string;
-  businessName: string;
-  shopifyProductURL: string | null;
-  vendor?: {
-    basic?: {
-      subCategoryName?: string;
-    };
-  };
-  basic: {
-    productName: string;
-    category: string;
-    description: string;
-  };
-  pricing: {
-    price: number;
-    selectedPlan: string;
-  };
-  status: string;
-};
+import { usePaginatedStatusProducts } from "./usePaginatedStatusProducts";
 
 type LifecycleStatus = "pending" | "active" | "rejected" | "on-hold";
 
 const OnHoldProducts = () => {
-  const [products, setProducts] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [statusDraft, setStatusDraft] = useState<Record<string, LifecycleStatus>>(
     {}
   );
   const [bulkStatus, setBulkStatus] = useState<LifecycleStatus | "">("");
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
-
-  const filteredProducts = filterProductsByQuery(products, searchQuery);
+  const {
+    products,
+    loading,
+    isRefreshing,
+    isPageLoading,
+    error,
+    searchQuery,
+    setSearchQuery,
+    page,
+    totalCount,
+    totalPages,
+    startItem,
+    endItem,
+    handlePageClick,
+    refetchProducts,
+  } = usePaginatedStatusProducts({
+    endpoint: "http://localhost:5000/api/products/on-hold",
+  });
   const areAllVisibleSelected =
-    filteredProducts.length > 0 &&
-    filteredProducts.every((product) => selectedIds.has(product.id));
+    products.length > 0 &&
+    products.every((product) => selectedIds.has(product.id));
 
   const toggleRowSelection = (productId: string) => {
     setSelectedIds((prev) => {
@@ -63,7 +54,7 @@ const OnHoldProducts = () => {
   };
 
   const toggleSelectAllVisible = () => {
-    const visibleIds = filteredProducts.map((product) => product.id);
+    const visibleIds = products.map((product) => product.id);
 
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -78,26 +69,6 @@ const OnHoldProducts = () => {
     });
   };
 
-  const fetchOnHoldProducts = async () => {
-    setLoading(true);
-
-    try {
-      const res = await fetch("http://localhost:5000/api/products/on-hold");
-      const result = await res.json();
-
-      if (result.success) {
-        setProducts(result.data);
-      }
-
-      setSelectedIds(new Set());
-      setBulkStatus("");
-    } catch (err) {
-      console.error("Failed to fetch on-hold products", err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const {
     isUpdating,
     successMessage,
@@ -105,12 +76,8 @@ const OnHoldProducts = () => {
     updateStatus,
     updateStatusBulk,
   } = useProductStatusUpdate({
-    onSuccess: fetchOnHoldProducts,
+    onSuccess: refetchProducts,
   });
-
-  useEffect(() => {
-    fetchOnHoldProducts();
-  }, []);
 
   useEffect(() => {
     const initialDraft: Record<string, LifecycleStatus> = {};
@@ -123,19 +90,16 @@ const OnHoldProducts = () => {
   }, [products]);
 
   useEffect(() => {
-    const visibleIds = new Set(
-      filterProductsByQuery(products, searchQuery).map((product) => product.id)
-    );
-
-    setSelectedIds((prev) => {
-      const nextIds = Array.from(prev).filter((id) => visibleIds.has(id));
-
-      return nextIds.length === prev.size ? prev : new Set(nextIds);
-    });
-  }, [products, searchQuery]);
+    setSelectedIds(new Set());
+    setBulkStatus("");
+  }, [products]);
 
   if (loading) {
-    return <div>Loading on-hold products...</div>;
+    return (
+      <div className="text-sm text-gray-500 dark:text-gray-400">
+        Loading on-hold products...
+      </div>
+    );
   }
 
   return (
@@ -181,14 +145,22 @@ const OnHoldProducts = () => {
           )}
         </div>
 
-        {searchQuery && (
+        {isRefreshing && (
           <p className="text-sm text-gray-500">
-            {filteredProducts.length} matching product
-            {filteredProducts.length === 1 ? "" : "s"} found.
+            Loading page {page} of on-hold products...
           </p>
         )}
 
-        {filteredProducts.length === 0 ? (
+        {error ? <p className="text-sm text-red-600">{error}</p> : null}
+
+        {searchQuery && (
+          <p className="text-sm text-gray-500">
+            {totalCount} matching product
+            {totalCount === 1 ? "" : "s"} found.
+          </p>
+        )}
+
+        {!error && products.length === 0 ? (
           <p className="text-sm text-gray-500">
             {searchQuery
               ? "No on-hold products match your search."
@@ -226,7 +198,7 @@ const OnHoldProducts = () => {
                 </TableHeader>
 
                 <TableBody className="divide-y divide-gray-100 dark:divide-white/[0.05]">
-                  {filteredProducts.map((product) => (
+                  {products.map((product) => (
                     <TableRow key={product.id}>
                       <TableCell className="px-5 py-4">
                         <input
@@ -319,6 +291,55 @@ const OnHoldProducts = () => {
             </div>
           </div>
         )}
+
+        {!error && products.length > 0 && (
+          <div
+            className={`mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between ${
+              isPageLoading ? "cursor-progress" : ""
+            }`}
+          >
+            <span className="text-sm text-gray-500">
+              {startItem}-{endItem} / {totalCount}
+            </span>
+
+            <div className="flex items-center gap-2">
+              <button
+                disabled={page === 1 || isPageLoading}
+                onClick={() => handlePageClick(page - 1)}
+                className="rounded-md border px-3 py-1 text-sm disabled:cursor-progress disabled:opacity-50"
+              >
+                Previous
+              </button>
+
+              {Array.from({ length: totalPages }, (_, index) => index + 1)
+                .slice(Math.max(0, page - 3), Math.min(totalPages, page + 2))
+                .map((pageNumber) => (
+                  <button
+                    key={pageNumber}
+                    disabled={isPageLoading}
+                    onClick={() => handlePageClick(pageNumber)}
+                    className={`rounded-md px-3 py-1 text-sm disabled:cursor-progress disabled:opacity-50 ${
+                      pageNumber === page ? "bg-blue-600 text-white" : "border"
+                    }`}
+                  >
+                    {pageNumber}
+                  </button>
+                ))}
+
+              {page + 2 < totalPages && (
+                <span className="px-1 text-sm">...</span>
+              )}
+
+              <button
+                disabled={page === totalPages || isPageLoading}
+                onClick={() => handlePageClick(page + 1)}
+                className="rounded-md bg-blue-600 px-3 py-1 text-sm text-white disabled:cursor-progress disabled:opacity-50"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
       </ComponentCard>
 
       <StatusPopups
@@ -331,6 +352,7 @@ const OnHoldProducts = () => {
         isOpen={selectedProductId !== null}
         productId={selectedProductId}
         onClose={() => setSelectedProductId(null)}
+        onUpdated={refetchProducts}
       />
     </div>
   );

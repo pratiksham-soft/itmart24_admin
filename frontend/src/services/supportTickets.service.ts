@@ -62,6 +62,11 @@ export type VendorProfileSummary = {
 
 const db = getFirestore(firebaseApp);
 const auth = getAuth(firebaseApp);
+const vendorProfileCache = new Map<string, VendorProfileSummary>();
+const vendorProfileRequestCache = new Map<
+  string,
+  Promise<VendorProfileSummary>
+>();
 
 const readString = (value: unknown) =>
   typeof value === "string" ? value.trim() : "";
@@ -211,23 +216,41 @@ export const loadVendorProfiles = async (
 
   const entries = await Promise.all(
     uniqueVendorIds.map(async (vendorId) => {
-      const snapshot = await getDoc(doc(db, "vendor_profile", vendorId));
-      const data = snapshot.exists() ? snapshot.data() : {};
+      const cachedProfile = vendorProfileCache.get(vendorId);
+      if (cachedProfile) {
+        return [vendorId, cachedProfile] as const;
+      }
 
-      return [
-        vendorId,
-        {
-          id: vendorId,
-          businessName: readString(data.businessName),
-          email: readString(data.email),
-          contactName: readString(data.contactName),
-          contactEmail: readString(data.contactEmail),
-          phone: readString(data.phone),
-          contactPhone: readString(data.contactPhone),
-          website: readString(data.website),
-          country: readString(data.country),
-        } satisfies VendorProfileSummary,
-      ] as const;
+      let pendingRequest = vendorProfileRequestCache.get(vendorId);
+
+      if (!pendingRequest) {
+        pendingRequest = getDoc(doc(db, "vendor_profile", vendorId))
+          .then((snapshot) => {
+            const data = snapshot.exists() ? snapshot.data() : {};
+
+            const profile = {
+              id: vendorId,
+              businessName: readString(data.businessName),
+              email: readString(data.email),
+              contactName: readString(data.contactName),
+              contactEmail: readString(data.contactEmail),
+              phone: readString(data.phone),
+              contactPhone: readString(data.contactPhone),
+              website: readString(data.website),
+              country: readString(data.country),
+            } satisfies VendorProfileSummary;
+
+            vendorProfileCache.set(vendorId, profile);
+            return profile;
+          })
+          .finally(() => {
+            vendorProfileRequestCache.delete(vendorId);
+          });
+
+        vendorProfileRequestCache.set(vendorId, pendingRequest);
+      }
+
+      return [vendorId, await pendingRequest] as const;
     })
   );
 

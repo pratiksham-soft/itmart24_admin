@@ -1,0 +1,285 @@
+Similarly like previous job this new task is
+Task: Import software products from all category folders under "D:\IT MART24\System_Programs\itmart24_admin\backend\exports\software-products\All O Software" into Shopify, using existing project scripts/helpers wherever possible, with strict deduplication, correct metafields.
+
+Scope
+- Work only on this import.
+- Reuse existing Shopify import/upload scripts, helpers, metafield utilities, file-upload utilities, and project conventions if already present.
+- Make the minimum code changes required.
+- Do not refactor unrelated files.
+- Make the workflow idempotent so rerunning it does not create duplicates, duplicate files, or repeated metafield values.
+
+Primary folders and files
+- Root source folder:
+  "D:\IT MART24\System_Programs\itmart24_admin\backend\exports\software-products\All O Software"
+- Inside this root, there are many category folders.
+- Each category folder may contain:
+  - one CSV file with product details
+  - logos folder
+- Existing Shopify export for deduplication:
+  backend\exports\software-products\shopify-products-category-report.csv
+- Category mapping:
+  backend\imports\categories.csv
+  backend\imports\category-collections.csv
+- Filter definitions:
+  backend\doc\shopify-filter-definitions.csv
+
+Goal
+- Process every valid category folder inside ...\software-products\All O Software
+- Read product rows from each category CSV
+- Import only new products into Shopify
+- If a product already exists in Shopify, do not create it again
+- If product already exists in Shopify, add the current parent collection/category name into custom.type_multiple metafield if missing
+- Also prevent duplicates within the same current execution/job
+- Apply all permanent fixes below so the same mistakes do not happen again
+
+Folder processing rules
+1. Scan all subfolders inside:
+   "D:\IT MART24\System_Programs\itmart24_admin\backend\exports\software-products\All O Software"
+2. For each category folder:
+   - detect the main CSV file in that folder
+   - detect logos images folders if present
+   - use the folder name as the parent collection/category context
+3. Skip folders with no valid CSV, but log them clearly
+
+Execution rules
+1. Reuse existing import/upload scripts, Shopify helpers, and project conventions if available.
+2. Change only code required for this import + cleanup workflow.
+3. Do not modify unrelated functionality.
+4. Process rows deterministically.
+5. Maintain strong logging per row and per folder.
+6. Prefer official product website as source when enrichment is needed.
+7. Official URL is usually in product.metafields.custom.custom.
+8. Do not invent unsupported values.
+9. Make line-break handling correct everywhere. Never store literal \n where actual line breaks or HTML breaks are required.
+10. Make file-upload logic safe against duplicate uploads.
+
+Required row-level logging statuses
+- imported
+- skipped_existing_shopify
+- skipped_existing_current_job
+- updated_existing_type_multiple
+- skipped_missing_required_data
+- skipped_pricing_unavailable
+- failed
+
+Strict deduplication rules
+Before creating any product, always check both:
+1. Existing product already in Shopify
+2. Product already processed/uploaded during the current job
+
+If found in either case, skip product creation.
+
+Matching priority
+- First: normalized handle
+- Fallback: normalized title + official URL
+- Fallback: normalized title alone only if clearly safe
+- Maintain an in-memory set/map of products already handled in the current run to prevent same-job duplicates
+
+If product already exists in Shopify
+- Do not create duplicate product
+- Update custom.type_multiple metafield to include the current parent collection/category name if it is missing
+- Do not add duplicate values in custom.type_multiple
+- Preserve existing valid metafields/data unless current workflow explicitly needs correction
+- Log as:
+  updated_existing_type_multiple if collection was added
+  or skipped_existing_shopify if no update was needed
+
+Field mapping
+For each row in every source CSV:
+
+Handle
+- Keep existing handle if good
+- Otherwise normalize to clean lowercase hyphenated human-readable handle
+- Stable and deterministic
+- Do not generate weak handles that later cause -1 duplicate suffix issues
+
+Title
+- Use as-is
+
+Body (HTML)
+- Create/update Shopify body HTML
+- Minimum 200-300 words
+- Neutral, professional, marketplace style
+- No plagiarism
+- No meta commentary such as:
+  - “official site says”
+  - “we found”
+  - “reviewed source”
+- Use official website as primary source where needed
+- Keep HTML structure consistent with existing project style if such standard exists
+
+Vendor
+- Map to Shopify Vendor field
+
+Product Category
+- Use as main category
+- Refer backend\imports\categories.csv if needed
+
+Type / custom.type_multiple
+- Read backend\imports\category-collections.csv
+- Use relevant final category/categories that actually exist in taxonomy/collection mapping
+- Fill custom.type_multiple as list of single line text
+- Add multiple values only when clearly applicable
+- If exact type is absent in mapping, use closest relevant allowed collection names only
+- Always include the current parent category/folder collection if valid and missing
+- If product already exists, still update this metafield when needed
+
+product.metafields.custom.plans_pricing
+- Fill custom.plans_pricing
+- Use CSV value if valid
+- If zero/blank, check official URL for public pricing
+- If pricing is not publicly visible, Shopify product price may remain 0, but text must NOT say:
+  - Pricing is not publicly available. Shopify price is set to 0 for this listing.
+- Instead, use this exact replacement text:
+  To visit product official website click "Get Now"
+- Use real line breaks / proper HTML breaks, not literal \n
+
+product.metafields.custom.product_features
+- Fill custom.product_features
+- Convert to improved customer-facing bullet points
+- Use actual working line breaks or HTML list formatting
+- Never store literal \n
+
+product.metafields.custom.pros_cons
+- Fill custom.pros_cons
+- Bullet/list format
+- Based on factual characteristics only
+- No unsupported opinions
+- Use actual working line breaks or HTML list formatting
+- Never store literal \n
+
+product.metafields.custom.custom
+- Store clean official URL in metafields.custom.custom
+
+product.metafields.custom.logo_image
+- Find best matching logo from the logo image folder-level:
+- If missing or irrelevant, try official favicon/logo/brand asset from provider site
+- Resize to width 120px, height auto
+- always Convert to WEBP and if fail only then prefer PNG, SVG, JPG only, do not use ICO images, convert ICO image into WEBP or PNG
+- Upload only the resized logo asset intended for custom.logo_image
+- Store final Shopify-hosted URL in custom.logo_image
+- File naming should clearly identify these kept assets, e.g. ending with -120
+- Avoid re-uploading if same file already exists and is already correctly linked
+- keep product media untouched do not upload logo image again for product media.
+
+Ignore these CSV columns
+- product.metafields.custom.target_use_case
+- product.metafields.custom.pricing_billing
+- product.metafields.custom.deployment_compatibility
+- product.metafields.custom.features_functionality
+- product.metafields.custom.security_backups
+- product.metafields.custom.performance_specs
+- product.metafields.custom.support
+- product.metafields.custom.team_collaboration
+- product.metafields.custom.developer_features
+
+Variant Price
+- Use lowest non-zero visible base price
+- Numeric only, no currency symbol
+- If no public pricing is available, allow Shopify price = 0 where needed
+- Do not log misleading pricing text in metafields
+
+SEO Title
+- Fill Shopify SEO title
+- Format: product + brand + key term
+- Concise and readable
+
+SEO Description
+- Fill Shopify SEO description
+- Prefer 140–160 chars
+- Natural language
+- No keyword stuffing
+
+Status
+- If source says Active, publish as active
+
+Required Shopify fields
+Ensure every imported product has:
+- Title
+- Handle
+- Body HTML (min 300 words)
+- Vendor
+- Published to online store = true
+- Status = active
+- Price
+- Charge tax = false
+- Requires shipping = false
+- Inventory tracking = disabled
+- Image alt text where relevant
+- SEO title
+- SEO description
+
+Filters
+- Read backend\doc\shopify-filter-definitions.csv
+- Fill all relevant supported filter metafields for each product
+- Use only exact allowed values/formats from definitions
+- Do not guess unsupported values
+- Leave unknown/unsupported filters blank
+
+Description style rules
+- Unique
+- Clean
+- Professional
+- Neutral
+- Informative
+- Trustworthy
+- Customer-facing marketplace tone
+- Mention what product does, who it suits, main features, pricing model, support, strengths, and practical use case
+- Keep HTML consistent with project style
+
+Collection/category rules
+- Every product must clearly fit assigned category/collections
+- Use strongest relevant mapping only
+- Avoid vague matches
+- Current parent folder/category should be reflected in custom.type_multiple if valid
+
+Permanent fixes to implement now
+These must be fixed in code so they do not happen again in future batches.
+
+1. Prevent duplicate logo uploads being used as product media
+- Previous mistake: logo uploaded twice
+  - one correct file ending with -120, whose URL is stored in custom.logo_image
+  - one incorrect duplicate uploaded and used as product media image
+- This is wrong
+- Correct behavior:
+  - keep only the -120 logo file used for custom.logo_image
+  - do NOT upload another duplicate of same logo as product media image
+  - do NOT attach logo files as product media unless explicitly required by some separate existing business rule
+- Add safeguards so import scripts never use the logo upload as product media by default
+
+
+Implementation expectations
+Implement the workflow so it:
+1. Scans all category folders under ...\software-products\All O Software
+2. Reads each valid source CSV
+3. Deduplicates against live Shopify + existing export + current job memory
+4. Updates custom.type_multiple on already-existing products when needed
+5. Enriches required fields
+6. Uploads only correct logo files
+7. Never uploads logo again as product media image by mistake
+8. Sets metafields and supported filters correctly
+9. Logs a complete final summary
+
+Output requirements
+At the end, provide:
+- list of changed files
+- short execution summary with:
+  - total folders scanned
+  - valid CSV folders processed
+  - total rows
+  - imported
+  - skipped existing in Shopify
+  - skipped existing in current job
+  - updated existing type_multiple
+  - skipped missing required data
+  - skipped pricing unavailable
+  - failed
+- mention any folders skipped because CSV was missing/invalid
+
+Important
+- Do not create duplicate Shopify products
+- Do not create duplicate Shopify files
+- Do not attach logo files as product media by mistake
+- Do not use literal \n in saved content
+- Do not modify unrelated functionality
+- Make the script safe to rerun
