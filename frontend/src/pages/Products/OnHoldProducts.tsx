@@ -13,6 +13,7 @@ import Badge from "../../components/ui/badge/Badge";
 import ProductSearchBar from "./ProductSearchBar";
 import ProductDetailsModal from "./ProductDetailsModal";
 import { usePaginatedStatusProducts } from "./usePaginatedStatusProducts";
+import { API_BASE_URL } from "../../config/api";
 
 type LifecycleStatus = "pending" | "active" | "rejected" | "on-hold";
 
@@ -39,7 +40,7 @@ const OnHoldProducts = () => {
     handlePageClick,
     refetchProducts,
   } = usePaginatedStatusProducts({
-    endpoint: "http://localhost:5000/api/products/on-hold",
+    endpoint: `${API_BASE_URL}/api/products/on-hold`,
   });
   const areAllVisibleSelected =
     products.length > 0 &&

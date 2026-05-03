@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Badge from "../../components/ui/badge/Badge";
 import { Modal } from "../../components/ui/modal";
+import { API_BASE_URL } from "../../config/api";
 
 type ProductDetailsModalProps = {
   isOpen: boolean;
@@ -118,7 +119,7 @@ const ProductDetailsModal = ({
       setError(null);
       setMessage(null);
       try {
-        const response = await fetch(`http://localhost:5000/api/products/${productId}`);
+        const response = await fetch(`${API_BASE_URL}/api/products/${productId}`);
         const result = await response.json();
         if (!response.ok || !result.success) {
           throw new Error(result.message || "Failed to fetch product details");
@@ -159,7 +160,7 @@ const ProductDetailsModal = ({
 
     const loadCategories = async () => {
       try {
-        const response = await fetch("http://localhost:5000/api/product-categories");
+        const response = await fetch(`${API_BASE_URL}/api/product-categories`);
         if (!response.ok) {
           throw new Error("Failed to fetch categories");
         }
@@ -383,7 +384,7 @@ const ProductDetailsModal = ({
     setError(null);
 
     try {
-      const response = await fetch(`http://localhost:5000/api/products/${productId}`, {
+      const response = await fetch(`${API_BASE_URL}/api/products/${productId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(stripDerivedFields(draft)),
