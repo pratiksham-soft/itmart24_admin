@@ -14,3 +14,4 @@ backend/firebase-service-account*.json
 !tsconfig.json
 node_modules
 backend/exports
+app.environment.json
