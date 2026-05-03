@@ -7,3 +7,5 @@ backend/firebase-service-account*.json
 !package.json
 !package-lock.json
 !tsconfig.json
+node_modules
+backend/exports
