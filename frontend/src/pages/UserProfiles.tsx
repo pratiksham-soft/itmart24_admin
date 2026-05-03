@@ -17,6 +17,7 @@ export default function UserProfiles() {
   const [profile, setProfile] = useState<AdminUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [formValues, setFormValues] = useState({
+    currentPassword: "",
     newPassword: "",
     confirmNewPassword: "",
   });
@@ -77,6 +78,10 @@ export default function UserProfiles() {
   const validateChangePasswordForm = () => {
     const nextErrors: Record<string, string> = {};
 
+    if (!formValues.currentPassword) {
+      nextErrors.currentPassword = "Current password is required.";
+    }
+
     if (!formValues.newPassword) {
       nextErrors.newPassword = "New password is required.";
     } else if (
@@ -115,6 +120,7 @@ export default function UserProfiles() {
 
     try {
       const result = await changeAdminPassword({
+        currentPassword: formValues.currentPassword,
         newPassword: formValues.newPassword,
       });
 
@@ -123,6 +129,7 @@ export default function UserProfiles() {
         message: result.message || "Password updated successfully.",
       });
       setFormValues({
+        currentPassword: "",
         newPassword: "",
         confirmNewPassword: "",
       });
@@ -208,7 +215,7 @@ export default function UserProfiles() {
               Change Password
             </h3>
             <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-              Update your admin password for this account.
+              Update your admin password after confirming your current password.
             </p>
           </div>
 
@@ -226,6 +233,25 @@ export default function UserProfiles() {
 
           <form onSubmit={handleChangePassword} className="mt-6 space-y-5" noValidate>
             <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+              <div className="lg:col-span-2">
+                <Label>
+                  Current Password<span className="text-error-500">*</span>
+                </Label>
+                <Input
+                  id="current-password"
+                  name="current-password"
+                  type="password"
+                  placeholder="Enter your current password"
+                  value={formValues.currentPassword}
+                  onChange={(event) =>
+                    handleFieldChange("currentPassword", event.target.value)
+                  }
+                  error={Boolean(fieldErrors.currentPassword)}
+                  hint={fieldErrors.currentPassword}
+                  disabled={isSubmitting}
+                />
+              </div>
+
               <div>
                 <Label>
                   New Password<span className="text-error-500">*</span>

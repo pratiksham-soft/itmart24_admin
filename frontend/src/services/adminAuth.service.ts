@@ -184,8 +184,10 @@ export async function getCurrentAdminProfile() {
 }
 
 export async function changeAdminPassword({
+  currentPassword,
   newPassword,
 }: {
+  currentPassword: string;
   newPassword: string;
 }) {
   const sessionToken = getStoredAdminSessionToken();
@@ -201,6 +203,7 @@ export async function changeAdminPassword({
       ...getAuthHeaders(),
     },
     body: JSON.stringify({
+      currentPassword,
       newPassword,
     }),
   });
@@ -210,6 +213,94 @@ export async function changeAdminPassword({
       await readApiError(
         response,
         "Unable to change password right now. Please try again."
+      )
+    );
+  }
+
+  return response.json() as Promise<{ success: true; message: string }>;
+}
+
+export async function requestAdminForgotPasswordOtp(email: string) {
+  const response = await fetch(`${API_BASE_URL}/api/auth/forgot-password/send-otp`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ email }),
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      await readApiError(
+        response,
+        "Unable to send OTP right now. Please try again."
+      )
+    );
+  }
+
+  return response.json() as Promise<{
+    success: true;
+    message: string;
+    retryAfterSeconds?: number;
+  }>;
+}
+
+export async function verifyAdminForgotPasswordOtp(email: string, otp: string) {
+  const response = await fetch(`${API_BASE_URL}/api/auth/forgot-password/verify-otp`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ email, otp }),
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      await readApiError(
+        response,
+        "Unable to verify OTP right now. Please try again."
+      )
+    );
+  }
+
+  const result = (await response.json()) as {
+    success: true;
+    message: string;
+    sessionToken: string;
+    user: AdminUser;
+    expiresAt: string;
+  };
+
+  storeSessionToken(result.sessionToken, true);
+  return result;
+}
+
+export async function resetAdminPasswordWithOtp({
+  email,
+  resetToken,
+  newPassword,
+}: {
+  email: string;
+  resetToken: string;
+  newPassword: string;
+}) {
+  const response = await fetch(`${API_BASE_URL}/api/auth/forgot-password/reset`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      email,
+      resetToken,
+      newPassword,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      await readApiError(
+        response,
+        "Unable to reset the password right now. Please try again."
       )
     );
   }

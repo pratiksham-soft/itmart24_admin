@@ -27,6 +27,7 @@
     "clsx": "^2.1.1",
     "firebase": "^12.11.0",
     "flatpickr": "^4.6.13",
+    "itmart24-admin": "file:..",
     "react": "^18.2.0",
     "react-apexcharts": "^1.7.0",
     "react-dnd": "^16.0.1",
