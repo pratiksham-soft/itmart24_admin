@@ -78,7 +78,6 @@ const BlogJobFormModal = ({
   const [categories, setCategories] = useState<BlogJobCategory[]>([]);
   const [sourceLinks, setSourceLinks] = useState<string[]>([""]);
   const [status, setStatus] = useState("inactive");
-  const [imagePromptEnabled, setImagePromptEnabled] = useState(false);
   const [autoPublishEnabled, setAutoPublishEnabled] = useState(false);
   const [templateId, setTemplateId] = useState<number | null>(null);
   const [templateDraft, setTemplateDraft] = useState<TemplateDraft>({
@@ -112,7 +111,6 @@ const BlogJobFormModal = ({
         : [""]
     );
     setStatus(job?.status ?? "inactive");
-    setImagePromptEnabled(Boolean(job?.imagePromptEnabled));
     setAutoPublishEnabled(Boolean(job?.autoPublishEnabled));
     setTemplateId(job?.templateId ?? null);
     setTemplateDraft(buildInitialTemplateDraft(job, templates));
@@ -212,12 +210,24 @@ const BlogJobFormModal = ({
       return;
     }
 
+    const imageUrlPattern = /\.(png|jpe?g|webp)(\?.*)?$/i;
+    const invalidTopicImageUrl = categories
+      .flatMap((category) => category.topics)
+      .flatMap((topic) => topic.imageUrls ?? [])
+      .map((entry) => entry.trim())
+      .find((entry) => entry && (!urlPattern.test(entry) || !imageUrlPattern.test(entry)));
+
+    if (invalidTopicImageUrl) {
+      alert("All topic image URLs must be valid JPG, PNG, or WEBP URLs");
+      return;
+    }
+
     await onSubmit(
       {
         name: name.trim(),
         cronExpression: cronExpression.trim(),
         templateId,
-        imagePromptEnabled,
+        imagePromptEnabled: false,
         autoPublishEnabled,
         status,
         settings: {
@@ -329,24 +339,19 @@ const BlogJobFormModal = ({
             </div>
 
             <div className="rounded-xl bg-gray-50 p-4 dark:bg-gray-800/50">
-              <Switch
-                label="Enable image prompt generation"
-                defaultChecked={imagePromptEnabled}
-                onChange={setImagePromptEnabled}
-              />
+              <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                Auto Publish to Shopify
+              </label>
+              <select
+                className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 text-sm text-gray-800 shadow-theme-xs focus:border-brand-300 focus:outline-hidden dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+                value={autoPublishEnabled ? "enabled" : "disabled"}
+                onChange={(event) => setAutoPublishEnabled(event.target.value === "enabled")}
+              >
+                <option value="disabled">Disabled</option>
+                <option value="enabled">Enabled</option>
+              </select>
               <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                Helper only for now. No image generation implementation is included in this release.
-              </p>
-            </div>
-
-            <div className="rounded-xl bg-gray-50 p-4 dark:bg-gray-800/50">
-              <Switch
-                label="Auto Publish to Shopify"
-                defaultChecked={autoPublishEnabled}
-                onChange={setAutoPublishEnabled}
-              />
-              <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                Default is off. Generated blogs will publish to Shopify automatically only when this is enabled.
+                Default is off. Topic image URLs will be used when available; no AI image generation is triggered.
               </p>
             </div>
 
@@ -547,7 +552,7 @@ const BlogJobFormModal = ({
                                         ...previous,
                                         topics: [
                                           ...previous.topics,
-                                          { topic, status: "pending" },
+                                          { topic, status: "pending", imageUrls: [] },
                                         ],
                                       }));
                                     }}
@@ -587,7 +592,7 @@ const BlogJobFormModal = ({
                                   handleCategoryChange(category.category, (previous) => ({
                                     ...previous,
                                     topics: previous.topics.map((entry, index) =>
-                                      index === topicIndex
+                                        index === topicIndex
                                         ? { ...entry, status: event.target.value }
                                         : entry
                                     ),
@@ -611,6 +616,94 @@ const BlogJobFormModal = ({
                               >
                                 Remove
                               </Button>
+
+                              <div className="lg:col-span-3">
+                                <div className="space-y-2">
+                                  <div className="flex items-center justify-between">
+                                    <p className="text-xs font-medium text-gray-600 dark:text-gray-300">
+                                      Image URLs
+                                    </p>
+                                    <Button
+                                      variant="outline"
+                                      onClick={() =>
+                                        handleCategoryChange(category.category, (previous) => ({
+                                          ...previous,
+                                          topics: previous.topics.map((entry, index) =>
+                                            index === topicIndex
+                                              ? {
+                                                  ...entry,
+                                                  imageUrls: [
+                                                    ...(entry.imageUrls ?? []),
+                                                    "",
+                                                  ],
+                                                }
+                                              : entry
+                                          ),
+                                        }))
+                                      }
+                                    >
+                                      Add Image URL
+                                    </Button>
+                                  </div>
+
+                                  {((topicEntry.imageUrls ?? []).length > 0
+                                    ? topicEntry.imageUrls
+                                    : [""]).map((imageUrl, imageIndex) => (
+                                    <div
+                                      key={`${category.category}-${topicIndex}-image-${imageIndex}`}
+                                      className="grid gap-3 lg:grid-cols-[1fr_88px]"
+                                    >
+                                      <InputField
+                                        value={imageUrl}
+                                        onChange={(event) =>
+                                          handleCategoryChange(category.category, (previous) => ({
+                                            ...previous,
+                                            topics: previous.topics.map((entry, index) =>
+                                              index === topicIndex
+                                                ? {
+                                                    ...entry,
+                                                    imageUrls: (
+                                                      entry.imageUrls ?? [""]
+                                                    ).map((value, valueIndex) =>
+                                                      valueIndex === imageIndex
+                                                        ? event.target.value
+                                                        : value
+                                                    ),
+                                                  }
+                                                : entry
+                                            ),
+                                          }))
+                                        }
+                                        placeholder="https://example.com/topic-image.jpg"
+                                      />
+                                      <Button
+                                        variant="outline"
+                                        onClick={() =>
+                                          handleCategoryChange(category.category, (previous) => ({
+                                            ...previous,
+                                            topics: previous.topics.map((entry, index) =>
+                                              index === topicIndex
+                                                ? {
+                                                    ...entry,
+                                                    imageUrls:
+                                                      (entry.imageUrls ?? []).length <= 1
+                                                        ? []
+                                                        : (entry.imageUrls ?? []).filter(
+                                                            (_value, valueIndex) =>
+                                                              valueIndex !== imageIndex
+                                                          ),
+                                                  }
+                                                : entry
+                                            ),
+                                          }))
+                                        }
+                                      >
+                                        Remove
+                                      </Button>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
                             </div>
                           ))}
                         </div>
@@ -626,6 +719,7 @@ const BlogJobFormModal = ({
                                   {
                                     topic: "",
                                     status: "pending",
+                                    imageUrls: [],
                                   },
                                 ],
                               }))

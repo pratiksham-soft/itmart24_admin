@@ -37,38 +37,29 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.changeAdminPassword = exports.resetPasswordWithOtp = exports.verifyForgotPasswordOtp = exports.requestForgotPasswordOtp = void 0;
+const bcrypt_1 = __importDefault(require("bcrypt"));
 const crypto_1 = __importDefault(require("crypto"));
-const axios_1 = __importDefault(require("axios"));
 const firebaseAdmin_1 = __importStar(require("../config/firebaseAdmin"));
+const analyticsPostgres_service_1 = require("./analyticsPostgres.service");
 const email_service_1 = require("./email.service");
+const adminAuth_service_1 = require("./adminAuth.service");
+const adminAuth_service_2 = require("./adminAuth.service");
 const OTP_COLLECTION = "auth_password_reset_otps";
 const OTP_EXPIRY_MINUTES = 10;
 const OTP_RESEND_COOLDOWN_SECONDS = 60;
 const OTP_MAX_ATTEMPTS = 5;
-const RESET_TOKEN_EXPIRY_MINUTES = 15;
 const MIN_PASSWORD_LENGTH = 8;
 const normalizeEmail = (value) => String(value ?? "").trim().toLowerCase();
 const isValidEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizeEmail(value));
+const isStrongEnoughPassword = (value) => value.length >= MIN_PASSWORD_LENGTH &&
+    /[A-Za-z]/.test(value) &&
+    /\d/.test(value);
 const createOtpCode = () => String(crypto_1.default.randomInt(0, 1000000)).padStart(6, "0");
 const hashOtp = ({ otp, salt, email, }) => crypto_1.default
     .createHash("sha256")
     .update(`${normalizeEmail(email)}:${salt}:${String(otp || "").trim()}`)
     .digest("hex");
-const createResetToken = () => crypto_1.default.randomBytes(32).toString("hex");
-const hashResetToken = ({ token, salt, email, }) => crypto_1.default
-    .createHash("sha256")
-    .update(`${normalizeEmail(email)}:${salt}:${token}`)
-    .digest("hex");
-const getOtpDocumentRef = (uid) => firebaseAdmin_1.firestore.collection(OTP_COLLECTION).doc(uid);
-const getFirebaseWebApiKey = () => {
-    const key = process.env.FIREBASE_WEB_API_KEY?.trim() ||
-        process.env.VITE_FIREBASE_API_KEY?.trim() ||
-        "";
-    if (!key) {
-        throw new Error("Firebase web API key is not configured. Set FIREBASE_WEB_API_KEY or VITE_FIREBASE_API_KEY.");
-    }
-    return key;
-};
+const getOtpDocumentRef = (adminId) => firebaseAdmin_1.firestore.collection(OTP_COLLECTION).doc(adminId);
 const buildForgotPasswordOtpEmail = (otp) => {
     const subject = "Your ITMart24 admin password reset OTP";
     const text = [
@@ -93,22 +84,26 @@ const buildForgotPasswordOtpEmail = (otp) => {
   `;
     return { subject, text, html };
 };
-const getFriendlyAuthError = (message, fallback) => message || fallback;
-const verifyEmailPassword = async ({ email, password, }) => {
-    const apiKey = getFirebaseWebApiKey();
-    const response = await axios_1.default.post(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${apiKey}`, {
-        email,
-        password,
-        returnSecureToken: true,
-    });
-    return response.data;
-};
-const ensureAdminUser = async (uid) => {
-    const adminDoc = await firebaseAdmin_1.firestore.collection("admins").doc(uid).get();
-    if (!adminDoc.exists) {
-        throw new Error("This account does not have access to the ITMart24 admin workspace.");
+const findAdminByEmail = async (emailInput) => {
+    const email = normalizeEmail(emailInput);
+    const pool = await (0, analyticsPostgres_service_1.getAnalyticsPool)();
+    const result = await pool.query(`
+      SELECT id, name, email, status, password_hash
+      FROM admins
+      WHERE email = $1
+      LIMIT 1
+    `, [email]);
+    if (result.rowCount === 0) {
+        return null;
     }
-    return adminDoc;
+    const row = result.rows[0];
+    return {
+        id: String(row.id ?? ""),
+        email: String(row.email ?? ""),
+        name: String(row.name ?? ""),
+        status: String(row.status ?? ""),
+        passwordHash: String(row.password_hash ?? ""),
+    };
 };
 const requestForgotPasswordOtp = async (emailInput) => {
     const email = normalizeEmail(emailInput);
@@ -118,23 +113,15 @@ const requestForgotPasswordOtp = async (emailInput) => {
     if (!isValidEmail(email)) {
         throw new Error("Enter a valid email address.");
     }
-    let userRecord;
-    try {
-        userRecord = await firebaseAdmin_1.default.auth().getUserByEmail(email);
-        await ensureAdminUser(userRecord.uid);
+    const adminRecord = await findAdminByEmail(email);
+    if (!adminRecord || adminRecord.status.toLowerCase() !== "active") {
+        return {
+            success: true,
+            message: "If an admin account exists for that email, a password reset OTP has been sent.",
+            retryAfterSeconds: OTP_RESEND_COOLDOWN_SECONDS,
+        };
     }
-    catch (error) {
-        if (error?.code === "auth/user-not-found" ||
-            error?.message?.includes("does not have access")) {
-            return {
-                success: true,
-                message: "If an admin account exists for that email, a password reset OTP has been sent.",
-                retryAfterSeconds: OTP_RESEND_COOLDOWN_SECONDS,
-            };
-        }
-        throw error;
-    }
-    const otpRef = getOtpDocumentRef(userRecord.uid);
+    const otpRef = getOtpDocumentRef(adminRecord.id);
     const otpSnap = await otpRef.get();
     const otpData = otpSnap.exists ? otpSnap.data() ?? {} : {};
     const lastRequestedAt = typeof otpData.requestedAt?.toDate === "function"
@@ -152,6 +139,7 @@ const requestForgotPasswordOtp = async (emailInput) => {
     const salt = crypto_1.default.randomBytes(16).toString("hex");
     const expiresAt = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
     await otpRef.set({
+        adminId: adminRecord.id,
         email,
         otpHash: hashOtp({ otp, salt, email }),
         salt,
@@ -161,9 +149,6 @@ const requestForgotPasswordOtp = async (emailInput) => {
         maxAttempts: OTP_MAX_ATTEMPTS,
         used: false,
         verifiedAt: null,
-        resetTokenHash: firebaseAdmin_1.default.firestore.FieldValue.delete(),
-        resetTokenExpiresAt: firebaseAdmin_1.default.firestore.FieldValue.delete(),
-        resetTokenUsedAt: firebaseAdmin_1.default.firestore.FieldValue.delete(),
     }, { merge: true });
     await (0, email_service_1.sendSmtpEmail)({
         to: email,
@@ -188,15 +173,11 @@ const verifyForgotPasswordOtp = async ({ email: emailInput, otp, }) => {
     if (!/^\d{6}$/.test(trimmedOtp)) {
         throw new Error("Enter the 6-digit OTP.");
     }
-    let userRecord;
-    try {
-        userRecord = await firebaseAdmin_1.default.auth().getUserByEmail(email);
-        await ensureAdminUser(userRecord.uid);
-    }
-    catch {
+    const adminRecord = await findAdminByEmail(email);
+    if (!adminRecord || adminRecord.status.toLowerCase() !== "active") {
         throw new Error("Invalid OTP or email.");
     }
-    const otpRef = getOtpDocumentRef(userRecord.uid);
+    const otpRef = getOtpDocumentRef(adminRecord.id);
     const otpSnap = await otpRef.get();
     if (!otpSnap.exists) {
         throw new Error("No active OTP was found. Request a new code.");
@@ -235,102 +216,41 @@ const verifyForgotPasswordOtp = async ({ email: emailInput, otp, }) => {
         }, { merge: true });
         throw new Error("Invalid OTP or email.");
     }
-    const resetToken = createResetToken();
-    const resetTokenSalt = crypto_1.default.randomBytes(16).toString("hex");
-    const resetTokenExpiresAt = new Date(Date.now() + RESET_TOKEN_EXPIRY_MINUTES * 60 * 1000);
     await otpRef.set({
         used: true,
         verifiedAt: firebaseAdmin_1.default.firestore.FieldValue.serverTimestamp(),
         otpHash: firebaseAdmin_1.default.firestore.FieldValue.delete(),
         salt: firebaseAdmin_1.default.firestore.FieldValue.delete(),
-        resetTokenHash: hashResetToken({
-            token: resetToken,
-            salt: resetTokenSalt,
-            email,
-        }),
-        resetTokenSalt,
-        resetTokenExpiresAt,
-        resetTokenUsedAt: null,
     }, { merge: true });
+    const pool = await (0, analyticsPostgres_service_1.getAnalyticsPool)();
+    const adminResult = await pool.query(`
+      SELECT id, name, email, role, status, created_at, updated_at
+      FROM admins
+      WHERE id = $1
+      LIMIT 1
+    `, [adminRecord.id]);
+    if (adminResult.rowCount === 0) {
+        throw new Error("Unable to create an admin session right now.");
+    }
+    const sessionResult = await (0, adminAuth_service_2.createAdminSessionForAdmin)(adminResult.rows[0], true);
     return {
-        success: true,
-        message: "OTP verified successfully.",
-        resetToken,
-        resetTokenExpiresInMinutes: RESET_TOKEN_EXPIRY_MINUTES,
+        ...sessionResult,
+        message: "OTP verified successfully. Redirecting to your account settings.",
     };
 };
 exports.verifyForgotPasswordOtp = verifyForgotPasswordOtp;
 const resetPasswordWithOtp = async ({ email: emailInput, resetToken, newPassword, }) => {
-    const email = normalizeEmail(emailInput);
-    const trimmedResetToken = String(resetToken || "").trim();
-    const password = String(newPassword || "");
-    if (!email || !trimmedResetToken || !password) {
-        throw new Error("Email, reset token, and new password are required.");
-    }
-    if (!isValidEmail(email)) {
-        throw new Error("Enter a valid email address.");
-    }
-    if (password.length < MIN_PASSWORD_LENGTH) {
-        throw new Error("Use at least 8 characters for the new password.");
-    }
-    let userRecord;
-    try {
-        userRecord = await firebaseAdmin_1.default.auth().getUserByEmail(email);
-        await ensureAdminUser(userRecord.uid);
-    }
-    catch {
-        throw new Error("Unable to reset the password for this account.");
-    }
-    const otpRef = getOtpDocumentRef(userRecord.uid);
-    const otpSnap = await otpRef.get();
-    if (!otpSnap.exists) {
-        throw new Error("No verified password reset request was found.");
-    }
-    const otpData = otpSnap.data() ?? {};
-    const resetExpiresAt = typeof otpData.resetTokenExpiresAt?.toDate === "function"
-        ? otpData.resetTokenExpiresAt.toDate()
-        : new Date(otpData.resetTokenExpiresAt);
-    if (!otpData.resetTokenHash || !otpData.resetTokenSalt) {
-        throw new Error("No verified password reset request was found.");
-    }
-    if (otpData.resetTokenUsedAt) {
-        throw new Error("This password reset request has already been used.");
-    }
-    if (!(resetExpiresAt instanceof Date) || Number.isNaN(resetExpiresAt.getTime())) {
-        throw new Error("This password reset session is invalid. Request a new OTP.");
-    }
-    if (resetExpiresAt.getTime() < Date.now()) {
-        throw new Error("This password reset session has expired. Request a new OTP.");
-    }
-    const expectedResetHash = hashResetToken({
-        token: trimmedResetToken,
-        salt: String(otpData.resetTokenSalt || ""),
-        email,
-    });
-    if (expectedResetHash !== otpData.resetTokenHash) {
-        throw new Error("This password reset session is invalid. Request a new OTP.");
-    }
-    await firebaseAdmin_1.default.auth().updateUser(userRecord.uid, {
-        password,
-    });
-    await otpRef.set({
-        resetTokenUsedAt: firebaseAdmin_1.default.firestore.FieldValue.serverTimestamp(),
-        passwordResetAt: firebaseAdmin_1.default.firestore.FieldValue.serverTimestamp(),
-        resetTokenHash: firebaseAdmin_1.default.firestore.FieldValue.delete(),
-        resetTokenSalt: firebaseAdmin_1.default.firestore.FieldValue.delete(),
-        resetTokenExpiresAt: firebaseAdmin_1.default.firestore.FieldValue.delete(),
-    }, { merge: true });
-    return {
-        success: true,
-        message: "Password reset successfully. Please sign in with your new password.",
-    };
+    void emailInput;
+    void resetToken;
+    void newPassword;
+    throw new Error("Password reset after OTP verification is no longer required.");
 };
 exports.resetPasswordWithOtp = resetPasswordWithOtp;
 const changeAdminPassword = async ({ idToken, currentPassword, newPassword, }) => {
-    const trimmedIdToken = String(idToken || "").trim();
-    const password = String(newPassword || "");
+    const sessionToken = String(idToken || "").trim();
     const existingPassword = String(currentPassword || "");
-    if (!trimmedIdToken) {
+    const password = String(newPassword || "");
+    if (!sessionToken) {
         throw new Error("Authentication is required.");
     }
     if (!existingPassword) {
@@ -339,44 +259,26 @@ const changeAdminPassword = async ({ idToken, currentPassword, newPassword, }) =
     if (!password) {
         throw new Error("New password is required.");
     }
-    if (password.length < MIN_PASSWORD_LENGTH) {
-        throw new Error("Use at least 8 characters for the new password.");
+    if (!isStrongEnoughPassword(password)) {
+        throw new Error("Use at least 8 characters with letters and numbers.");
     }
-    let decodedToken;
-    try {
-        decodedToken = await firebaseAdmin_1.default.auth().verifyIdToken(trimmedIdToken);
-    }
-    catch {
+    const profile = await (0, adminAuth_service_1.getAdminProfile)(sessionToken);
+    const pool = await (0, analyticsPostgres_service_1.getAnalyticsPool)();
+    const adminResult = await pool.query("SELECT id, password_hash FROM admins WHERE id = $1 LIMIT 1", [profile.user.id]);
+    if (adminResult.rowCount === 0) {
         throw new Error("Authentication is required.");
     }
-    await ensureAdminUser(decodedToken.uid);
-    const userRecord = await firebaseAdmin_1.default.auth().getUser(decodedToken.uid);
-    const email = normalizeEmail(userRecord.email);
-    if (!email) {
-        throw new Error("This account does not have a valid email address.");
+    const adminRecord = adminResult.rows[0];
+    const passwordMatches = await bcrypt_1.default.compare(existingPassword, String(adminRecord.password_hash ?? ""));
+    if (!passwordMatches) {
+        throw new Error("Current password is incorrect.");
     }
-    try {
-        await verifyEmailPassword({
-            email,
-            password: existingPassword,
-        });
-    }
-    catch (error) {
-        const code = error?.response?.data?.error?.message;
-        if (code === "INVALID_PASSWORD" ||
-            code === "EMAIL_NOT_FOUND" ||
-            code === "INVALID_LOGIN_CREDENTIALS") {
-            throw new Error("Current password is incorrect.");
-        }
-        throw new Error(getFriendlyAuthError(error?.message, "Unable to verify the current password right now."));
-    }
-    await firebaseAdmin_1.default.auth().updateUser(decodedToken.uid, {
-        password,
-    });
-    await firebaseAdmin_1.firestore.collection("admins").doc(decodedToken.uid).set({
-        updatedAt: firebaseAdmin_1.default.firestore.FieldValue.serverTimestamp(),
-        passwordUpdatedAt: firebaseAdmin_1.default.firestore.FieldValue.serverTimestamp(),
-    }, { merge: true });
+    const newPasswordHash = await bcrypt_1.default.hash(password, 12);
+    await pool.query(`
+      UPDATE admins
+      SET password_hash = $2, updated_at = NOW()
+      WHERE id = $1
+    `, [profile.user.id, newPasswordHash]);
     return {
         success: true,
         message: "Password updated successfully.",

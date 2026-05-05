@@ -17,6 +17,7 @@ const BLOG_IMAGE_COUNT = Math.max(0, parseEnvInteger(process.env.BLOG_IMAGE_COUN
 const BLOG_INLINE_IMAGE_COUNT = Math.max(0, parseEnvInteger(process.env.BLOG_INLINE_IMAGE_COUNT, 0));
 const BLOG_ENABLE_INLINE_IMAGES = ["1", "true", "yes", "on"].includes(String(process.env.BLOG_ENABLE_INLINE_IMAGES ?? "").trim().toLowerCase());
 const MAX_OPENAI_TEXT_RETRIES = 1;
+const USE_SHOPIFY_IMAGE_PROXY = ["1", "true", "yes", "on"].includes(String(process.env.USE_SHOPIFY_IMAGE_PROXY ?? "false").trim().toLowerCase());
 const runningBlogJobIds = new Set();
 const normalizeKey = (value) => value.trim().toLowerCase().replace(/\s+/g, " ");
 const escapeHtml = (value) => value
@@ -58,6 +59,12 @@ const extractImageSources = (contentHtml) => {
 };
 const isShopifyHostedUrl = (value) => value.includes("cdn.shopify.com") || value.includes("/cdn/shop/files/");
 const replaceImageSourcesWithShopifyUrls = async (params) => {
+    if (!USE_SHOPIFY_IMAGE_PROXY) {
+        return {
+            coverImageUrl: params.coverImageUrl,
+            contentHtml: params.contentHtml,
+        };
+    }
     let nextCoverImageUrl = params.coverImageUrl;
     let nextContentHtml = params.contentHtml;
     const sourceUrls = new Set();
@@ -85,17 +92,6 @@ const replaceImageSourcesWithShopifyUrls = async (params) => {
         contentHtml: nextContentHtml,
     };
 };
-const buildPremiumImagePrompt = (params) => [
-    `High-end futuristic SaaS illustration for ${params.topic}.`,
-    `Show ${params.focus} inside a modern analytics dashboard, cloud platform, digital marketplace, automation system, or enterprise SaaS workspace related to ${params.category}.`,
-    "Use glowing data flows, semi-3D UI cards, modern dashboard panels, cinematic soft lighting, depth, shadows, clean minimal composition, premium high-definition digital illustration.",
-    "Color palette: neon blue, purple gradients, subtle dark or soft atmospheric background.",
-    "Professional enterprise software feel, ultra detailed, 4K.",
-    "No text in image, no logo, no watermark, no cartoonish style, no flat clipart, no low-detail stock illustration.",
-    params.suggestedPrompt ? `Additional guidance: ${params.suggestedPrompt}` : "",
-]
-    .filter(Boolean)
-    .join(" ");
 const buildImageAltText = (params) => [
     params.focus ? `${params.focus} illustration` : null,
     params.topic,
@@ -386,72 +382,24 @@ const loadRelatedBlogLinks = async (params) => {
 const extractH2Headings = (contentHtml) => Array.from(contentHtml.matchAll(/<h2\b[^>]*>([\s\S]*?)<\/h2>/gi))
     .map((match) => stripHtmlTags(String(match[1] ?? "")))
     .filter(Boolean)
-    .slice(0, 2);
-const generateAndUploadShopifyImage = async (params) => {
-    const imageModel = params.provider === "groq_replicate"
-        ? process.env.REPLICATE_IMAGE_VERSION || "black-forest-labs/flux-schnell"
-        : process.env.OPENAI_BLOG_IMAGE_MODEL || "gpt-image-1";
-    await safeLogRunEvent({
-        runId: params.runId,
-        step: params.provider === "groq_replicate"
-            ? "replicate_request_started"
-            : "image_generation_started",
-        categoryName: params.category,
-        topic: params.topic,
-        message: params.provider === "groq_replicate"
-            ? "Replicate image generation started"
-            : "OpenAI image generation started",
-        metadata: {
-            focus: params.focus,
-            model: imageModel,
-            aiProvider: params.provider,
-        },
-    });
-    const prompt = buildPremiumImagePrompt({
-        topic: params.topic,
-        category: params.category,
-        focus: params.focus,
-        suggestedPrompt: params.suggestedPrompt,
-    });
-    const imageResult = params.provider === "groq_replicate"
-        ? await (0, groqReplicateBlog_service_1.generateReplicateBlogImage)(prompt)
-        : await (0, openaiBlog_service_1.generateBlogImage)(prompt);
-    const uploadedImage = await (0, shopifyBlog_service_1.uploadImageToShopifyFiles)({
-        sourceUrl: imageResult.imageUrl ?? "",
-        alt: buildImageAltText({
-            title: params.title,
-            topic: params.topic,
-            category: params.category,
-            focus: params.focus,
-        }),
-    });
-    await safeLogRunEvent({
-        runId: params.runId,
-        step: params.provider === "groq_replicate"
-            ? "replicate_image_generated"
-            : "image_uploaded_to_shopify",
-        categoryName: params.category,
-        topic: params.topic,
-        message: params.provider === "groq_replicate"
-            ? "Replicate image generated and uploaded to Shopify Files"
-            : "Generated image uploaded to Shopify Files",
-        metadata: {
-            focus: params.focus,
-            url: uploadedImage.url,
-            aiProvider: params.provider,
-        },
-    });
-    return {
-        url: uploadedImage.url,
-        usage: imageResult.usage,
-        revisedPrompt: imageResult.revisedPrompt,
-        alt: buildImageAltText({
-            title: params.title,
-            topic: params.topic,
-            category: params.category,
-            focus: params.focus,
-        }),
-    };
+    .slice(0, Math.max(1, BLOG_INLINE_IMAGE_COUNT));
+const normalizeTopicImageUrls = (imageUrls) => Array.from(new Set((imageUrls ?? [])
+    .map((entry) => String(entry ?? "").trim())
+    .filter(Boolean)));
+const prepareTopicImageUrls = async (params) => {
+    const normalizedUrls = normalizeTopicImageUrls(params.imageUrls);
+    if (!USE_SHOPIFY_IMAGE_PROXY || normalizedUrls.length === 0) {
+        return normalizedUrls;
+    }
+    const uploadedUrls = [];
+    for (const imageUrl of normalizedUrls) {
+        const uploaded = await (0, shopifyBlog_service_1.uploadImageToShopifyFiles)({
+            sourceUrl: imageUrl,
+            alt: params.title,
+        });
+        uploadedUrls.push(uploaded.url);
+    }
+    return uploadedUrls;
 };
 const prepareBlogContentText = async (params) => {
     let nextContentHtml = resolveBlogPlaceholders({
@@ -524,14 +472,27 @@ const prepareBlogContentText = async (params) => {
         contentHtml: nextContentHtml,
     };
 };
-const applyApprovedBlogImages = async (params) => {
+const applyTopicImagesToApprovedBlog = async (params) => {
     let nextContentHtml = params.contentHtml;
-    let coverImageUrl = null;
-    const usageParts = [];
-    const inlineImages = [];
-    const inlineImageLimit = params.imagePromptEnabled && BLOG_ENABLE_INLINE_IMAGES
-        ? Math.min(BLOG_INLINE_IMAGE_COUNT, 2)
+    const preparedImageUrls = await prepareTopicImageUrls({
+        imageUrls: params.imageUrls,
+        title: params.title,
+    });
+    const coverImageUrl = preparedImageUrls[0] ?? null;
+    const inlineImageLimit = BLOG_ENABLE_INLINE_IMAGES
+        ? Math.min(BLOG_INLINE_IMAGE_COUNT, Math.max(preparedImageUrls.length - 1, 0))
         : 0;
+    const inlineImages = preparedImageUrls
+        .slice(1, 1 + inlineImageLimit)
+        .map((url, index) => ({
+        url,
+        alt: buildImageAltText({
+            title: params.title,
+            topic: params.topic,
+            category: params.category,
+            focus: extractH2Headings(nextContentHtml)[index] || "section image",
+        }),
+    }));
     await safeLogRunEvent({
         runId: params.runId,
         step: "expensive_steps_started",
@@ -539,117 +500,52 @@ const applyApprovedBlogImages = async (params) => {
         topic: params.topic,
         message: "Starting approved expensive steps after content quality pass",
         metadata: {
-            blogImageCount: BLOG_IMAGE_COUNT,
-            inlineImageCount: inlineImageLimit,
+            topicImageCount: preparedImageUrls.length,
+            useShopifyImageProxy: USE_SHOPIFY_IMAGE_PROXY,
         },
     });
-    if (params.imagePromptEnabled && BLOG_IMAGE_COUNT > 0) {
-        try {
-            await safeLogRunEvent({
-                runId: params.runId,
-                step: "image_prompt_built",
-                categoryName: params.category,
-                topic: params.topic,
-                message: "Premium image prompt prepared for blog visuals",
-                metadata: {
-                    focus: `cover image for ${params.topic}`,
-                },
-            });
-            const coverImage = await generateAndUploadShopifyImage({
-                runId: params.runId,
-                category: params.category,
-                topic: params.topic,
-                title: params.title,
-                focus: `cover image for ${params.topic}`,
-                suggestedPrompt: params.imagePrompt,
-                provider: params.provider,
-            });
-            coverImageUrl = coverImage.url;
-            usageParts.push(coverImage.usage);
-        }
-        catch (error) {
-            await safeLogRunEvent({
-                runId: params.runId,
-                level: "warning",
-                step: params.provider === "groq_replicate"
-                    ? "replicate_image_failed"
-                    : "image_generation_failed",
-                categoryName: params.category,
-                topic: params.topic,
-                message: "Cover image generation failed; continuing without image",
-                metadata: {
-                    error: toSafeErrorMessage(error),
-                    aiProvider: params.provider,
-                },
-            });
-        }
-    }
-    if (inlineImageLimit > 0) {
-        const headings = extractH2Headings(nextContentHtml).slice(0, inlineImageLimit);
-        for (const heading of headings) {
-            try {
-                await safeLogRunEvent({
-                    runId: params.runId,
-                    step: "image_prompt_built",
-                    categoryName: params.category,
-                    topic: params.topic,
-                    message: "Premium image prompt prepared for inline visual",
-                    metadata: {
-                        focus: heading,
-                    },
-                });
-                const inlineImage = await generateAndUploadShopifyImage({
-                    runId: params.runId,
-                    category: params.category,
-                    topic: params.topic,
-                    title: params.title,
-                    focus: heading,
-                    suggestedPrompt: params.imagePrompt,
-                    provider: params.provider,
-                });
-                inlineImages.push({
-                    url: inlineImage.url,
-                    alt: inlineImage.alt,
-                });
-                usageParts.push(inlineImage.usage);
-            }
-            catch (error) {
-                await safeLogRunEvent({
-                    runId: params.runId,
-                    level: "warning",
-                    step: params.provider === "groq_replicate"
-                        ? "replicate_image_failed"
-                        : "image_generation_failed",
-                    categoryName: params.category,
-                    topic: params.topic,
-                    message: "Inline image generation failed; continuing without inline image",
-                    metadata: {
-                        error: toSafeErrorMessage(error),
-                        aiProvider: params.provider,
-                    },
-                });
-            }
-        }
-    }
+    await safeLogRunEvent({
+        runId: params.runId,
+        step: "image_urls_loaded",
+        categoryName: params.category,
+        topic: params.topic,
+        message: "Loaded topic image URLs for blog placement",
+        metadata: {
+            imageCount: preparedImageUrls.length,
+        },
+    });
     nextContentHtml = insertCoverImageIntoHtml(nextContentHtml, coverImageUrl, buildImageAltText({
         title: params.title,
         topic: params.topic,
         category: params.category,
         focus: "cover image",
     }));
+    const hadImageTagBeforeFallback = /<img\b/i.test(nextContentHtml);
     nextContentHtml = insertInlineImagesIntoHtml(nextContentHtml, inlineImages);
     nextContentHtml = sanitizeBlogHtml(nextContentHtml);
     await safeLogRunEvent({
         runId: params.runId,
-        step: "image_inserted",
+        step: "images_inserted_from_topic",
         categoryName: params.category,
         topic: params.topic,
-        message: "Blog images inserted into HTML",
+        message: "Topic image URLs inserted into blog HTML",
         metadata: {
             coverImageInserted: Boolean(coverImageUrl),
             inlineImageCount: inlineImages.length,
         },
     });
+    if (!hadImageTagBeforeFallback && preparedImageUrls.length > 0) {
+        await safeLogRunEvent({
+            runId: params.runId,
+            step: "image_placement_fallback_used",
+            categoryName: params.category,
+            topic: params.topic,
+            message: "Fallback image placement inserted topic images into the blog content",
+            metadata: {
+                imageCount: preparedImageUrls.length,
+            },
+        });
+    }
     await safeLogRunEvent({
         runId: params.runId,
         step: "html_sanitized",
@@ -663,8 +559,8 @@ const applyApprovedBlogImages = async (params) => {
     return {
         contentHtml: nextContentHtml,
         coverImageUrl,
-        usageParts,
-        imagesGenerated: (coverImageUrl ? 1 : 0) + inlineImages.length,
+        usageParts: [],
+        imagesGenerated: preparedImageUrls.length,
     };
 };
 const getJobById = async (jobId) => {
@@ -972,6 +868,7 @@ const generateTopicContentWithRetry = async (params) => {
                     templateContent: params.templateContent,
                     contentGuidance: params.contentGuidance,
                     preferredSourceLinks: params.preferredSourceLinks,
+                    topicImageUrls: params.topicImageUrls,
                     productContextCsv: params.productContextCsv,
                     collectionContextCsv: params.collectionContextCsv,
                     strictJsonOnly: parsingRetryUsed,
@@ -983,6 +880,7 @@ const generateTopicContentWithRetry = async (params) => {
                     templateContent: params.templateContent,
                     contentGuidance: params.contentGuidance,
                     preferredSourceLinks: params.preferredSourceLinks,
+                    topicImageUrls: params.topicImageUrls,
                     productContextCsv: params.productContextCsv,
                     collectionContextCsv: params.collectionContextCsv,
                     strictJsonOnly: parsingRetryUsed,
@@ -1391,6 +1289,7 @@ const runBlogJob = async (jobId, options) => {
                             ? String(job.settings.contentGuidance)
                             : "Generated blog content should be professional and human-like.",
                         preferredSourceLinks: job.sourceLinks.map((entry) => entry.url),
+                        topicImageUrls: topicEntry.imageUrls ?? [],
                         productContextCsv: catalogContext.productsCsv,
                         collectionContextCsv: catalogContext.collectionsCsv,
                         runId: runId,
@@ -1493,6 +1392,7 @@ const runBlogJob = async (jobId, options) => {
                                     ? String(job.settings.contentGuidance)
                                     : "Generated blog content should be professional and human-like.",
                                 preferredSourceLinks: job.sourceLinks.map((entry) => entry.url),
+                                topicImageUrls: topicEntry.imageUrls ?? [],
                                 productContextCsv: catalogContext.productsCsv,
                                 collectionContextCsv: catalogContext.collectionsCsv,
                                 qualityRetry: true,
@@ -1578,15 +1478,13 @@ const runBlogJob = async (jobId, options) => {
                         topic: topicEntry.topic,
                         message: "Image generation deferred until content quality approval",
                     });
-                    const preparedBlog = await applyApprovedBlogImages({
+                    const preparedBlog = await applyTopicImagesToApprovedBlog({
                         runId,
-                        provider,
                         category: categoryConfig.category,
                         topic: topicEntry.topic,
                         title: generated.content.title,
                         contentHtml: preparedText.contentHtml,
-                        imagePrompt: generated.content.imagePrompt,
-                        imagePromptEnabled: job.imagePromptEnabled,
+                        imageUrls: topicEntry.imageUrls ?? [],
                     });
                     summary.imagesGenerated += preparedBlog.imagesGenerated;
                     const blogPostId = await saveGeneratedBlogPost({

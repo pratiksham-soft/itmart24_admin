@@ -26,6 +26,18 @@ const isValidUrl = (value) => {
         return false;
     }
 };
+const isValidImageUrl = (value) => {
+    if (!isValidUrl(value)) {
+        return false;
+    }
+    try {
+        const parsed = new URL(value);
+        return /\.(png|jpe?g|webp)$/i.test(parsed.pathname);
+    }
+    catch (_error) {
+        return false;
+    }
+};
 const normalizeJobStatus = (value) => {
     const status = toTrimmedString(value).toLowerCase();
     return JOB_STATUSES.has(status) ? status : "inactive";
@@ -97,6 +109,11 @@ const sanitizeJobInput = (payload) => {
                 id: toNumberOrNull(topicRecord.id) ?? undefined,
                 topic,
                 status: normalizeTopicStatus(topicRecord.status),
+                imageUrls: Array.isArray(topicRecord.imageUrls)
+                    ? topicRecord.imageUrls
+                        .map((entry) => toTrimmedString(entry))
+                        .filter(Boolean)
+                    : [],
             };
         });
         const topics = rawTopics.filter(isTopicInput);
@@ -107,6 +124,15 @@ const sanitizeJobInput = (payload) => {
             topics,
         };
     });
+    for (const category of categories) {
+        for (const topic of category.topics) {
+            for (const imageUrl of topic.imageUrls ?? []) {
+                if (!isValidImageUrl(imageUrl)) {
+                    throw new Error(`Invalid topic image URL: ${imageUrl}`);
+                }
+            }
+        }
+    }
     const sourceLinks = sourceLinksPayload
         .map((entry) => toTrimmedString(entry))
         .filter(Boolean);
@@ -268,6 +294,9 @@ const mapJob = (row, categoriesByJobId, topicsByCategoryId, sourceLinksByJobId, 
             id: Number(topicRow.id),
             topic: String(topicRow.topic ?? ""),
             status: String(topicRow.topic_status ?? "pending"),
+            imageUrls: Array.isArray(topicRow.image_urls)
+                ? topicRow.image_urls.map((entry) => String(entry ?? "")).filter(Boolean)
+                : [],
             createdAt: topicRow.created_at,
             updatedAt: topicRow.updated_at,
         }));
@@ -329,7 +358,7 @@ const listBlogJobs = async () => {
             ORDER BY job_id ASC, sort_order ASC, id ASC
           `),
             pool.query(`
-            SELECT id, job_category_id, topic, topic_status, sort_order, created_at, updated_at
+            SELECT id, job_category_id, topic, topic_status, image_urls, sort_order, created_at, updated_at
             FROM blog_job_topics
             ORDER BY job_category_id ASC, sort_order ASC, id ASC
           `),
@@ -385,12 +414,19 @@ const replaceJobRelations = async (client, jobId, categories, sourceLinks) => {
             job_category_id,
             topic,
             topic_status,
+            image_urls,
             sort_order,
             created_at,
             updated_at
           )
-          VALUES ($1, $2, $3, $4, NOW(), NOW())
-        `, [jobCategoryId, topic.topic, topic.status ?? "pending", topicIndex]);
+          VALUES ($1, $2, $3, $4::text[], $5, NOW(), NOW())
+        `, [
+                jobCategoryId,
+                topic.topic,
+                topic.status ?? "pending",
+                topic.imageUrls ?? [],
+                topicIndex,
+            ]);
         }
     }
     for (let index = 0; index < sourceLinks.length; index += 1) {

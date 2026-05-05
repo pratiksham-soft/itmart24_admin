@@ -3,6 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.createAdminSessionForAdmin = createAdminSessionForAdmin;
 exports.signUpAdmin = signUpAdmin;
 exports.signInAdmin = signInAdmin;
 exports.getAdminProfile = getAdminProfile;
@@ -29,6 +30,25 @@ const mapAdminRecord = (row) => ({
     updatedAt: String(row.updated_at ?? ""),
 });
 const getSessionExpiry = (rememberMe) => new Date(Date.now() + (rememberMe ? THIRTY_DAYS_MS : ONE_DAY_MS));
+async function createAdminSessionForAdmin(admin, rememberMe = true) {
+    if (String(admin.status ?? "").toLowerCase() !== "active") {
+        throw new Error("This admin account is inactive. Contact the system administrator.");
+    }
+    const sessionToken = createSessionToken();
+    const tokenHash = hashSessionToken(sessionToken);
+    const expiresAt = getSessionExpiry(Boolean(rememberMe));
+    const pool = await (0, analyticsPostgres_service_1.getAnalyticsPool)();
+    await pool.query(`
+      INSERT INTO admin_sessions (admin_id, token_hash, expires_at)
+      VALUES ($1, $2, $3)
+    `, [admin.id, tokenHash, expiresAt]);
+    return {
+        success: true,
+        sessionToken,
+        user: mapAdminRecord(admin),
+        expiresAt: expiresAt.toISOString(),
+    };
+}
 async function signUpAdmin({ name, email, password, }) {
     const trimmedName = name.trim();
     const normalizedEmail = normalizeEmail(email);
@@ -92,19 +112,7 @@ async function signInAdmin({ email, password, rememberMe = true, }) {
     if (!passwordMatches) {
         throw new Error("Invalid email or password.");
     }
-    const sessionToken = createSessionToken();
-    const tokenHash = hashSessionToken(sessionToken);
-    const expiresAt = getSessionExpiry(Boolean(rememberMe));
-    await pool.query(`
-      INSERT INTO admin_sessions (admin_id, token_hash, expires_at)
-      VALUES ($1, $2, $3)
-    `, [admin.id, tokenHash, expiresAt]);
-    return {
-        success: true,
-        sessionToken,
-        user: mapAdminRecord(admin),
-        expiresAt: expiresAt.toISOString(),
-    };
+    return createAdminSessionForAdmin(admin, Boolean(rememberMe));
 }
 async function getAdminProfile(sessionToken) {
     if (!sessionToken.trim()) {
@@ -161,7 +169,10 @@ async function logoutAdmin(sessionToken) {
         message: "Signed out successfully.",
     };
 }
-async function changeAdminPassword({ sessionToken, newPassword, }) {
+async function changeAdminPassword({ sessionToken, currentPassword, newPassword, }) {
+    if (!currentPassword) {
+        throw new Error("Current password is required.");
+    }
     if (!newPassword) {
         throw new Error("New password is required.");
     }
@@ -170,9 +181,14 @@ async function changeAdminPassword({ sessionToken, newPassword, }) {
     }
     const profile = await getAdminProfile(sessionToken);
     const pool = await (0, analyticsPostgres_service_1.getAnalyticsPool)();
-    const adminResult = await pool.query("SELECT id FROM admins WHERE id = $1 LIMIT 1", [profile.user.id]);
+    const adminResult = await pool.query("SELECT id, password_hash FROM admins WHERE id = $1 LIMIT 1", [profile.user.id]);
     if (adminResult.rowCount === 0) {
         throw new Error("Authentication is required.");
+    }
+    const admin = adminResult.rows[0];
+    const currentPasswordMatches = await bcrypt_1.default.compare(currentPassword, String(admin.password_hash ?? ""));
+    if (!currentPasswordMatches) {
+        throw new Error("Current password is incorrect.");
     }
     const newPasswordHash = await bcrypt_1.default.hash(newPassword, BCRYPT_ROUNDS);
     await pool.query(`

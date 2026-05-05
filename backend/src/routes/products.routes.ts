@@ -30,6 +30,7 @@ import {
   deleteProductEverywhere,
   normalizeDeleteListItem,
 } from "../services/productDeletion.service";
+import { validateGenericUrl } from "../utils/urlValidation";
 
 type FirestoreProductData = {
   vendorId: string;
@@ -131,6 +132,27 @@ const parseShopifyProductId = (value: unknown) => {
 
   return numericId;
 };
+
+router.post("/validate-url", async (req, res) => {
+  try {
+    const result = await validateGenericUrl(req.body?.url);
+    res.status(result.valid ? 200 : 400).json({
+      success: result.valid,
+      data: result,
+      message: result.error || result.warning || "URL validated successfully.",
+    });
+  } catch (error: any) {
+    console.error("url_validation_failed", error);
+    res.status(500).json({
+      success: false,
+      message: "URL validation failed.",
+      data: {
+        valid: false,
+        error: "URL validation failed.",
+      },
+    });
+  }
+});
 
 type FirestoreTimestampLike =
   | admin.firestore.Timestamp

@@ -28,13 +28,11 @@ const getSmtpConfig = () => {
     const pass = readEnv("SMTP_PASS");
     const fromEmail = readEnv("SMTP_FROM_EMAIL");
     const fromName = readEnv("SMTP_FROM_NAME");
-    const toEmail = readEnv("NOTIFICATION_ALERT_EMAIL_TO");
     if (!host ||
         !user ||
         !pass ||
         !fromEmail ||
-        !fromName ||
-        !toEmail) {
+        !fromName) {
         return null;
     }
     return {
@@ -45,7 +43,6 @@ const getSmtpConfig = () => {
         pass,
         fromEmail,
         fromName,
-        toEmail,
     };
 };
 async function sendSmtpEmail(input) {
@@ -72,7 +69,8 @@ async function sendSmtpEmail(input) {
 }
 async function sendNotificationEmail(input) {
     const config = getSmtpConfig();
-    if (!config) {
+    const toEmail = readEnv("NOTIFICATION_ALERT_EMAIL_TO");
+    if (!config || !toEmail) {
         console.error("[notifications] SMTP email skipped because one or more required env vars are missing.");
         return;
     }
@@ -88,7 +86,7 @@ async function sendNotificationEmail(input) {
         `Route: ${routeLine}`,
     ].join("\n");
     await sendSmtpEmail({
-        to: config.toEmail,
+        to: toEmail,
         subject,
         text,
         fromEmail: config.fromEmail,

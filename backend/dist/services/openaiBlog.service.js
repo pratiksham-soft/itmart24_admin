@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.generateBlogImage = exports.generateBlogContent = exports.classifyOpenAIError = exports.parseBlogJson = exports.extractOpenAIText = exports.OpenAiBlogError = void 0;
+exports.generateBlogContent = exports.classifyOpenAIError = exports.parseBlogJson = exports.extractOpenAIText = exports.OpenAiBlogError = void 0;
 const axios_1 = __importDefault(require("axios"));
 class OpenAiBlogError extends Error {
     constructor(params) {
@@ -20,7 +20,6 @@ class OpenAiBlogError extends Error {
 }
 exports.OpenAiBlogError = OpenAiBlogError;
 const OPENAI_TEXT_MODEL = process.env.OPENAI_BLOG_TEXT_MODEL || "gpt-4o-mini";
-const OPENAI_IMAGE_MODEL = process.env.OPENAI_BLOG_IMAGE_MODEL || "gpt-image-1";
 const OPENAI_BLOG_DEBUG = ["1", "true", "yes", "on"].includes(String(process.env.OPENAI_BLOG_DEBUG ?? "").trim().toLowerCase());
 const ensureOpenAiApiKey = () => {
     const apiKey = String(process.env.OPENAI_API_KEY ?? "").trim();
@@ -55,6 +54,9 @@ const buildPrompt = (params) => {
         params.collectionContextCsv.trim()
         ? params.collectionContextCsv.trim()
         : "none";
+    const imageUrls = Array.isArray(params.topicImageUrls) && params.topicImageUrls.length > 0
+        ? params.topicImageUrls.join(", ")
+        : "none";
     const strictTail = params.strictJsonOnly
         ? "\nStrict reminder: Return only valid JSON matching the schema. No markdown. No explanation."
         : "";
@@ -71,6 +73,7 @@ const buildPrompt = (params) => {
         `Content guidance: ${params.contentGuidance || "Generated blog content should be professional and human-like."}`,
         `Product CSV: ${productCsv}`,
         `Collection CSV: ${collectionCsv}`,
+        `Image URLs: ${imageUrls}`,
         "",
         "Rules:",
         "- Output ONLY valid JSON.",
@@ -83,12 +86,14 @@ const buildPrompt = (params) => {
         "- Do not invent products, collections, pricing, or vendor claims.",
         "- Only use product or collection context that was provided.",
         "- Use provided Shopify product and collection context for relevant tool mentions.",
+        "- You are provided with image URLs. Place them naturally in the blog content where relevant. Do not generate new images. Use only the provided image URLs.",
         "- Pick products by exact, keyword, or broader relevance.",
         "- If exact matches are weak, use popular available tools but label them carefully.",
         "- Insert internal links naturally inside content.",
         "- Do not leave placeholders visible in the final writing intent.",
         "- Target at least 1200 words unless the topic is genuinely narrow.",
         "- Avoid repetitive filler and unsupported superlatives.",
+        "- Content must be detailed, structured, and valuable. Avoid short or generic responses.",
         `- Include placeholders: [Internal Link: ${params.category}]`,
         `- Include placeholders: [Dynamic Comparison Table: category="${params.category}"]`,
         "",
@@ -100,8 +105,7 @@ const buildPrompt = (params) => {
         '  "meta_description": "140-160 char meta description",',
         '  "excerpt": "short 1-2 sentence summary",',
         `  "content_html": "<h1>...</h1><p>40-60 word intro...</p><div class='summary-box'>...</div><h2>...</h2><h3>...</h3><p>...</p><h2>Top Tools Comparison</h2><p>[Dynamic Comparison Table: category=\\"${params.category}\\"]</p><h2>Pros and Cons</h2><h2>Practical Guide</h2><h2>FAQs</h2><h2>Key Takeaways</h2><p>CTA with [Internal Link: ${params.category}]</p>",`,
-        '  "tags": ["tag1","tag2","tag3","tag4","tag5"],',
-        '  "image_prompt": "Modern SaaS-style cover image prompt, no text in image"',
+        '  "tags": ["tag1","tag2","tag3","tag4","tag5"]',
         "}",
         strictTail,
         qualityRetryTail,
@@ -264,7 +268,6 @@ const parseBlogJson = (rawText) => {
     const metaDescription = String(record.meta_description ?? "").trim();
     const excerpt = String(record.excerpt ?? "").trim();
     const contentHtml = String(record.content_html ?? "").trim();
-    const imagePrompt = String(record.image_prompt ?? "").trim();
     const tags = ensureTags(record.tags);
     const missingFields = [
         !title ? "title" : null,
@@ -273,7 +276,6 @@ const parseBlogJson = (rawText) => {
         !metaDescription ? "meta_description" : null,
         !excerpt ? "excerpt" : null,
         !contentHtml ? "content_html" : null,
-        !imagePrompt ? "image_prompt" : null,
         tags.length === 0 ? "tags" : null,
     ].filter(Boolean);
     if (missingFields.length > 0) {
@@ -290,7 +292,6 @@ const parseBlogJson = (rawText) => {
         metaDescription,
         excerpt,
         contentHtml,
-        imagePrompt,
         tags,
     };
 };
@@ -473,34 +474,3 @@ const generateBlogContent = async (params) => {
     }
 };
 exports.generateBlogContent = generateBlogContent;
-const generateBlogImage = async (prompt) => {
-    const response = await getOpenAiClient().post("/images/generations", {
-        model: OPENAI_IMAGE_MODEL,
-        prompt,
-        size: "1536x1024",
-        quality: "high",
-    });
-    const firstImage = Array.isArray(response.data?.data) ? response.data.data[0] : null;
-    if (!firstImage || typeof firstImage !== "object") {
-        throw new Error("OpenAI image response did not include image data");
-    }
-    const imageRecord = firstImage;
-    const imageUrl = typeof imageRecord.url === "string" && imageRecord.url
-        ? imageRecord.url
-        : typeof imageRecord.b64_json === "string" && imageRecord.b64_json
-            ? `data:image/png;base64,${imageRecord.b64_json}`
-            : null;
-    if (!imageUrl) {
-        throw new Error("OpenAI image response did not include a usable image URL");
-    }
-    return {
-        imageUrl,
-        usage: response.data?.usage && typeof response.data.usage === "object"
-            ? response.data.usage
-            : {},
-        revisedPrompt: typeof imageRecord.revised_prompt === "string"
-            ? imageRecord.revised_prompt
-            : null,
-    };
-};
-exports.generateBlogImage = generateBlogImage;

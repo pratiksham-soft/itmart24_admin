@@ -258,6 +258,7 @@ const TABLE_STATEMENTS = [
       id BIGSERIAL PRIMARY KEY,
       job_category_id BIGINT NOT NULL REFERENCES blog_job_categories(id) ON DELETE CASCADE,
       topic TEXT NOT NULL,
+      image_urls TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
       topic_status TEXT NOT NULL DEFAULT 'pending',
       sort_order INTEGER NOT NULL DEFAULT 0,
       created_at TIMESTAMP NOT NULL DEFAULT NOW(),
@@ -332,6 +333,10 @@ const TABLE_STATEMENTS = [
     `
     ALTER TABLE blog_job_topics
     ADD COLUMN IF NOT EXISTS used_at TIMESTAMP
+  `,
+    `
+    ALTER TABLE blog_job_topics
+    ADD COLUMN IF NOT EXISTS image_urls TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[]
   `,
     `
     ALTER TABLE blog_posts

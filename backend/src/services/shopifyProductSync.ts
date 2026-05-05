@@ -335,14 +335,9 @@ const normalizeImageUrlForCompare = (value: unknown) =>
 
 const getProductImageUrls = (product: any) => {
   const urls: string[] = [];
-  const thumbnailUrl = normalizeOptionalUrl(product.media?.thumbnailUrl);
   const gallery = Array.isArray(product.media?.gallery)
     ? product.media.gallery
     : [];
-
-  if (thumbnailUrl) {
-    urls.push(thumbnailUrl);
-  }
 
   gallery.forEach((item: any) => {
     if (item?.type && item.type !== "image") {

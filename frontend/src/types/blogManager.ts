@@ -26,6 +26,7 @@ export type BlogJobTopic = {
   id?: number;
   topic: string;
   status: string;
+  imageUrls: string[];
   createdAt?: string;
   updatedAt?: string;
 };

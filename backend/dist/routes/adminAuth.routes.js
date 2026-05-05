@@ -84,13 +84,16 @@ router.post("/change-password", async (req, res) => {
     try {
         const result = await (0, adminAuth_service_1.changeAdminPassword)({
             sessionToken: getBearerToken(req.headers.authorization),
+            currentPassword: typeof req.body?.currentPassword === "string"
+                ? req.body.currentPassword
+                : "",
             newPassword: typeof req.body?.newPassword === "string" ? req.body.newPassword : "",
         });
         res.json(result);
     }
     catch (error) {
         const message = error.message || "Unable to change password right now.";
-        const status = /authentication is required|expired|required|characters with letters and numbers/i.test(message)
+        const status = /authentication is required|expired|required|incorrect|characters with letters and numbers/i.test(message)
             ? 400
             : 500;
         console.error("Admin change-password error:", message);

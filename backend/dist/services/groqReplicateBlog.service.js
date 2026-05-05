@@ -80,6 +80,9 @@ const buildPrompt = (params) => {
         params.collectionContextCsv.trim()
         ? params.collectionContextCsv.trim()
         : "none";
+    const imageUrls = Array.isArray(params.topicImageUrls) && params.topicImageUrls.length > 0
+        ? params.topicImageUrls.join(", ")
+        : "none";
     const strictTail = params.strictJsonOnly
         ? "\nStrict reminder: Return only valid JSON matching the schema. No markdown. No explanation."
         : "";
@@ -96,6 +99,7 @@ const buildPrompt = (params) => {
         `Content guidance: ${params.contentGuidance || "Generated blog content should be professional and human-like."}`,
         `Product CSV: ${productCsv}`,
         `Collection CSV: ${collectionCsv}`,
+        `Image URLs: ${imageUrls}`,
         "",
         "Rules:",
         "- Output ONLY valid JSON.",
@@ -108,12 +112,14 @@ const buildPrompt = (params) => {
         "- Do not invent products, collections, pricing, or vendor claims.",
         "- Only use product or collection context that was provided.",
         "- Use provided Shopify product and collection context for relevant tool mentions.",
+        "- You are provided with image URLs. Place them naturally in the blog content where relevant. Do not generate new images. Use only the provided image URLs.",
         "- Pick products by exact, keyword, or broader relevance.",
         "- If exact matches are weak, use popular available tools but label them carefully.",
         "- Insert internal links naturally inside content.",
         "- Do not leave placeholders visible in the final writing intent.",
         "- Target at least 1200 words unless the topic is genuinely narrow.",
         "- Avoid repetitive filler and unsupported superlatives.",
+        "- Content must be detailed, structured, and valuable. Avoid short or generic responses.",
         `- Include placeholders: [Internal Link: ${params.category}]`,
         `- Include placeholders: [Dynamic Comparison Table: category="${params.category}"]`,
         "",
@@ -125,8 +131,7 @@ const buildPrompt = (params) => {
         '  "meta_description": "140-160 char meta description",',
         '  "excerpt": "short 1-2 sentence summary",',
         `  "content_html": "<h1>...</h1><p>40-60 word intro...</p><div class='summary-box'>...</div><h2>...</h2><h3>...</h3><p>...</p><h2>Top Tools Comparison</h2><p>[Dynamic Comparison Table: category=\\"${params.category}\\"]</p><h2>Pros and Cons</h2><h2>Practical Guide</h2><h2>FAQs</h2><h2>Key Takeaways</h2><p>CTA with [Internal Link: ${params.category}]</p>",`,
-        '  "tags": ["tag1","tag2","tag3","tag4","tag5"],',
-        '  "image_prompt": "Modern SaaS-style cover image prompt, no text in image"',
+        '  "tags": ["tag1","tag2","tag3","tag4","tag5"]',
         "}",
         strictTail,
         qualityRetryTail,

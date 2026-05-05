@@ -35,6 +35,13 @@ type ProductDetails = {
 };
 
 type LinkItem = { label: string; url: string };
+type UrlValidationResult = {
+  valid: boolean;
+  status?: number;
+  warning?: string;
+  error?: string;
+  finalUrl?: string;
+};
 type MediaItem = { label: string; url: string };
 type PlanRow = {
   name?: string;
@@ -92,6 +99,14 @@ const shopifyProductIdPaths = ["shopify.identifiers.productId", "shopify.product
 const graphQlIdPaths = ["shopify.identifiers.graphqlId"];
 const subSubCategoryPaths = ["vendor.basic.subSubCategories"];
 
+const safeOpenExternalUrl = (url: string) => {
+  try {
+    window.open(url, "_blank", "noopener,noreferrer");
+  } catch (error) {
+    console.error("url_access_failed", { url, error });
+  }
+};
+
 const ProductDetailsModal = ({
   isOpen,
   productId,
@@ -108,6 +123,10 @@ const ProductDetailsModal = ({
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [urlValidationResults, setUrlValidationResults] = useState<
+    Record<string, UrlValidationResult | undefined>
+  >({});
+  const [urlValidationPending, setUrlValidationPending] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     if (!isOpen || !productId) return;
@@ -360,6 +379,8 @@ const ProductDetailsModal = ({
     setEditing(false);
     setMessage(null);
     setError(null);
+    setUrlValidationResults({});
+    setUrlValidationPending({});
   };
 
   const applyRawJson = () => {
@@ -369,6 +390,8 @@ const ProductDetailsModal = ({
       setJsonDraft(JSON.stringify(parsed, null, 2));
       setMessage("Raw JSON applied.");
       setError(null);
+      setUrlValidationResults({});
+      setUrlValidationPending({});
       return parsed;
     } catch (parseError) {
       setError(parseError instanceof Error ? parseError.message : "Invalid JSON");
@@ -378,6 +401,32 @@ const ProductDetailsModal = ({
 
   const handleSave = async () => {
     if (!productId || !draft) return;
+
+    const hasPendingUrlValidation = Object.values(urlValidationPending).some(Boolean);
+    const hasBlockingUrlValidation = Object.entries(urlValidationResults).some(
+      ([field, result]) => {
+        const value =
+          field === "demoLink"
+            ? text(draft?.vendor?.basic?.demoLink)
+            : field === "affiliateUrl"
+              ? text(getResolvedValue(draft, affiliatePaths, affiliatePaths[1]))
+              : field === "shopifyProductURL"
+                ? text(getResolvedValue(draft, shopifyUrlPaths, shopifyUrlPaths[1]))
+                : "";
+
+        return value.trim() !== "" && result?.valid === false;
+      }
+    );
+
+    if (hasPendingUrlValidation) {
+      setError("Please wait for URL validation to finish.");
+      return;
+    }
+
+    if (hasBlockingUrlValidation) {
+      setError("Please fix invalid URLs before saving.");
+      return;
+    }
 
     setSaving(true);
     setMessage(null);
@@ -399,6 +448,8 @@ const ProductDetailsModal = ({
       setDraft(normalized);
       setJsonDraft(JSON.stringify(normalized, null, 2));
       setEditing(false);
+      setUrlValidationResults({});
+      setUrlValidationPending({});
       setMessage("Product updated successfully.");
       onUpdated?.();
     } catch (saveError) {
@@ -482,7 +533,7 @@ const ProductDetailsModal = ({
                   <button
                     key={link.url}
                     type="button"
-                    onClick={() => window.open(link.url, "_blank", "noopener,noreferrer")}
+                    onClick={() => safeOpenExternalUrl(link.url)}
                     className="rounded-xl border border-gray-300 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
                   >
                     {link.label}
@@ -663,18 +714,48 @@ const ProductDetailsModal = ({
                           setResolvedValue(productTypePaths, productTypePaths[0], value)
                         }
                       />
-                      <EditableTextField
+                      <EditableValidatedUrlField
                         label="Demo Link"
                         value={text(record?.vendor?.basic?.demoLink)}
                         editing={editing}
                         onChange={(value) => setValue("vendor.basic.demoLink", value)}
+                        validationKey="demoLink"
+                        validationResult={urlValidationResults.demoLink}
+                        validationPending={urlValidationPending.demoLink === true}
+                        onValidationChange={(result) =>
+                          setUrlValidationResults((current) => ({
+                            ...current,
+                            demoLink: result,
+                          }))
+                        }
+                        onValidationPendingChange={(pending) =>
+                          setUrlValidationPending((current) => ({
+                            ...current,
+                            demoLink: pending,
+                          }))
+                        }
                       />
-                      <EditableTextField
+                      <EditableValidatedUrlField
                         label="Affiliate URL"
                         value={text(getResolvedValue(record, affiliatePaths, affiliatePaths[1]))}
                         editing={editing}
                         onChange={(value) =>
                           setResolvedValue(affiliatePaths, affiliatePaths[1], value)
+                        }
+                        validationKey="affiliateUrl"
+                        validationResult={urlValidationResults.affiliateUrl}
+                        validationPending={urlValidationPending.affiliateUrl === true}
+                        onValidationChange={(result) =>
+                          setUrlValidationResults((current) => ({
+                            ...current,
+                            affiliateUrl: result,
+                          }))
+                        }
+                        onValidationPendingChange={(pending) =>
+                          setUrlValidationPending((current) => ({
+                            ...current,
+                            affiliateUrl: pending,
+                          }))
                         }
                       />
                       <EditableBooleanField
@@ -683,12 +764,27 @@ const ProductDetailsModal = ({
                         editing={editing}
                         onChange={(value) => setValue("shopify.product.published", value)}
                       />
-                      <EditableTextField
+                      <EditableValidatedUrlField
                         label="Shopify Product URL"
                         value={text(getResolvedValue(record, shopifyUrlPaths, shopifyUrlPaths[1]))}
                         editing={editing}
                         onChange={(value) =>
                           setResolvedValue(shopifyUrlPaths, shopifyUrlPaths[1], value)
+                        }
+                        validationKey="shopifyProductURL"
+                        validationResult={urlValidationResults.shopifyProductURL}
+                        validationPending={urlValidationPending.shopifyProductURL === true}
+                        onValidationChange={(result) =>
+                          setUrlValidationResults((current) => ({
+                            ...current,
+                            shopifyProductURL: result,
+                          }))
+                        }
+                        onValidationPendingChange={(pending) =>
+                          setUrlValidationPending((current) => ({
+                            ...current,
+                            shopifyProductURL: pending,
+                          }))
                         }
                       />
                     </div>
@@ -804,7 +900,7 @@ const ProductDetailsModal = ({
                               <button
                                 type="button"
                                 onClick={() =>
-                                  window.open(item.url, "_blank", "noopener,noreferrer")
+                                  safeOpenExternalUrl(item.url)
                                 }
                                 className="break-all text-left text-sm text-brand-600 hover:underline dark:text-brand-400"
                               >
@@ -838,26 +934,71 @@ const ProductDetailsModal = ({
 
                   <Card title="External Links">
                     <div className="space-y-4">
-                      <EditableTextField
+                      <EditableValidatedUrlField
                         label="Demo Link"
                         value={text(record?.vendor?.basic?.demoLink)}
                         editing={editing}
                         onChange={(value) => setValue("vendor.basic.demoLink", value)}
+                        validationKey="demoLink"
+                        validationResult={urlValidationResults.demoLink}
+                        validationPending={urlValidationPending.demoLink === true}
+                        onValidationChange={(result) =>
+                          setUrlValidationResults((current) => ({
+                            ...current,
+                            demoLink: result,
+                          }))
+                        }
+                        onValidationPendingChange={(pending) =>
+                          setUrlValidationPending((current) => ({
+                            ...current,
+                            demoLink: pending,
+                          }))
+                        }
                       />
-                      <EditableTextField
+                      <EditableValidatedUrlField
                         label="Affiliate URL"
                         value={text(getResolvedValue(record, affiliatePaths, affiliatePaths[1]))}
                         editing={editing}
                         onChange={(value) =>
                           setResolvedValue(affiliatePaths, affiliatePaths[1], value)
                         }
+                        validationKey="affiliateUrl"
+                        validationResult={urlValidationResults.affiliateUrl}
+                        validationPending={urlValidationPending.affiliateUrl === true}
+                        onValidationChange={(result) =>
+                          setUrlValidationResults((current) => ({
+                            ...current,
+                            affiliateUrl: result,
+                          }))
+                        }
+                        onValidationPendingChange={(pending) =>
+                          setUrlValidationPending((current) => ({
+                            ...current,
+                            affiliateUrl: pending,
+                          }))
+                        }
                       />
-                      <EditableTextField
+                      <EditableValidatedUrlField
                         label="Shopify Product URL"
                         value={text(getResolvedValue(record, shopifyUrlPaths, shopifyUrlPaths[1]))}
                         editing={editing}
                         onChange={(value) =>
                           setResolvedValue(shopifyUrlPaths, shopifyUrlPaths[1], value)
+                        }
+                        validationKey="shopifyProductURL"
+                        validationResult={urlValidationResults.shopifyProductURL}
+                        validationPending={urlValidationPending.shopifyProductURL === true}
+                        onValidationChange={(result) =>
+                          setUrlValidationResults((current) => ({
+                            ...current,
+                            shopifyProductURL: result,
+                          }))
+                        }
+                        onValidationPendingChange={(pending) =>
+                          setUrlValidationPending((current) => ({
+                            ...current,
+                            shopifyProductURL: pending,
+                          }))
                         }
                       />
                       <EditableTextField
@@ -891,12 +1032,27 @@ const ProductDetailsModal = ({
                           setResolvedValue(pricePaths, pricePaths[1], value)
                         }
                       />
-                      <EditableTextField
+                      <EditableValidatedUrlField
                         label="Affiliate URL"
                         value={text(getResolvedValue(record, affiliatePaths, affiliatePaths[1]))}
                         editing={editing}
                         onChange={(value) =>
                           setResolvedValue(affiliatePaths, affiliatePaths[1], value)
+                        }
+                        validationKey="affiliateUrl"
+                        validationResult={urlValidationResults.affiliateUrl}
+                        validationPending={urlValidationPending.affiliateUrl === true}
+                        onValidationChange={(result) =>
+                          setUrlValidationResults((current) => ({
+                            ...current,
+                            affiliateUrl: result,
+                          }))
+                        }
+                        onValidationPendingChange={(pending) =>
+                          setUrlValidationPending((current) => ({
+                            ...current,
+                            affiliateUrl: pending,
+                          }))
                         }
                       />
                     </div>
@@ -1481,6 +1637,105 @@ const EditableTextField = ({
   ) : (
     <DisplayCard label={label} value={value} />
   );
+
+const EditableValidatedUrlField = ({
+  label,
+  value,
+  editing,
+  onChange,
+  validationKey,
+  validationResult,
+  validationPending,
+  onValidationChange,
+  onValidationPendingChange,
+}: {
+  label: string;
+  value: string;
+  editing: boolean;
+  onChange: (value: string) => void;
+  validationKey: string;
+  validationResult?: UrlValidationResult;
+  validationPending: boolean;
+  onValidationChange: (value?: UrlValidationResult) => void;
+  onValidationPendingChange: (value: boolean) => void;
+}) => {
+  useEffect(() => {
+    if (!editing) {
+      onValidationPendingChange(false);
+      return;
+    }
+
+    const trimmedValue = value.trim();
+    if (!trimmedValue) {
+      onValidationPendingChange(false);
+      onValidationChange(undefined);
+      return;
+    }
+
+    const timeoutId = window.setTimeout(async () => {
+      onValidationPendingChange(true);
+
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/products/validate-url`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: trimmedValue }),
+        });
+        const payload = await response.json().catch(() => null);
+        onValidationChange(payload?.data);
+      } catch (error) {
+        console.error("url_validation_failed", { validationKey, value: trimmedValue, error });
+        onValidationChange({
+          valid: false,
+          error: "URL validation failed.",
+        });
+      } finally {
+        onValidationPendingChange(false);
+      }
+    }, 450);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [
+    editing,
+    onValidationChange,
+    onValidationPendingChange,
+    validationKey,
+    value,
+  ]);
+
+  if (!editing) {
+    return <DisplayCard label={label} value={value} />;
+  }
+
+  return (
+    <Field label={label}>
+      <Input value={value} onChange={onChange} type="url" />
+      {value.trim() ? (
+        <p
+          className={`mt-2 text-xs ${
+            validationPending
+              ? "text-gray-500 dark:text-gray-400"
+              : validationResult?.warning
+                ? "text-warning-700 dark:text-warning-400"
+                : validationResult?.valid
+                  ? "text-green-700 dark:text-green-400"
+                  : "text-red-600 dark:text-red-400"
+          }`}
+        >
+          {validationPending
+            ? "Checking URL..."
+            : validationResult?.warning
+              ? validationResult.warning
+              : validationResult?.valid
+                ? "URL verified successfully."
+                : validationResult?.error || "Invalid URL"}
+        </p>
+      ) : null}
+    </Field>
+  );
+};
 
 const EditableTextareaField = ({
   label,

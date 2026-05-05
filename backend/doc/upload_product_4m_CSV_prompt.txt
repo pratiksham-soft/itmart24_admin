@@ -1,5 +1,5 @@
 Similarly like previous job this new task is
-Task: Import software products from all category folders under "D:\IT MART24\System_Programs\itmart24_admin\backend\exports\software-products\All O Software" into Shopify, using existing project scripts/helpers wherever possible, with strict deduplication, correct metafields.
+Task: Import software products from all category folders under "D:\IT MART24\System_Programs\itmart24_admin\backend\exports\software-products\All Q Software" into Shopify, using existing project scripts/helpers wherever possible, with strict deduplication, correct metafields.
 
 Scope
 - Work only on this import.
@@ -10,7 +10,7 @@ Scope
 
 Primary folders and files
 - Root source folder:
-  "D:\IT MART24\System_Programs\itmart24_admin\backend\exports\software-products\All O Software"
+  "D:\IT MART24\System_Programs\itmart24_admin\backend\exports\software-products\All Q Software"
 - Inside this root, there are many category folders.
 - Each category folder may contain:
   - one CSV file with product details
@@ -24,7 +24,7 @@ Primary folders and files
   backend\doc\shopify-filter-definitions.csv
 
 Goal
-- Process every valid category folder inside ...\software-products\All O Software
+- Process every valid category folder inside ...\software-products\All Q Software
 - Read product rows from each category CSV
 - Import only new products into Shopify
 - If a product already exists in Shopify, do not create it again
@@ -34,7 +34,7 @@ Goal
 
 Folder processing rules
 1. Scan all subfolders inside:
-   "D:\IT MART24\System_Programs\itmart24_admin\backend\exports\software-products\All O Software"
+   "D:\IT MART24\System_Programs\itmart24_admin\backend\exports\software-products\All Q Software"
 2. For each category folder:
    - detect the main CSV file in that folder
    - detect logos images folders if present
@@ -250,7 +250,7 @@ These must be fixed in code so they do not happen again in future batches.
 
 Implementation expectations
 Implement the workflow so it:
-1. Scans all category folders under ...\software-products\All O Software
+1. Scans all category folders under ...\software-products\All Q Software
 2. Reads each valid source CSV
 3. Deduplicates against live Shopify + existing export + current job memory
 4. Updates custom.type_multiple on already-existing products when needed
