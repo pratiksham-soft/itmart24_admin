@@ -5,8 +5,8 @@ import Button from "../../../components/ui/button/Button";
 import LeadFormModal from "./components/LeadFormModal";
 import LeadImportModal from "./components/LeadImportModal";
 import CRMEntityPage from "./components/CRMEntityPage";
-import { addLeadNote, addLeadTask, convertLead, createLead, deleteLead, getLeads, updateLead } from "./services/crmApi";
-import type { BannerState, CRMLead, CRMLeadImportResult } from "./types/crm.types";
+import { addLeadNote, addLeadTask, convertLead, createLead, deleteLead, getLeadCustomPortfolio, getLeads, updateLead } from "./services/crmApi";
+import type { BannerState, CRMCustomPortfolioLead, CRMLead, CRMLeadImportResult } from "./types/crm.types";
 import { defaultCRMSettings, formatCurrency, formatDateTime, fullLeadName, getPriorityBadgeColor, getStatusBadgeColor, isOverdue, readErrorMessage, toOptions } from "./utils/crmHelpers";
 import { Modal } from "../../../components/ui/modal";
 import ActivityTimeline from "./components/ActivityTimeline";
@@ -19,6 +19,8 @@ export default function LeadsPage() {
   const [viewLead, setViewLead] = useState<CRMLead | null>(null);
   const [detailTab, setDetailTab] = useState("overview");
   const [reloadKey, setReloadKey] = useState(0);
+  const [customPortfolio, setCustomPortfolio] = useState<CRMCustomPortfolioLead | null>(null);
+  const [customPortfolioLoading, setCustomPortfolioLoading] = useState(false);
 
   const filters = [
     { key: "status", label: "Status", options: toOptions(defaultCRMSettings.leadStatuses) },
@@ -48,7 +50,14 @@ export default function LeadsPage() {
             label: "Lead",
             render: (lead) => (
               <div>
-                <div className="font-semibold text-gray-800 dark:text-white/90">{fullLeadName(lead as CRMLead)}</div>
+                <div className="flex flex-wrap items-center gap-2 font-semibold text-gray-800 dark:text-white/90">
+                  <span>{fullLeadName(lead as CRMLead)}</span>
+                  {(lead as CRMLead).hasCustomPortfolio ? (
+                    <span className="inline-flex rounded-full bg-blue-light-50 px-2.5 py-1 text-[11px] font-medium text-blue-light-700 dark:bg-blue-light-500/10 dark:text-blue-light-300">
+                      Custom Portfolio
+                    </span>
+                  ) : null}
+                </div>
                 <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">{(lead as CRMLead).email || "No email"}</div>
               </div>
             ),
@@ -129,6 +138,16 @@ export default function LeadsPage() {
         onView={(lead) => {
           setViewLead(lead as CRMLead);
           setDetailTab("overview");
+          setCustomPortfolio(null);
+          if ((lead as CRMLead).hasCustomPortfolio) {
+            setCustomPortfolioLoading(true);
+            void getLeadCustomPortfolio((lead as CRMLead).id)
+              .then((item) => setCustomPortfolio(item))
+              .catch((error) => {
+                showBanner("error", readErrorMessage(error, "Failed to load custom portfolio details."));
+              })
+              .finally(() => setCustomPortfolioLoading(false));
+          }
         }}
         banner={banner}
         reloadKey={reloadKey}
@@ -219,7 +238,7 @@ export default function LeadsPage() {
             </div>
 
             <div className="flex flex-wrap gap-2 border-b border-gray-200 pb-4 dark:border-gray-800">
-              {["overview", "activities", "tasks", "deals", "notes"].map((tab) => (
+              {["overview", "activities", "tasks", "deals", "notes", ...(viewLead.hasCustomPortfolio ? ["custom portfolio"] : [])].map((tab) => (
                 <button
                   key={tab}
                   type="button"
@@ -271,6 +290,103 @@ export default function LeadsPage() {
                   ))
                 )}
               </div>
+            ) : null}
+            {detailTab === "custom portfolio" ? (
+              customPortfolioLoading ? (
+                <div className="rounded-2xl border border-gray-200 bg-white p-5 text-sm text-gray-500 dark:border-gray-800 dark:bg-white/[0.03] dark:text-gray-400">
+                  Loading custom portfolio details...
+                </div>
+              ) : customPortfolio ? (
+                <div className="space-y-4">
+                  <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                    <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
+                      <div className="text-sm text-gray-500 dark:text-gray-400">Contact Name</div>
+                      <div className="mt-1 font-semibold text-gray-800 dark:text-white/90">{customPortfolio.contactName}</div>
+                    </div>
+                    <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
+                      <div className="text-sm text-gray-500 dark:text-gray-400">Business Email</div>
+                      <div className="mt-1 font-semibold text-gray-800 dark:text-white/90">{customPortfolio.businessEmail}</div>
+                    </div>
+                    <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
+                      <div className="text-sm text-gray-500 dark:text-gray-400">Website</div>
+                      <div className="mt-1 font-semibold text-gray-800 dark:text-white/90 break-all">{customPortfolio.website}</div>
+                    </div>
+                    <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
+                      <div className="text-sm text-gray-500 dark:text-gray-400">Product Count Range</div>
+                      <div className="mt-1 font-semibold text-gray-800 dark:text-white/90">{customPortfolio.productCountRange}</div>
+                    </div>
+                    <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
+                      <div className="text-sm text-gray-500 dark:text-gray-400">Visibility Level</div>
+                      <div className="mt-1 font-semibold text-gray-800 dark:text-white/90">{customPortfolio.visibilityLevel}</div>
+                    </div>
+                    <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
+                      <div className="text-sm text-gray-500 dark:text-gray-400">Budget Range</div>
+                      <div className="mt-1 font-semibold text-gray-800 dark:text-white/90">{customPortfolio.budgetRange || "Not provided"}</div>
+                    </div>
+                    <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
+                      <div className="text-sm text-gray-500 dark:text-gray-400">Country</div>
+                      <div className="mt-1 font-semibold text-gray-800 dark:text-white/90">{customPortfolio.country || "Not provided"}</div>
+                    </div>
+                    <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
+                      <div className="text-sm text-gray-500 dark:text-gray-400">Follow-up Status</div>
+                      <div className="mt-1 font-semibold text-gray-800 dark:text-white/90">{customPortfolio.followUpStatus}</div>
+                    </div>
+                    <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
+                      <div className="text-sm text-gray-500 dark:text-gray-400">Lead Status</div>
+                      <div className="mt-1 font-semibold text-gray-800 dark:text-white/90">{customPortfolio.status}</div>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 lg:grid-cols-2">
+                    <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
+                      <div className="text-sm text-gray-500 dark:text-gray-400">Categories</div>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {customPortfolio.categories.length > 0 ? customPortfolio.categories.map((item) => (
+                          <Badge key={item} color="info" size="sm">{item}</Badge>
+                        )) : <span className="text-sm text-gray-500 dark:text-gray-400">No categories</span>}
+                      </div>
+                    </div>
+                    <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
+                      <div className="text-sm text-gray-500 dark:text-gray-400">Promotion Goals</div>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {customPortfolio.promotionGoals.length > 0 ? customPortfolio.promotionGoals.map((item) => (
+                          <Badge key={item} color="success" size="sm">{item}</Badge>
+                        )) : <span className="text-sm text-gray-500 dark:text-gray-400">No promotion goals</span>}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 lg:grid-cols-2">
+                    <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
+                      <div className="text-sm text-gray-500 dark:text-gray-400">Message</div>
+                      <div className="mt-2 whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-300">
+                        {customPortfolio.message || "No message provided."}
+                      </div>
+                    </div>
+                    <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
+                      <div className="text-sm text-gray-500 dark:text-gray-400">Internal Sales Notes</div>
+                      <div className="mt-2 whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-300">
+                        {customPortfolio.salesNotes || "No sales notes yet."}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
+                      <div className="text-sm text-gray-500 dark:text-gray-400">Source Page</div>
+                      <div className="mt-1 font-semibold text-gray-800 dark:text-white/90">{customPortfolio.sourcePage}</div>
+                    </div>
+                    <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
+                      <div className="text-sm text-gray-500 dark:text-gray-400">Submitted</div>
+                      <div className="mt-1 font-semibold text-gray-800 dark:text-white/90">{formatDateTime(customPortfolio.createdAt)}</div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-2xl border border-gray-200 bg-white p-5 text-sm text-gray-500 dark:border-gray-800 dark:bg-white/[0.03] dark:text-gray-400">
+                  No custom portfolio details were found for this lead.
+                </div>
+              )
             ) : null}
           </div>
         ) : null}

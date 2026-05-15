@@ -9,6 +9,7 @@ import type {
   CRMCampaignSummary,
   CRMCompany,
   CRMContact,
+  CRMCustomPortfolioLead,
   CRMDashboardData,
   CRMDeal,
   CRMLeadEmailRecipient,
@@ -153,6 +154,14 @@ export const getCRMDashboard = async () => {
 
 export const getLeads = (params?: CRMListParams) => getList<CRMLead>("/api/crm/leads", params);
 export const getLead = (id: number) => getItem<CRMLead>(`/api/crm/leads/${id}`);
+export const getLeadCustomPortfolio = async (id: number) => {
+  const result = await fetchCRMJson<CRMApiResponse<CRMCustomPortfolioLead>>(
+    `/api/crm/leads/${id}/custom-portfolio`,
+    undefined,
+    "Failed to load custom portfolio details."
+  );
+  return (result.item ?? null) as CRMCustomPortfolioLead | null;
+};
 export const createLead = (payload: Record<string, unknown>) => createItem<CRMLead>("/api/crm/leads", payload);
 export const updateLead = (id: number, payload: Record<string, unknown>) => updateItem<CRMLead>(`/api/crm/leads/${id}`, payload);
 export const deleteLead = (id: number) => deleteItem(`/api/crm/leads/${id}`);

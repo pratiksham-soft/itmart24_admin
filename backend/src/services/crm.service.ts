@@ -465,6 +465,16 @@ const mapLead = (row: Record<string, unknown>): any => {
     ...record,
     tags: normalizeJsonField<string[]>(record.tags, []),
     notes: normalizeJsonField<JsonRecord[]>(record.notes, []),
+    hasCustomPortfolio: Boolean(record.hasCustomPortfolio),
+  };
+};
+
+const mapCustomPortfolioLead = (row: Record<string, unknown>): any => {
+  const record = camelizeRow(row);
+  return {
+    ...record,
+    categories: normalizeJsonField<string[]>(record.categories, []),
+    promotionGoals: normalizeJsonField<string[]>(record.promotionGoals, []),
   };
 };
 
@@ -1553,6 +1563,24 @@ export const listLeads = async (query: PaginationQuery) =>
   getListResult({
     table: "crm_leads",
     alias: "lead",
+    selectSql: `
+      SELECT
+        lead.*,
+        EXISTS (
+          SELECT 1
+          FROM crm_custom_leads custom_lead
+          WHERE
+            (
+              COALESCE(LOWER(custom_lead.business_email), '') <> ''
+              AND COALESCE(LOWER(custom_lead.business_email), '') = COALESCE(LOWER(lead.email), '')
+            )
+            OR (
+              COALESCE(LOWER(custom_lead.website), '') <> ''
+              AND COALESCE(LOWER(custom_lead.website), '') = COALESCE(LOWER(lead.website), '')
+            )
+        ) AS has_custom_portfolio
+      FROM crm_leads lead
+    `,
     searchableColumns: [
       "lead.first_name",
       "lead.last_name",
@@ -1578,7 +1606,84 @@ export const listLeads = async (query: PaginationQuery) =>
     mapRow: mapLead,
   });
 
-export const getLeadById = async (id: number) => getRecordById("crm_leads", id, mapLead);
+export const getLeadById = async (id: number) =>
+  withSchemaRecovery(async () => {
+    const pool = await getAnalyticsPool();
+    const result = await pool.query(
+      `
+        SELECT
+          lead.*,
+          EXISTS (
+            SELECT 1
+            FROM crm_custom_leads custom_lead
+            WHERE
+              (
+                COALESCE(LOWER(custom_lead.business_email), '') <> ''
+                AND COALESCE(LOWER(custom_lead.business_email), '') = COALESCE(LOWER(lead.email), '')
+              )
+              OR (
+                COALESCE(LOWER(custom_lead.website), '') <> ''
+                AND COALESCE(LOWER(custom_lead.website), '') = COALESCE(LOWER(lead.website), '')
+              )
+          ) AS has_custom_portfolio
+        FROM crm_leads lead
+        WHERE lead.id = $1 AND lead.deleted_at IS NULL
+        LIMIT 1
+      `,
+      [id]
+    );
+
+    if (result.rowCount === 0) {
+      return null;
+    }
+
+    return mapLead(result.rows[0] as Record<string, unknown>);
+  });
+
+export const getLeadCustomPortfolioByLeadId = async (id: number) =>
+  withSchemaRecovery(async () => {
+    const lead = await getLeadById(id);
+    if (!lead) {
+      throw new Error("Lead not found.");
+    }
+
+    const email = toTrimmedString(lead.email).toLowerCase();
+    const website = toTrimmedString(lead.website).toLowerCase();
+    if (!email && !website) {
+      return null;
+    }
+
+    const conditions: string[] = [];
+    const values: unknown[] = [];
+
+    if (email) {
+      values.push(email);
+      conditions.push(`LOWER(COALESCE(custom_lead.business_email, '')) = $${values.length}`);
+    }
+
+    if (website) {
+      values.push(website);
+      conditions.push(`LOWER(COALESCE(custom_lead.website, '')) = $${values.length}`);
+    }
+
+    const pool = await getAnalyticsPool();
+    const result = await pool.query(
+      `
+        SELECT *
+        FROM crm_custom_leads custom_lead
+        WHERE ${conditions.join(" OR ")}
+        ORDER BY custom_lead.created_at DESC, custom_lead.id DESC
+        LIMIT 1
+      `,
+      values
+    );
+
+    if (result.rowCount === 0) {
+      return null;
+    }
+
+    return mapCustomPortfolioLead(result.rows[0] as Record<string, unknown>);
+  });
 
 export const createLead = async (
   payload: Record<string, unknown>,

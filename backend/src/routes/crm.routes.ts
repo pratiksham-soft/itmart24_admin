@@ -26,6 +26,7 @@ import {
   getCRMSettings,
   getDealById,
   getLeadById,
+  getLeadCustomPortfolioByLeadId,
   getSegmentById,
   getTaskById,
   importLeadsFromCsv,
@@ -214,6 +215,15 @@ router.get("/leads/:id", async (req, res) => {
     res.json({ success: true, item: lead });
   } catch (error) {
     sendError(res, error, "Failed to fetch lead.");
+  }
+});
+
+router.get("/leads/:id/custom-portfolio", async (req, res) => {
+  try {
+    const item = await getLeadCustomPortfolioByLeadId(toPositiveId(req.params.id));
+    res.json({ success: true, item });
+  } catch (error) {
+    sendError(res, error, "Failed to fetch custom portfolio details.");
   }
 });
 

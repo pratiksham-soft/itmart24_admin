@@ -59,6 +59,32 @@ export type CRMLead = {
   convertedContactId?: number | null;
   convertedCompanyId?: number | null;
   convertedDealId?: number | null;
+  hasCustomPortfolio?: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type CRMCustomPortfolioLead = {
+  id: number;
+  leadType: string;
+  companyName: string;
+  website: string;
+  businessEmail: string;
+  contactName: string;
+  jobTitle: string | null;
+  country: string | null;
+  productCountRange: string;
+  categories: string[];
+  promotionGoals: string[];
+  visibilityLevel: string;
+  budgetRange: string | null;
+  message: string | null;
+  sourcePage: string;
+  shopifyPageId: string;
+  status: string;
+  assignedTo: number | null;
+  salesNotes: string | null;
+  followUpStatus: string;
   createdAt: string;
   updatedAt: string;
 };
