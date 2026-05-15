@@ -550,6 +550,399 @@ const TABLE_STATEMENTS = [
     CREATE INDEX IF NOT EXISTS idx_blog_job_runs_job_id
     ON blog_job_runs (job_id, started_at DESC)
   `,
+  `
+    CREATE TABLE IF NOT EXISTS email_accounts (
+      id BIGSERIAL PRIMARY KEY,
+      display_name TEXT NOT NULL,
+      email_address TEXT NOT NULL,
+      username TEXT NOT NULL,
+      encrypted_password TEXT NOT NULL,
+      imap_host TEXT NOT NULL,
+      imap_port INTEGER NOT NULL,
+      imap_secure BOOLEAN NOT NULL DEFAULT TRUE,
+      smtp_host TEXT NOT NULL,
+      smtp_port INTEGER NOT NULL,
+      smtp_secure BOOLEAN NOT NULL DEFAULT TRUE,
+      is_default BOOLEAN NOT NULL DEFAULT FALSE,
+      is_active BOOLEAN NOT NULL DEFAULT TRUE,
+      last_tested_at TIMESTAMP,
+      last_test_status TEXT,
+      last_test_error TEXT,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      deleted_at TIMESTAMP
+    )
+  `,
+  `
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_email_accounts_email_address_active
+    ON email_accounts (email_address)
+    WHERE deleted_at IS NULL
+  `,
+  `
+    CREATE INDEX IF NOT EXISTS idx_email_accounts_default_active
+    ON email_accounts (is_default DESC, is_active DESC, updated_at DESC)
+    WHERE deleted_at IS NULL
+  `,
+  `
+    CREATE TABLE IF NOT EXISTS email_activity_logs (
+      id BIGSERIAL PRIMARY KEY,
+      admin_user_id BIGINT REFERENCES admins(id) ON DELETE SET NULL,
+      account_id BIGINT REFERENCES email_accounts(id) ON DELETE SET NULL,
+      direction TEXT NOT NULL,
+      recipients TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+      subject TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'success',
+      error_message TEXT,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `,
+  `
+    CREATE INDEX IF NOT EXISTS idx_email_activity_logs_account_created
+    ON email_activity_logs (account_id, created_at DESC)
+  `,
+  `
+    CREATE TABLE IF NOT EXISTS crm_leads (
+      id BIGSERIAL PRIMARY KEY,
+      first_name TEXT,
+      last_name TEXT,
+      email TEXT,
+      phone TEXT,
+      company_name TEXT,
+      job_title TEXT,
+      website TEXT,
+      lead_source TEXT NOT NULL DEFAULT 'Other',
+      lead_status TEXT NOT NULL DEFAULT 'New',
+      lead_priority TEXT NOT NULL DEFAULT 'Medium',
+      lead_score NUMERIC(5,2) NOT NULL DEFAULT 0,
+      estimated_value NUMERIC(14,2) NOT NULL DEFAULT 0,
+      currency TEXT NOT NULL DEFAULT 'USD',
+      assigned_to BIGINT REFERENCES admins(id) ON DELETE SET NULL,
+      tags JSONB NOT NULL DEFAULT '[]'::jsonb,
+      notes JSONB NOT NULL DEFAULT '[]'::jsonb,
+      next_follow_up_at TIMESTAMP,
+      last_activity_at TIMESTAMP,
+      converted_contact_id BIGINT,
+      converted_company_id BIGINT,
+      converted_deal_id BIGINT,
+      created_by BIGINT REFERENCES admins(id) ON DELETE SET NULL,
+      updated_by BIGINT REFERENCES admins(id) ON DELETE SET NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      deleted_at TIMESTAMP
+    )
+  `,
+  `
+    CREATE TABLE IF NOT EXISTS crm_custom_leads (
+      id BIGSERIAL PRIMARY KEY,
+      lead_type TEXT NOT NULL DEFAULT 'custom_portfolio_pricing',
+      company_name TEXT NOT NULL,
+      website TEXT NOT NULL,
+      business_email TEXT NOT NULL,
+      contact_name TEXT NOT NULL,
+      job_title TEXT,
+      country TEXT,
+      product_count_range TEXT NOT NULL,
+      categories JSONB NOT NULL DEFAULT '[]'::jsonb,
+      promotion_goals JSONB NOT NULL DEFAULT '[]'::jsonb,
+      visibility_level TEXT NOT NULL,
+      budget_range TEXT,
+      message TEXT,
+      source_page TEXT NOT NULL DEFAULT 'vendor_page',
+      shopify_page_id TEXT NOT NULL DEFAULT '124057551087',
+      status TEXT NOT NULL DEFAULT 'new',
+      assigned_to BIGINT REFERENCES admins(id) ON DELETE SET NULL,
+      sales_notes TEXT,
+      follow_up_status TEXT NOT NULL DEFAULT 'not_started',
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `,
+  `
+    CREATE INDEX IF NOT EXISTS idx_crm_custom_leads_email_created
+    ON crm_custom_leads (business_email, created_at DESC)
+  `,
+  `
+    CREATE INDEX IF NOT EXISTS idx_crm_custom_leads_status_created
+    ON crm_custom_leads (status, created_at DESC)
+  `,
+  `
+    CREATE TABLE IF NOT EXISTS crm_companies (
+      id BIGSERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      website TEXT,
+      industry TEXT,
+      company_size TEXT,
+      country TEXT,
+      city TEXT,
+      email TEXT,
+      phone TEXT,
+      linkedin_url TEXT,
+      twitter_url TEXT,
+      facebook_url TEXT,
+      description TEXT,
+      owner BIGINT REFERENCES admins(id) ON DELETE SET NULL,
+      status TEXT NOT NULL DEFAULT 'Prospect',
+      tags JSONB NOT NULL DEFAULT '[]'::jsonb,
+      created_by BIGINT REFERENCES admins(id) ON DELETE SET NULL,
+      updated_by BIGINT REFERENCES admins(id) ON DELETE SET NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      deleted_at TIMESTAMP
+    )
+  `,
+  `
+    CREATE TABLE IF NOT EXISTS crm_contacts (
+      id BIGSERIAL PRIMARY KEY,
+      first_name TEXT NOT NULL,
+      last_name TEXT,
+      email TEXT,
+      phone TEXT,
+      alternate_phone TEXT,
+      company_id BIGINT REFERENCES crm_companies(id) ON DELETE SET NULL,
+      company_name TEXT,
+      job_title TEXT,
+      department TEXT,
+      contact_type TEXT NOT NULL DEFAULT 'Prospect',
+      lifecycle_stage TEXT NOT NULL DEFAULT 'Lead',
+      owner BIGINT REFERENCES admins(id) ON DELETE SET NULL,
+      tags JSONB NOT NULL DEFAULT '[]'::jsonb,
+      notes JSONB NOT NULL DEFAULT '[]'::jsonb,
+      last_contacted_at TIMESTAMP,
+      next_follow_up_at TIMESTAMP,
+      created_by BIGINT REFERENCES admins(id) ON DELETE SET NULL,
+      updated_by BIGINT REFERENCES admins(id) ON DELETE SET NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      deleted_at TIMESTAMP
+    )
+  `,
+  `
+    CREATE TABLE IF NOT EXISTS crm_deals (
+      id BIGSERIAL PRIMARY KEY,
+      title TEXT NOT NULL,
+      lead_id BIGINT REFERENCES crm_leads(id) ON DELETE SET NULL,
+      contact_id BIGINT REFERENCES crm_contacts(id) ON DELETE SET NULL,
+      company_id BIGINT REFERENCES crm_companies(id) ON DELETE SET NULL,
+      stage TEXT NOT NULL DEFAULT 'New',
+      value NUMERIC(14,2) NOT NULL DEFAULT 0,
+      currency TEXT NOT NULL DEFAULT 'USD',
+      probability NUMERIC(5,2) NOT NULL DEFAULT 0,
+      expected_close_date TIMESTAMP,
+      owner BIGINT REFERENCES admins(id) ON DELETE SET NULL,
+      source TEXT,
+      description TEXT,
+      lost_reason TEXT,
+      won_at TIMESTAMP,
+      lost_at TIMESTAMP,
+      created_by BIGINT REFERENCES admins(id) ON DELETE SET NULL,
+      updated_by BIGINT REFERENCES admins(id) ON DELETE SET NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      deleted_at TIMESTAMP
+    )
+  `,
+  `
+    CREATE TABLE IF NOT EXISTS crm_tasks (
+      id BIGSERIAL PRIMARY KEY,
+      title TEXT NOT NULL,
+      description TEXT,
+      task_type TEXT NOT NULL DEFAULT 'Follow-up',
+      priority TEXT NOT NULL DEFAULT 'Medium',
+      status TEXT NOT NULL DEFAULT 'Pending',
+      due_at TIMESTAMP,
+      reminder_at TIMESTAMP,
+      assigned_to BIGINT REFERENCES admins(id) ON DELETE SET NULL,
+      related_type TEXT,
+      related_id BIGINT,
+      completed_at TIMESTAMP,
+      created_by BIGINT REFERENCES admins(id) ON DELETE SET NULL,
+      updated_by BIGINT REFERENCES admins(id) ON DELETE SET NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      deleted_at TIMESTAMP
+    )
+  `,
+  `
+    CREATE TABLE IF NOT EXISTS crm_segments (
+      id BIGSERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT,
+      entity_type TEXT NOT NULL,
+      conditions JSONB NOT NULL DEFAULT '[]'::jsonb,
+      match_type TEXT NOT NULL DEFAULT 'all',
+      created_by BIGINT REFERENCES admins(id) ON DELETE SET NULL,
+      updated_by BIGINT REFERENCES admins(id) ON DELETE SET NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      deleted_at TIMESTAMP
+    )
+  `,
+  `
+    CREATE TABLE IF NOT EXISTS crm_activities (
+      id BIGSERIAL PRIMARY KEY,
+      activity_type TEXT NOT NULL,
+      title TEXT NOT NULL,
+      description TEXT,
+      related_type TEXT,
+      related_id BIGINT,
+      actor_id BIGINT REFERENCES admins(id) ON DELETE SET NULL,
+      actor_name TEXT,
+      metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      deleted_at TIMESTAMP
+    )
+  `,
+  `
+    CREATE TABLE IF NOT EXISTS crm_campaigns (
+      id BIGSERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      sender_account_id BIGINT REFERENCES email_accounts(id) ON DELETE SET NULL,
+      sender_email TEXT,
+      subject TEXT NOT NULL,
+      body TEXT NOT NULL,
+      body_mode TEXT NOT NULL DEFAULT 'html',
+      status TEXT NOT NULL DEFAULT 'Draft',
+      recipient_type TEXT NOT NULL DEFAULT 'leads',
+      segment_id BIGINT REFERENCES crm_segments(id) ON DELETE SET NULL,
+      delay_seconds INTEGER NOT NULL DEFAULT 10,
+      total_recipients INTEGER NOT NULL DEFAULT 0,
+      recipient_count INTEGER NOT NULL DEFAULT 0,
+      sent_count INTEGER NOT NULL DEFAULT 0,
+      failed_count INTEGER NOT NULL DEFAULT 0,
+      skipped_count INTEGER NOT NULL DEFAULT 0,
+      opened_count INTEGER NOT NULL DEFAULT 0,
+      clicked_count INTEGER NOT NULL DEFAULT 0,
+      scheduled_at TIMESTAMP,
+      started_at TIMESTAMP,
+      sent_at TIMESTAMP,
+      completed_at TIMESTAMP,
+      cancelled_at TIMESTAMP,
+      last_error TEXT,
+      last_activity_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      created_by BIGINT REFERENCES admins(id) ON DELETE SET NULL,
+      updated_by BIGINT REFERENCES admins(id) ON DELETE SET NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      deleted_at TIMESTAMP
+    )
+  `,
+  `
+    ALTER TABLE crm_campaigns
+    ADD COLUMN IF NOT EXISTS sender_account_id BIGINT REFERENCES email_accounts(id) ON DELETE SET NULL
+  `,
+  `
+    ALTER TABLE crm_campaigns
+    ADD COLUMN IF NOT EXISTS sender_email TEXT
+  `,
+  `
+    ALTER TABLE crm_campaigns
+    ADD COLUMN IF NOT EXISTS body_mode TEXT NOT NULL DEFAULT 'html'
+  `,
+  `
+    ALTER TABLE crm_campaigns
+    ADD COLUMN IF NOT EXISTS delay_seconds INTEGER NOT NULL DEFAULT 10
+  `,
+  `
+    ALTER TABLE crm_campaigns
+    ADD COLUMN IF NOT EXISTS total_recipients INTEGER NOT NULL DEFAULT 0
+  `,
+  `
+    ALTER TABLE crm_campaigns
+    ADD COLUMN IF NOT EXISTS skipped_count INTEGER NOT NULL DEFAULT 0
+  `,
+  `
+    ALTER TABLE crm_campaigns
+    ADD COLUMN IF NOT EXISTS started_at TIMESTAMP
+  `,
+  `
+    ALTER TABLE crm_campaigns
+    ADD COLUMN IF NOT EXISTS completed_at TIMESTAMP
+  `,
+  `
+    ALTER TABLE crm_campaigns
+    ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMP
+  `,
+  `
+    ALTER TABLE crm_campaigns
+    ADD COLUMN IF NOT EXISTS last_error TEXT
+  `,
+  `
+    ALTER TABLE crm_campaigns
+    ADD COLUMN IF NOT EXISTS last_activity_at TIMESTAMP NOT NULL DEFAULT NOW()
+  `,
+  `
+    CREATE TABLE IF NOT EXISTS crm_campaign_recipients (
+      id BIGSERIAL PRIMARY KEY,
+      campaign_id BIGINT NOT NULL REFERENCES crm_campaigns(id) ON DELETE CASCADE,
+      lead_id BIGINT REFERENCES crm_leads(id) ON DELETE SET NULL,
+      email TEXT NOT NULL,
+      first_name TEXT,
+      last_name TEXT,
+      company_name TEXT,
+      job_title TEXT,
+      website TEXT,
+      status TEXT NOT NULL DEFAULT 'pending',
+      personalized_subject TEXT,
+      personalized_body_html TEXT,
+      error_message TEXT,
+      sent_at TIMESTAMP,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `,
+  `
+    CREATE TABLE IF NOT EXISTS crm_settings (
+      setting_key TEXT PRIMARY KEY,
+      setting_value JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `,
+  `
+    CREATE INDEX IF NOT EXISTS idx_crm_leads_email ON crm_leads (email) WHERE deleted_at IS NULL
+  `,
+  `
+    CREATE INDEX IF NOT EXISTS idx_crm_leads_status_source ON crm_leads (lead_status, lead_source, created_at DESC) WHERE deleted_at IS NULL
+  `,
+  `
+    CREATE INDEX IF NOT EXISTS idx_crm_leads_assigned_to ON crm_leads (assigned_to, next_follow_up_at, created_at DESC) WHERE deleted_at IS NULL
+  `,
+  `
+    CREATE INDEX IF NOT EXISTS idx_crm_contacts_email ON crm_contacts (email) WHERE deleted_at IS NULL
+  `,
+  `
+    CREATE INDEX IF NOT EXISTS idx_crm_contacts_company_id ON crm_contacts (company_id, owner, created_at DESC) WHERE deleted_at IS NULL
+  `,
+  `
+    CREATE INDEX IF NOT EXISTS idx_crm_companies_owner_status ON crm_companies (owner, status, created_at DESC) WHERE deleted_at IS NULL
+  `,
+  `
+    CREATE INDEX IF NOT EXISTS idx_crm_deals_stage_owner ON crm_deals (stage, owner, expected_close_date, created_at DESC) WHERE deleted_at IS NULL
+  `,
+  `
+    CREATE INDEX IF NOT EXISTS idx_crm_tasks_due_status ON crm_tasks (due_at, status, assigned_to) WHERE deleted_at IS NULL
+  `,
+  `
+    CREATE INDEX IF NOT EXISTS idx_crm_activities_related ON crm_activities (related_type, related_id, created_at DESC)
+  `,
+  `
+    CREATE INDEX IF NOT EXISTS idx_crm_campaigns_status ON crm_campaigns (status, sent_at DESC, created_at DESC) WHERE deleted_at IS NULL
+  `,
+  `
+    CREATE INDEX IF NOT EXISTS idx_crm_campaigns_sender_account ON crm_campaigns (sender_account_id, created_at DESC) WHERE deleted_at IS NULL
+  `,
+  `
+    CREATE INDEX IF NOT EXISTS idx_crm_campaign_recipients_campaign_status ON crm_campaign_recipients (campaign_id, status, created_at DESC)
+  `,
+  `
+    CREATE INDEX IF NOT EXISTS idx_crm_campaign_recipients_email ON crm_campaign_recipients (email)
+  `,
+  `
+    CREATE INDEX IF NOT EXISTS idx_crm_campaign_recipients_lead_id ON crm_campaign_recipients (lead_id)
+  `,
+  `
+    CREATE INDEX IF NOT EXISTS idx_crm_segments_entity_type ON crm_segments (entity_type, created_at DESC) WHERE deleted_at IS NULL
+  `,
 ];
 
 export const ensureTables = async () => {

@@ -460,18 +460,292 @@ const buildVendorPageHtml = (plans) => `
     .vendor-pricing-page__hero-side {
       border-radius: 1.4rem;
       padding: 1.75rem;
+      overflow: hidden;
+    }
+
+    .vendor-pricing-page__hero-carousel {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      gap: 1rem;
+    }
+
+    .vendor-pricing-page__hero-track-wrap {
+      position: relative;
+      flex: 1;
+      overflow: hidden;
+      touch-action: pan-y;
+    }
+
+    .vendor-pricing-page__hero-track-wrap::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: 1.2rem;
+      pointer-events: none;
+      box-shadow:
+        inset 0 0 28px rgba(4, 10, 24, 0.42),
+        inset 0 0 56px rgba(4, 10, 24, 0.24);
+      background:
+        linear-gradient(90deg, rgba(5, 10, 22, 0.18), transparent 12%, transparent 88%, rgba(5, 10, 22, 0.18)),
+        linear-gradient(180deg, rgba(5, 10, 22, 0.14), transparent 14%, transparent 86%, rgba(5, 10, 22, 0.14));
+    }
+
+    .vendor-pricing-page__hero-track {
+      display: flex;
+      height: 100%;
+      transition: transform 0.45s ease;
+      transform: translateX(calc(var(--active-slide, 0) * -100%));
+      will-change: transform;
+      cursor: grab;
+      user-select: none;
+    }
+
+    .vendor-pricing-page__hero-slide {
+      flex: 0 0 100%;
+      min-width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 1.4rem;
+      min-height: 100%;
+    }
+
+    .vendor-pricing-page__hero-slide--founder,
+    .vendor-pricing-page__hero-slide--visibility,
+    .vendor-pricing-page__hero-slide--advantage {
+      position: relative;
+      padding: 1.35rem;
+      border-radius: 1.2rem;
+      background:
+        radial-gradient(circle at top right, rgba(116, 95, 255, 0.22), transparent 45%),
+        radial-gradient(circle at bottom left, rgba(47, 208, 255, 0.2), transparent 40%),
+        linear-gradient(160deg, rgba(7, 14, 32, 0.92), rgba(10, 18, 38, 0.74));
+      border: 1px solid rgba(133, 168, 255, 0.18);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.08),
+        0 22px 44px rgba(2, 8, 24, 0.24),
+        0 0 36px rgba(59, 130, 246, 0.16);
+    }
+
+    .vendor-pricing-page__hero-slide--visibility {
+      background:
+        radial-gradient(circle at top left, rgba(34, 211, 238, 0.22), transparent 42%),
+        radial-gradient(circle at bottom right, rgba(96, 165, 250, 0.16), transparent 40%),
+        linear-gradient(160deg, rgba(8, 18, 38, 0.94), rgba(7, 12, 28, 0.78));
+    }
+
+    .vendor-pricing-page__hero-slide--advantage {
+      background:
+        radial-gradient(circle at top right, rgba(129, 140, 248, 0.24), transparent 42%),
+        radial-gradient(circle at bottom left, rgba(59, 130, 246, 0.2), transparent 38%),
+        linear-gradient(160deg, rgba(12, 17, 39, 0.94), rgba(8, 12, 29, 0.78));
+    }
+
+    .vendor-pricing-page__hero-slide--founder::before,
+    .vendor-pricing-page__hero-slide--visibility::before,
+    .vendor-pricing-page__hero-slide--advantage::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      background: linear-gradient(135deg, rgba(96, 165, 250, 0.08), rgba(139, 92, 246, 0.08));
+      pointer-events: none;
+    }
+
+    .vendor-pricing-page__founder-content {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+      height: 100%;
+    }
+
+    .vendor-pricing-page__offer-badge,
+    .vendor-pricing-page__founder-badge {
+      display: inline-flex;
+      align-items: center;
+      width: fit-content;
+      padding: 0.45rem 0.8rem;
+      border-radius: 999px;
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #f8fbff;
+      background: linear-gradient(135deg, rgba(34, 211, 238, 0.32), rgba(99, 102, 241, 0.32));
+      border: 1px solid rgba(147, 197, 253, 0.26);
+      box-shadow: 0 10px 24px rgba(59, 130, 246, 0.18);
+    }
+
+    .vendor-pricing-page__offer-title,
+    .vendor-pricing-page__founder-title {
+      margin: 0;
+      font-size: clamp(2rem, 2.8vw, 2.5rem);
+      line-height: 1.08;
+    }
+
+    .vendor-pricing-page__offer-copy,
+    .vendor-pricing-page__founder-copy {
+      margin: 0;
+      font-size: 1.08rem;
+      line-height: 1.6;
+      color: rgba(232, 238, 255, 0.82);
+    }
+
+    .vendor-pricing-page__offer-grid,
+    .vendor-pricing-page__founder-points {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.65rem 0.75rem;
+      padding: 0;
+      margin: 0;
+      list-style: none;
+    }
+
+    .vendor-pricing-page__offer-grid {
+      gap: 0.8rem;
+    }
+
+    .vendor-pricing-page__offer-grid li,
+    .vendor-pricing-page__founder-points li {
+      display: flex;
+      align-items: start;
+      gap: 0.55rem;
+      font-size: 0.95rem;
+      line-height: 1.45;
+      color: rgba(240, 245, 255, 0.9);
+    }
+
+    .vendor-pricing-page__founder-points li {
+      font-size: 1.05rem;
+      line-height: 1.5;
+      padding: 0.82rem 0.9rem;
+      border-radius: 1rem;
+      background: rgba(9, 16, 36, 0.56);
+      border: 1px solid rgba(137, 165, 255, 0.16);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    }
+
+    .vendor-pricing-page__offer-grid li {
+      padding: 0.82rem 0.9rem;
+      border-radius: 1rem;
+      background: rgba(9, 16, 36, 0.56);
+      border: 1px solid rgba(137, 165, 255, 0.16);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    }
+
+    .vendor-pricing-page__offer-grid strong {
+      display: block;
+      margin-bottom: 0.22rem;
+      font-size: 1.02rem;
+      color: #f8fbff;
+    }
+
+    .vendor-pricing-page__founder-points strong {
+      display: block;
+      font-size: 1.06rem;
+      color: #f8fbff;
+    }
+
+    .vendor-pricing-page__offer-grid span {
+      display: block;
+      font-size: 0.88rem;
+      line-height: 1.4;
+      color: rgba(220, 230, 255, 0.72);
+    }
+
+    .vendor-pricing-page__offer-grid li::before,
+    .vendor-pricing-page__founder-points li::before {
+      content: "";
+      flex: 0 0 0.55rem;
+      width: 0.55rem;
+      height: 0.55rem;
+      margin-top: 0.35rem;
+      border-radius: 999px;
+      background: linear-gradient(135deg, #67e8f9, #8b5cf6);
+      box-shadow: 0 0 14px rgba(103, 232, 249, 0.45);
+    }
+
+    .vendor-pricing-page__offer-kicker {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      font-size: 0.92rem;
+      color: rgba(197, 214, 255, 0.78);
+    }
+
+    .vendor-pricing-page__offer-kicker strong {
+      font-size: 1rem;
+      color: #f8fbff;
+    }
+
+    .vendor-pricing-page__offer-metric {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.45rem 0.7rem;
+      border-radius: 999px;
+      background: rgba(52, 211, 153, 0.12);
+      border: 1px solid rgba(52, 211, 153, 0.2);
+      color: #b9ffe6;
+      font-weight: 700;
+    }
+
+    .vendor-pricing-page__offer-actions,
+    .vendor-pricing-page__founder-actions {
+      margin-top: auto;
+      padding-top: 0.25rem;
+    }
+
+    .vendor-pricing-page__offer-actions .vendor-pricing-page__button,
+    .vendor-pricing-page__founder-actions .vendor-pricing-page__button {
+      width: 100%;
+      box-shadow: 0 12px 26px rgba(59, 130, 246, 0.24);
+    }
+
+    .vendor-pricing-page__offer-note {
+      font-size: 0.92rem;
+      line-height: 1.45;
+      color: rgba(191, 209, 255, 0.78);
+    }
+
+    .vendor-pricing-page__hero-dots {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.55rem;
+      padding-bottom: 0.15rem;
+    }
+
+    .vendor-pricing-page__hero-dot {
+      width: 0.7rem;
+      height: 0.7rem;
+      padding: 0;
+      border: 0;
+      border-radius: 999px;
+      background: rgba(191, 209, 255, 0.28);
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+      cursor: pointer;
+      transition: transform 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .vendor-pricing-page__hero-dot.is-active {
+      background: linear-gradient(135deg, var(--vp-accent-strong), #67e8f9);
+      box-shadow: 0 0 18px rgba(103, 232, 249, 0.34);
+      transform: scale(1.08);
     }
 
     .vendor-pricing-page__side-title {
       margin: 0 0 0.75rem;
-      font-size: 2.1rem;
+      font-size: clamp(2rem, 2.8vw, 2.35rem);
       line-height: 1.15;
     }
 
     .vendor-pricing-page__side-copy {
       margin: 0;
-      font-size: 1.03rem;
-      line-height: 1.8;
+      font-size: 1.08rem;
+      line-height: 1.7;
     }
 
     .vendor-pricing-page__side-list {
@@ -786,6 +1060,10 @@ const buildVendorPageHtml = (plans) => `
         grid-template-columns: 1fr;
       }
 
+      .vendor-pricing-page__hero-side {
+        order: -1;
+      }
+
       .vendor-pricing-page__grid {
         grid-template-columns: 1fr;
       }
@@ -812,6 +1090,14 @@ const buildVendorPageHtml = (plans) => `
       }
 
       .vendor-pricing-page__proofs {
+        grid-template-columns: 1fr;
+      }
+
+      .vendor-pricing-page__founder-points {
+        grid-template-columns: 1fr;
+      }
+
+      .vendor-pricing-page__offer-grid {
         grid-template-columns: 1fr;
       }
     }
@@ -869,35 +1155,213 @@ const buildVendorPageHtml = (plans) => `
         </div>
 
         <aside class="vendor-pricing-page__hero-side">
-          <div>
-            <p class="vendor-pricing-page__side-label">What paid plans unlock</p>
-            <h2 class="vendor-pricing-page__side-title">Stronger visibility, trust signals, and decision support.</h2>
-            <p class="vendor-pricing-page__side-copy">
-              Move from a basic listing toward richer placement, higher buyer confidence, and better insight into how your products perform across ITMart24.
-            </p>
-          </div>
+          <div class="vendor-pricing-page__hero-carousel" data-hero-carousel>
+            <div class="vendor-pricing-page__hero-track-wrap">
+              <div class="vendor-pricing-page__hero-track" style="--active-slide: 0;">
+                <section class="vendor-pricing-page__hero-slide vendor-pricing-page__hero-slide--founder" aria-label="Founder Vendor Program offer">
+                  <div class="vendor-pricing-page__founder-content">
+                    <span class="vendor-pricing-page__founder-badge">Founder Vendor Program</span>
+                    <div>
+                      <h2 class="vendor-pricing-page__founder-title">Lock Your Founder Pricing for 3 Years</h2>
+                      <p class="vendor-pricing-page__founder-copy">
+                        Join early and secure significantly lower launch pricing before future pricing increases.
+                      </p>
+                    </div>
+                    <ul class="vendor-pricing-page__founder-points">
+                      <li><strong>Significantly lower founder pricing</strong></li>
+                      <li><strong>Pricing locked for 3 years</strong></li>
+                      <li><strong>Priority visibility</strong></li>
+                      <li><strong>Founder badge</strong></li>
+                      <li><strong>Limited founder slots</strong></li>
+                      <li><strong>Early partner advantage</strong></li>
+                      <li><strong>Secure spots on sponsored places</strong></li>
+                    </ul>
+                    <div class="vendor-pricing-page__founder-actions">
+                      <a
+                        class="vendor-pricing-page__button vendor-pricing-page__button--primary"
+                        href="${VENDOR_PORTAL_URL}"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        Secure Founder Access
+                      </a>
+                    </div>
+                  </div>
+                </section>
 
-          <div class="vendor-pricing-page__side-list">
-            <div class="vendor-pricing-page__side-item">
-              <span class="vendor-pricing-page__side-icon">01</span>
-              <div>
-                <strong>Trust and verification</strong>
-                <span>Highlight verified ownership, support expectations, refund clarity, and other signals that reduce buyer hesitation.</span>
+                <section class="vendor-pricing-page__hero-slide vendor-pricing-page__hero-slide--visibility" aria-label="Vendor visibility offer">
+                  <div class="vendor-pricing-page__founder-content">
+                    <span class="vendor-pricing-page__offer-badge">Vendor Growth Offer</span>
+                    <div>
+                      <h2 class="vendor-pricing-page__offer-title">Reach Buyers Already Comparing Solutions</h2>
+                      <p class="vendor-pricing-page__offer-copy">
+                        Launch into an audience actively exploring software, SaaS, AI tools, hosting, and digital products with stronger buyer intent.
+                      </p>
+                    </div>
+                    <ul class="vendor-pricing-page__offer-grid">
+                      <li>
+                        <div>
+                          <strong>Discovery surfaces</strong>
+                          <span>Show up in product listings, category pages, and comparison journeys.</span>
+                        </div>
+                      </li>
+                      <li>
+                        <div>
+                          <strong>Qualified buyer traffic</strong>
+                          <span>Reach decision-makers already researching and shortlisting solutions.</span>
+                        </div>
+                      </li>
+                      <li>
+                        <div>
+                          <strong>Premium presence</strong>
+                          <span>Present your product with a sharper storefront, proof signals, and stronger positioning.</span>
+                        </div>
+                      </li>
+                      <li>
+                        <div>
+                          <strong>Growth-ready exposure</strong>
+                          <span>Build visibility earlier while the marketplace is still opening up.</span>
+                        </div>
+                      </li>
+                    </ul>
+                    <div class="vendor-pricing-page__offer-actions">
+                      <a
+                        class="vendor-pricing-page__button vendor-pricing-page__button--primary"
+                        href="${VENDOR_PORTAL_URL}"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        Start Vendor Application
+                      </a>
+                    </div>
+                  </div>
+                </section>
+
+                <section class="vendor-pricing-page__hero-slide vendor-pricing-page__hero-slide--advantage" aria-label="Founder advantage offer">
+                  <div class="vendor-pricing-page__founder-content">
+                    <span class="vendor-pricing-page__offer-badge">Early Partner Advantage</span>
+                    <div>
+                      <h2 class="vendor-pricing-page__offer-title">Launch With More Visibility Before Competition Builds</h2>
+                      <p class="vendor-pricing-page__offer-copy">
+                        Early vendors can establish brand presence, trust, and marketplace authority before later entrants compete for the same attention.
+                      </p>
+                    </div>
+                    <div class="vendor-pricing-page__offer-kicker">
+                      <strong>Founder benefits stay commercially focused</strong>
+                      <span class="vendor-pricing-page__offer-metric">3-Year Price Lock</span>
+                    </div>
+                    <ul class="vendor-pricing-page__offer-grid">
+                      <li>
+                        <div>
+                          <strong>Founder badge</strong>
+                          <span>Stand out as an early vendor with stronger launch-phase recognition.</span>
+                        </div>
+                      </li>
+                      <li>
+                        <div>
+                          <strong>Priority visibility</strong>
+                          <span>Improve your odds of being noticed while the vendor ecosystem is still taking shape.</span>
+                        </div>
+                      </li>
+                      <li>
+                        <div>
+                          <strong>Preferred launch pricing</strong>
+                          <span>Secure lower early pricing before future pricing rises with marketplace maturity.</span>
+                        </div>
+                      </li>
+                      <li>
+                        <div>
+                          <strong>Limited slots</strong>
+                          <span>Founder access is designed for a smaller group of early growth partners.</span>
+                        </div>
+                      </li>
+                    </ul>
+                    <div class="vendor-pricing-page__offer-actions">
+                      <a
+                        class="vendor-pricing-page__button vendor-pricing-page__button--primary"
+                        href="${VENDOR_PORTAL_URL}"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        Claim Early Vendor Slot
+                      </a>
+                    </div>
+                    <div class="vendor-pricing-page__offer-note">
+                      Early vendors gain stronger launch positioning, long-term price protection, and a clearer path to early marketplace momentum.
+                    </div>
+                  </div>
+                </section>
+
+                <section class="vendor-pricing-page__hero-slide vendor-pricing-page__hero-slide--visibility" aria-label="Paid plan value summary">
+                  <div class="vendor-pricing-page__founder-content">
+                    <span class="vendor-pricing-page__offer-badge">Paid Plan Benefits</span>
+                    <div>
+                      <h2 class="vendor-pricing-page__offer-title">Stronger Visibility, Trust Signals, and Decision Support</h2>
+                      <p class="vendor-pricing-page__offer-copy">
+                        Move from a basic listing toward richer placement, higher buyer confidence, and better insight into how your products perform across ITMart24.
+                      </p>
+                    </div>
+
+                    <ul class="vendor-pricing-page__offer-grid">
+                      <li>
+                        <div>
+                          <strong>Trust and verification</strong>
+                          <span>Highlight verified ownership, support expectations, refund clarity, and other signals that reduce buyer hesitation.</span>
+                        </div>
+                      </li>
+                      <li>
+                        <div>
+                          <strong>Better placement</strong>
+                          <span>Unlock stronger comparison visibility, premium impressions, featured opportunities, and broader discovery surfaces.</span>
+                        </div>
+                      </li>
+                      <li>
+                        <div>
+                          <strong>Performance insight</strong>
+                          <span>Track profile interest, product engagement, and higher-value lead signals as your visibility grows.</span>
+                        </div>
+                      </li>
+                      <li>
+                        <div>
+                          <strong>Upgrade with intent</strong>
+                          <span>Choose paid visibility layers when you are ready to amplify discovery and buyer confidence.</span>
+                        </div>
+                      </li>
+                    </ul>
+                  </div>
+                </section>
               </div>
             </div>
-            <div class="vendor-pricing-page__side-item">
-              <span class="vendor-pricing-page__side-icon">02</span>
-              <div>
-                <strong>Better placement</strong>
-                <span>Unlock stronger comparison visibility, premium impressions, featured opportunities, and broader discovery surfaces.</span>
-              </div>
-            </div>
-            <div class="vendor-pricing-page__side-item">
-              <span class="vendor-pricing-page__side-icon">03</span>
-              <div>
-                <strong>Performance insight</strong>
-                <span>Track profile interest, product engagement, and higher-value lead signals as your visibility grows.</span>
-              </div>
+
+            <div class="vendor-pricing-page__hero-dots" aria-label="Hero panel slides">
+              <button
+                type="button"
+                class="vendor-pricing-page__hero-dot is-active"
+                aria-label="Show founder offer slide"
+                aria-pressed="true"
+                data-hero-slide-dot="0"
+              ></button>
+              <button
+                type="button"
+                class="vendor-pricing-page__hero-dot"
+                aria-label="Show vendor visibility slide"
+                aria-pressed="false"
+                data-hero-slide-dot="1"
+              ></button>
+              <button
+                type="button"
+                class="vendor-pricing-page__hero-dot"
+                aria-label="Show founder advantage slide"
+                aria-pressed="false"
+                data-hero-slide-dot="2"
+              ></button>
+              <button
+                type="button"
+                class="vendor-pricing-page__hero-dot"
+                aria-label="Show paid plan benefits slide"
+                aria-pressed="false"
+                data-hero-slide-dot="3"
+              ></button>
             </div>
           </div>
         </aside>
@@ -990,6 +1454,171 @@ const buildVendorPageHtml = (plans) => `
           });
         });
       });
+
+      (function initHeroCarousel() {
+        var carousel = root.querySelector('[data-hero-carousel]');
+        var track = carousel ? carousel.querySelector('.vendor-pricing-page__hero-track') : null;
+        var trackWrap = carousel ? carousel.querySelector('.vendor-pricing-page__hero-track-wrap') : null;
+        var dots = carousel ? carousel.querySelectorAll('[data-hero-slide-dot]') : [];
+        var slideCount = dots.length;
+        var activeIndex = 0;
+        var timerId = null;
+        var isPaused = false;
+        var pointerStartX = 0;
+        var pointerStartY = 0;
+        var pointerDeltaX = 0;
+        var pointerId = null;
+        var isDragging = false;
+        var dragThreshold = 48;
+
+        if (!carousel || !track || !trackWrap || slideCount < 2) {
+          return;
+        }
+
+        function renderSlide(index) {
+          activeIndex = index;
+          track.style.setProperty('--active-slide', String(index));
+
+          dots.forEach(function (dot, dotIndex) {
+            var isActive = dotIndex === index;
+            dot.classList.toggle('is-active', isActive);
+            dot.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+          });
+        }
+
+        function goToNextSlide() {
+          renderSlide((activeIndex + 1) % slideCount);
+        }
+
+        function goToPreviousSlide() {
+          renderSlide((activeIndex - 1 + slideCount) % slideCount);
+        }
+
+        function stopAutoPlay() {
+          if (timerId) {
+            window.clearInterval(timerId);
+            timerId = null;
+          }
+        }
+
+        function startAutoPlay() {
+          stopAutoPlay();
+
+          if (isPaused) {
+            return;
+          }
+
+          timerId = window.setInterval(function () {
+            goToNextSlide();
+          }, 5000);
+        }
+
+        function resetDragState() {
+          pointerId = null;
+          pointerDeltaX = 0;
+          isDragging = false;
+          track.style.removeProperty('cursor');
+        }
+
+        function handlePointerStart(event) {
+          if (event.pointerType === 'mouse' && event.button !== 0) {
+            return;
+          }
+
+          pointerId = event.pointerId;
+          pointerStartX = event.clientX;
+          pointerStartY = event.clientY;
+          pointerDeltaX = 0;
+          isDragging = true;
+          isPaused = true;
+          stopAutoPlay();
+          track.style.cursor = 'grabbing';
+          track.setPointerCapture(event.pointerId);
+        }
+
+        function handlePointerMove(event) {
+          var deltaY;
+
+          if (!isDragging || pointerId !== event.pointerId) {
+            return;
+          }
+
+          pointerDeltaX = event.clientX - pointerStartX;
+          deltaY = Math.abs(event.clientY - pointerStartY);
+
+          if (Math.abs(pointerDeltaX) > deltaY) {
+            event.preventDefault();
+          }
+        }
+
+        function handlePointerEnd(event) {
+          if (!isDragging || pointerId !== event.pointerId) {
+            return;
+          }
+
+          if (track.hasPointerCapture(event.pointerId)) {
+            track.releasePointerCapture(event.pointerId);
+          }
+
+          if (pointerDeltaX <= -dragThreshold) {
+            goToNextSlide();
+          } else if (pointerDeltaX >= dragThreshold) {
+            goToPreviousSlide();
+          }
+
+          isPaused = false;
+          resetDragState();
+          startAutoPlay();
+        }
+
+        dots.forEach(function (dot, dotIndex) {
+          dot.addEventListener('click', function () {
+            renderSlide(dotIndex);
+            startAutoPlay();
+          });
+        });
+
+        carousel.addEventListener('mouseenter', function () {
+          isPaused = true;
+          stopAutoPlay();
+        });
+
+        carousel.addEventListener('mouseleave', function () {
+          isPaused = false;
+          startAutoPlay();
+        });
+
+        carousel.addEventListener('focusin', function () {
+          isPaused = true;
+          stopAutoPlay();
+        });
+
+        carousel.addEventListener('focusout', function (event) {
+          if (carousel.contains(event.relatedTarget)) {
+            return;
+          }
+
+          isPaused = false;
+          startAutoPlay();
+        });
+
+        track.addEventListener('pointerdown', handlePointerStart);
+        track.addEventListener('pointermove', handlePointerMove);
+        track.addEventListener('pointerup', handlePointerEnd);
+        track.addEventListener('pointercancel', handlePointerEnd);
+        track.addEventListener('lostpointercapture', function () {
+          if (!isDragging) {
+            return;
+          }
+
+          isPaused = false;
+          resetDragState();
+          startAutoPlay();
+        });
+
+        renderSlide(0);
+        startAutoPlay();
+      })();
     })();
   </script>
 `.trim();

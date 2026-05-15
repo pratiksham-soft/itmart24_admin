@@ -6,6 +6,7 @@ const COLLECTION = "subscription_plans";
 export type SubscriptionPlanPayload = {
     name: string;
     slug: string;
+    sortOrder?: number;
     periods: {
         id: string;
         label: string;
@@ -15,6 +16,18 @@ export type SubscriptionPlanPayload = {
     }[];
     features: string[];
     isActive: boolean;
+};
+
+const resolveNextSortOrder = async () => {
+    const snapshot = await db
+        .collection(COLLECTION)
+        .orderBy("sortOrder", "desc")
+        .limit(1)
+        .get();
+
+    const highestSortOrder = Number(snapshot.docs[0]?.data()?.sortOrder);
+
+    return Number.isFinite(highestSortOrder) ? highestSortOrder + 1 : 1;
 };
 
 
@@ -51,10 +64,14 @@ export const createSubscriptionPlan = async (
     }
 
     const ref = db.collection(COLLECTION).doc(payload.slug);
+    const nextSortOrder = Number.isFinite(Number(payload.sortOrder))
+        ? Number(payload.sortOrder)
+        : await resolveNextSortOrder();
 
     await ref.set({
         name: payload.name,
         slug: payload.slug,
+        sortOrder: nextSortOrder,
         periods: payload.periods,
         features: payload.features,
         isActive: payload.isActive,

@@ -38,6 +38,18 @@ import BlogJobs from "./pages/Marketing/BlogManager/BlogJobs";
 import Blogs from "./pages/Marketing/BlogManager/Blogs";
 import SmManager from "./pages/Marketing/SmManager";
 import Settings from "./pages/Marketing/Settings";
+import EmailManager from "./pages/Marketing/EmailManager";
+import CRMDashboard from "./pages/Marketing/CRM";
+import LeadsPage from "./pages/Marketing/CRM/LeadsPage";
+import ContactsPage from "./pages/Marketing/CRM/ContactsPage";
+import CompaniesPage from "./pages/Marketing/CRM/CompaniesPage";
+import DealsPage from "./pages/Marketing/CRM/DealsPage";
+import TasksPage from "./pages/Marketing/CRM/TasksPage";
+import ActivitiesPage from "./pages/Marketing/CRM/ActivitiesPage";
+import EmailCampaignsPage from "./pages/Marketing/CRM/EmailCampaignsPage";
+import SegmentsPage from "./pages/Marketing/CRM/SegmentsPage";
+import ReportsPage from "./pages/Marketing/CRM/ReportsPage";
+import CRMSettingsPage from "./pages/Marketing/CRM/CRMSettingsPage";
 
 
 export default function App() {
@@ -83,6 +95,18 @@ export default function App() {
             <Route path="/marketing/blog-manager/jobs" element={<BlogJobs />} />
             <Route path="/marketing/blog-manager/blogs" element={<Blogs />} />
             <Route path="/marketing/sm-manager" element={<SmManager />} />
+            <Route path="/marketing/email-manager" element={<EmailManager />} />
+            <Route path="/marketing/crm" element={<CRMDashboard />} />
+            <Route path="/marketing/crm/leads" element={<LeadsPage />} />
+            <Route path="/marketing/crm/contacts" element={<ContactsPage />} />
+            <Route path="/marketing/crm/companies" element={<CompaniesPage />} />
+            <Route path="/marketing/crm/deals" element={<DealsPage />} />
+            <Route path="/marketing/crm/tasks" element={<TasksPage />} />
+            <Route path="/marketing/crm/activities" element={<ActivitiesPage />} />
+            <Route path="/marketing/crm/email-campaigns" element={<EmailCampaignsPage />} />
+            <Route path="/marketing/crm/segments" element={<SegmentsPage />} />
+            <Route path="/marketing/crm/reports" element={<ReportsPage />} />
+            <Route path="/marketing/crm/settings" element={<CRMSettingsPage />} />
             <Route path="/marketing/settings" element={<Settings />} />
 
             {/* Shopify */}

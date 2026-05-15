@@ -12,6 +12,9 @@ import blogManagerRoutes from "./routes/blogManager.routes";
 import healthRoutes from "./routes/health.routes";
 import authRoutes from "./routes/auth.routes";
 import adminAuthRoutes from "./routes/adminAuth.routes";
+import adminEmailRoutes from "./routes/adminEmail.routes";
+import crmRoutes from "./routes/crm.routes";
+import customPortfolioLeadsRoutes from "./routes/customPortfolioLeads.routes";
 
 
 
@@ -25,6 +28,10 @@ app.use("/api/vendors", vendorsRoutes);
 app.use("/api/notifications", notificationsRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/admin/auth", adminAuthRoutes);
+app.use("/api/admin/email", adminEmailRoutes);
+app.use("/api/custom-portfolio-pricing", customPortfolioLeadsRoutes);
+app.use("/apps/custom-portfolio-pricing", customPortfolioLeadsRoutes);
+app.use("/api/crm", crmRoutes);
 app.use("/api/subscription-plans", subscriptionPlansRoutes);
 app.use("/api/product-categories", productCategoriesRoutes);
 app.use("/api/dashboard", dashboardRoutes);

@@ -1,0 +1,795 @@
+Task: Update existing Shopify products from Section B using the product/details data from Section C. If any Section B product does not exist in Shopify, create the missing product with complete Shopify fields, metafields, filters, SEO, pricing, and logo.
+
+Work only in:
+D:\IT MART24\System_Programs\itmart24_admin
+
+Use existing project scripts/helpers wherever possible:
+- Shopify product helpers
+- Shopify metafield helpers
+- Shopify file upload helpers
+- CSV/category mapping helpers
+- filter definition helpers
+- existing product import/update conventions
+
+Make minimum code changes only.
+Do not refactor unrelated files.
+Do not modify unrelated workflows.
+The workflow must be safe to rerun.
+
+Input format:
+- Section B contains target Shopify product titles and optional Shopify Product IDs.
+- Section C contains product/company/pricing/features/details to use for updates.
+- If Product ID is provided, first try to fetch/update by Product ID.
+- If Product ID is missing or not found, match by normalized handle.
+- Fallback match by normalized title + official URL.
+- Fallback match by normalized title only if clearly safe.
+- If no safe match exists, create a new product.
+
+Strict rules:
+1. Never create duplicate products.
+2. Never create duplicate Shopify files.
+3. Never duplicate metafield values.
+4. Never attach logo as product media unless explicitly required.
+5. Never store literal \n in metafields or HTML.
+6. Use proper HTML lists, paragraphs, headings, or real line breaks.
+7. Preserve existing valid product data unless this task explicitly updates it.
+8. Use only factual information from Section C.
+9. Do not invent unsupported pricing, specs, awards, performance claims, or features.
+10. Make all updates idempotent.
+11. Final customer-facing copy must read like natural human-written professional content, not AI-generated filler.
+12. Do not mention internal workflow terms such as "Shopify", "marketplace", "Section B", "Section C", "source text", "we found", or "according to" inside customer-facing copy unless absolutely necessary.
+13. If Section C clearly contains multiple real named plans and the task asks for remaining products, create separate products for each real plan using the strongest safe title, pricing, and category mapping from the provided data.
+
+Required Shopify product fields:
+
+Title
+- Keep existing title from Section B.
+- If creating missing product, create related title.
+
+Handle
+- Keep existing handle if valid.
+- If creating product, generate clean lowercase hyphenated handle from title.
+- Handle must be deterministic and should not cause duplicate “-1” suffixes.
+
+Vendor
+- Fill using brand/company name from Section C.
+- If brand is unclear, infer from product title only when obvious.
+
+Product Category
+- Use closest valid Shopify/product category based on product type.
+- Read existing project category mappings if available:
+  backend\imports\categories.csv
+  backend\imports\category-collections.csv
+
+Product Type / Collections / custom.type_multiple
+- Read:
+  backend\imports\category-collections.csv
+- Fill product type/collection data using only valid allowed collection/category names.
+- custom.type_multiple must be a list of single-line text values.
+- Preserve existing valid relevant values.
+- Add missing relevant values only.
+- Do not duplicate values.
+- Use strongest relevant categories only.
+- Avoid vague or unsupported matches.
+- If existing custom.type_multiple values are clearly wrong and this task is explicitly correcting category mapping, replace the wrong values with the strongest relevant valid values instead of preserving bad mappings.
+
+Body HTML
+- Create/update Shopify body_html.
+- Minimum 300 words per product.
+- Must be unique per product, not copy-pasted generic text.
+- Professional, natural, customer-facing tone.
+- The writing must sound like it was written by a skilled human content writer, not a generic AI template.
+- Avoid robotic structure, repetitive sentence patterns, obvious filler, and vague generic claims.
+- Customer-facing and neutral.
+- Mention:
+  - what the product/service is
+  - who it is best for
+  - important features
+  - pricing model or starting price if available
+  - renewal/billing notes if available
+  - practical use cases
+  - support/security/performance details if available
+  - limitations or buyer considerations where relevant
+- Use clean HTML:
+  <h2>, <h3>, <p>, <ul>, <li>
+- Do not include meta commentary such as:
+  “official site says”
+  “we found”
+  “reviewed source”
+  “according to Section C”
+- Avoid unnecessary use of the words "Shopify" or "marketplace" in body copy.
+- Do not plagiarize source text directly; rewrite professionally.
+
+Variant / Price
+- Use lowest visible non-zero starting/base price from Section C.
+- Numeric only.
+- No currency symbol.
+- If multiple plans exist, use the lowest paid public plan as product price unless product title clearly maps to a higher plan.
+- If no public pricing exists, allow price = 0.
+- Do not write misleading text like “Shopify price is set to 0”.
+- If pricing is unavailable, use this customer-facing text in pricing metafield:
+  To visit product official website click "Get Now"
+
+Variant settings
+- Charge tax: false
+- Requires shipping: false
+- Inventory tracking: disabled
+- Digital/non-physical product setup
+- Product status: active
+- Publish to Online Store: true
+
+SEO Title
+- Fill Shopify SEO title.
+- Format:
+  [Product Name] + [Brand] + [Main Keyword]
+- Keep concise, readable, and natural.
+- Avoid keyword stuffing.
+
+SEO Description
+- Fill Shopify SEO description.
+- 140–160 characters preferred.
+- Natural customer-facing summary.
+- Mention main benefit/use case.
+- Avoid keyword stuffing.
+
+Metafields to update/fill:
+
+product.metafields.custom.custom
+- Store clean official product/company URL from Section C.
+- Use full https URL.
+- If multiple URLs exist, use the most relevant official product page.
+- Do not store tracking URLs.
+
+product.metafields.custom.plans_pricing
+- Fill with precise pricing and plan information from Section C.
+- Include:
+  - starting price
+  - billing term
+  - renewal price if available
+  - plan differences if available
+  - important pricing limitations if available
+- This metafield must be plain text only.
+- Do not use HTML tags in this metafield.
+- Use readable multiline text with short headings and bullet-style lines if helpful.
+- Never store literal \n.
+- If pricing is unavailable, use exactly:
+  To visit product official website click "Get Now"
+
+product.metafields.custom.product_features
+- Fill with improved customer-facing feature bullets.
+- Use only supported features from Section C.
+- Group features logically where useful:
+  Core Features
+  Performance
+  Security
+  Support
+  Builder/AI Tools
+  Integrations
+  Managed Features
+- This metafield must be plain text only.
+- Do not use HTML tags in this metafield.
+- Use readable multiline text with grouped headings and bullet-style lines.
+- Never store literal \n.
+
+product.metafields.custom.pros_cons
+- Fill with factual pros and cons.
+- Pros should highlight clear strengths from Section C.
+- Cons should mention factual limitations only, such as:
+  renewal price increase
+  limited storage on entry plan
+  annual prepayment requirement
+  feature only available on higher plan
+- Do not add unsupported opinions.
+- This metafield must be plain text only.
+- Do not use HTML tags in this metafield.
+- Use readable multiline text with "Pros" and "Cons" headings and bullet-style lines.
+- Never store literal \n.
+
+product.metafields.custom.logo_image
+- Use "https://cdn.shopify.com/s/files/1/0770/5192/0623/files/WPX_Logo_Purple_and_Orange.png"  this URL for product.metafields.custom.logo_image.
+
+
+Ignored metafields/columns
+Do not update these unless existing project logic strictly requires it:
+- product.metafields.custom.target_use_case
+- product.metafields.custom.pricing_billing
+- product.metafields.custom.deployment_compatibility
+- product.metafields.custom.features_functionality
+- product.metafields.custom.security_backups
+- product.metafields.custom.performance_specs
+- product.metafields.custom.support
+- product.metafields.custom.team_collaboration
+- product.metafields.custom.developer_features
+
+Filters
+- Read:
+  backend\doc\shopify-filter-definitions.csv
+- Fill only supported filter metafields.
+- Use exact allowed values/formats from filter definitions.
+- Do not guess unsupported values.
+- Leave unknown filters blank.
+
+Images / Media
+- Do not upload logo as product media.
+- Do not duplicate existing product media.
+- If product media already exists, preserve it.
+- Only update media if existing project convention requires a non-logo product image and a valid non-logo image is available.
+- Otherwise leave product media untouched.
+
+Deduplication logic:
+Before creating any missing product, check:
+1. Product ID from Section B if available
+2. Existing Shopify products by normalized handle
+3. Existing Shopify products by normalized title + official URL
+4. Existing Shopify products by normalized title if clearly safe
+5. Current job in-memory processed map
+
+Current job deduplication:
+- Maintain in-memory sets/maps for:
+  - processed product IDs
+  - normalized handles
+  - normalized title + official URL
+  - uploaded logo/file keys
+- If duplicate appears in Section B, update once and log duplicate row as skipped_existing_current_job.
+
+Required logging statuses:
+- updated_existing_product
+- created_missing_product
+- skipped_existing_current_job
+- skipped_missing_required_data
+- skipped_pricing_unavailable
+- updated_type_multiple
+- skipped_logo_existing
+- logo_uploaded
+- failed
+
+Per-product logging must include:
+- product title
+- product ID if available
+- matched by: product_id / handle / title_url / title / created
+- price used
+- SEO updated yes/no
+- metafields updated list
+- logo action
+- final status
+
+Missing required data:
+Skip only if product cannot safely be created or updated because required data is missing:
+- title missing
+- no safe brand/vendor
+- no safe official URL when required by existing project convention
+- insufficient product details for meaningful body HTML
+
+For existing products:
+- Update all specified fields and metafields.
+- Preserve valid existing data not covered by this task.
+- Do not create duplicate product.
+- If custom.type_multiple is missing relevant allowed values, add them.
+- Do not remove existing valid custom.type_multiple values.
+
+For missing products:
+Create with:
+- Title
+- Handle
+- Vendor
+- Product category
+- Body HTML minimum 300 words
+- Price
+- Charge tax false
+- Requires shipping false
+- Inventory tracking disabled
+- Status active
+- Published to Online Store true
+- SEO title
+- SEO description
+- custom.custom official URL
+- custom.plans_pricing
+- custom.product_features
+- custom.pros_cons
+- custom.type_multiple
+- custom.logo_image if available
+- supported filter metafields
+
+Final output:
+After running, provide:
+1. Changed files
+2. Total Section B products received
+3. Existing products updated
+4. Missing products created
+5. Skipped current-job duplicates
+6. Skipped missing required data
+7. Skipped pricing unavailable
+8. Logo uploaded count
+9. Logo reused/skipped count
+10. Failed count
+11. Product-by-product summary
+12. Any assumptions made from Section C
+
+Important:
+Keep this task focused. Do not run a full category import. Do not process unrelated CSV folders. Only update/create the products listed in Section B using Section C.
+Shopify Admin API Credentials are in "D:\IT MART24\System_Programs\itmart24_admin\backend\.env"
+
+If Shopify do not have product mentioned in Section C then create new products in Shopify.
+"https://wpx.net/?affid=12462" Use this affiliate ID in all redirection links of WPX products
+
+***********
+
+Section B:
+
+WPX Hosting (with WooCommerce)
+9102082605295
+
+
+
+*******************************************
+
+Section C:
+
+
+Wordpress Hosting
+
+Starter
+For one high-performance site
+
+$17.99/mo
+2 months free if you pay yearly
+
+$14.99/mo
+$179.90 USD Yearly Purchase
+2 months free included
+
+$14.24/mo
+Prepaid $341.81 USD
+for 2 years
+5 months free included
+
+$12.49/mo
+Prepaid $449.75 USD
+for 3 years
+11 months free included
+
+$12.37/mo
+Prepaid $593.67 USD
+for 4 years
+15 months free included
+
+$11.99/mo
+Prepaid $719.60 USD
+for 5 years
+20 months free included
+
+Core resources
+ 1 Website
+ 10 GB Storage
+ Unlimited Visitors
+ 100 GB Bandwidth
+ 
+Performance specs
+ 3 GB RAM
+ 0.5 CPU Cores
+ 9 PHP Workers
+
+Features
+ Custom high-speed global CDN
+ Site Migrations
+ Free SSL Certificates
+ Daily Backups
+ Malware scans and removal
+ Fixed For You Guarantee
+ 24/7 Technical Support
+ 
+ **********************
+ 
+ Wordpress Hosting
+ 
+ Business
+For growing small businesses
+
+$29.99/mo
+2 months free if you pay yearly
+
+$24.99/mo
+$299.90 USD Yearly Purchase
+2 months free included
+
+$23.74/mo
+Prepaid $569.81 USD
+for 2 years
+5 months free included
+
+$20.83/mo
+Prepaid $749.75 USD
+for 3 years
+11 months free included
+
+$20.62/mo
+Prepaid $989.67 USD
+for 4 years
+15 months free included
+
+$19.99/mo
+Prepaid $1,199.60 USD
+for 5 years
+20 months free included
+
+Core resources
+ Up to 5 Websites
+ 20 GB Storage
+ Unlimited Visitors
+ 200 GB Bandwidth
+ 
+Performance specs
+ 5 GB RAM
+ 1 CPU Core
+ 15 PHP Workers
+ 
+Features
+All from Starter plan +
+
+ Business Email
+ Webmail
+ Unlimited Mail Boxes
+ Email Migrations
+ AI-powered Email Protection
+ Temp URL
+ 
+ ********************
+ 
+ Wordpress Hosting
+ 
+Professional
+For scaling freelancers and small agencies
+
+$59.99/mo
+2 months free if you pay yearly
+
+$49.99/mo
+$599.90 USD Yearly Purchase
+2 months free included
+
+$47.49/mo
+Prepaid $1,139.81 USD
+for 2 years
+5 months free included
+
+$41.66/mo
+Prepaid $1,499.75 USD
+for 3 years
+11 months free included
+
+$41.24/mo
+Prepaid $1,979.67 USD
+for 4 years
+15 months free included
+
+$39.99/mo
+Prepaid $2,399.60 USD
+for 5 years
+20 months free included
+
+Core resources
+ Up to 15 Websites
+ 40 GB Storage
+ Unlimited Visitors
+ 400 GB Bandwidth
+ 
+Performance specs
+ 15 GB RAM
+ 2 CPU Cores
+ 45 PHP Workers
+ 
+Features
+All from Starter plan +
+
+ Business Email
+ Webmail
+ Unlimited Mail Boxes
+ Email Migrations
+ AI-powered Email Protection
+ Temp URL
+ 
+ **************************************
+ 
+ Agency Hosting
+ 
+ Elite
+Elite resources for power users
+
+$119.99/mo
+2 months free if you pay yearly
+
+$99.99/mo
+$1,199.90 USD
+Yearly Purchase
+2 months free included
+
+$94.99/mo
+Prepaid $2,279.81 USD
+for 2 years
+5 months free included
+
+$83.33/mo
+Prepaid $2,999.75 USD
+for 3 years
+11 months free included
+
+$82.49/mo
+Prepaid $3,959.67 USD
+for 4 years
+15 months free included
+
+$79.99/mo
+Prepaid $4,799.60 USD
+for 5 years
+20 months free included
+
+Core resources
+ Up to 35 Websites
+ 80 GB Storage
+ Unlimited Visitors
+ Unlimited Bandwidth
+ 
+Performance specs
+ 35 GB RAM
+ 3 CPU Cores
+ 105 PHP Workers
+ 
+Features
+ Custom high-speed global CDN
+ Site and Email Migrations
+ Free SSL Certificates
+ Daily Backups
+ Malware scans and removal
+ Business Email + Webmail
+ Unlimited Mail Boxes
+ AI-Powered Email Protection
+ Temp URL
+ Fixed For You Guarantee
+ 24/7 Technical Support
+ Redis Cache
+ 
+ ***********************************
+ 
+  Agency Hosting
+  
+ Agency
+Full-service Agency hosting
+
+$599.99/mo
+2 months free if you pay yearly
+
+$499.99/mo
+$5,999.90 USD
+Yearly Purchase
+2 months free included
+
+$474.99/mo
+Prepaid $11,399.81 USD
+for 2 years
+5 months free included
+
+$416.66/mo
+Prepaid $14,999.75 USD
+for 3 years
+11 months free included
+
+$412.49/mo
+Prepaid $19,799.67 USD
+for 4 years
+15 months free included
+
+$399.99/mo
+Prepaid $23,999.60 USD
+for 5 years
+20 months free included
+
+Core resources
+ Up to 200 Websites
+ 300 GB Storage
+ Unlimited Visitors
+ Unlimited Bandwidth
+ 
+Performance specs
+ 100 GB RAM
+ 6 CPU Cores
+ 300 PHP Workers
+ 
+Features
+ Custom high-speed global CDN
+ Site and Email Migrations
+ Free SSL Certificates
+ Daily Backups
+ Malware scans and removal
+ Business Email + Webmail
+ Unlimited Mail Boxes
+ AI-Powered Email Protection
+ Temp URL
+ Fixed For You Guarantee
+ 24/7 Technical Support
+ Redis Cache
+ 
+ ****************************************
+ 
+ WooCommerce Hosting
+ 
+ Powerstore
+For one high-performance store
+
+$34.99/mo
+2 months free if you pay yearly
+
+$29.16/mo
+$349.90 USD
+Yearly Purchase
+2 months free included
+
+$27.70/mo
+Prepaid $664.81 USD
+for 2 years
+5 months free included
+
+$24.30/mo
+Prepaid $874.75 USD
+for 3 years
+11 months free included
+
+$24.06/mo
+Prepaid $1,154.67 USD
+for 4 years
+15 months free included
+
+$23.33/mo
+Prepaid $1,399.60 USD
+for 5 years
+20 months free included
+
+Core resources
+ 1 Website
+ 20 GB Storage
+ Unlimited Visitors
+ 400 GB Bandwidth
+
+Performance specs
+ 8 GB RAM
+ 2 CPU Cores
+ 10 PHP Workers
+
+Features
+ Custom high-speed global CDN
+ Site and Email Migrations
+ Free SSL Certificates
+ Daily Backups
+ Malware scans and removal
+ Business Email + Webmail
+ Unlimited Mail Boxes
+ AI-Powered Email Protection
+ Temp URL
+ Fixed For You Guarantee
+ 24/7 Technical Support
+ Redis Cache
+ Optimized for WooCommerce
+ 
+ 
+ *******************************************
+ 
+
+ WooCommerce Hosting
+
+ Superstore
+For growing ecommerce portfolios
+
+$74.99/mo
+2 months free if you pay yearly
+
+$62.49/mo
+$749.90 USD
+Yearly Purchase
+2 months free included
+
+$59.37/mo
+Prepaid $1,424.81 USD
+for 2 years
+5 months free included
+
+$52.08/mo
+Prepaid $1,874.75 USD
+for 3 years
+11 months free included
+
+$51.56/mo
+Prepaid $2,474.67 USD
+for 4 years
+15 months free included
+
+$49.99/mo
+Prepaid $2,999.60 USD
+for 5 years
+20 months free included
+
+Core resources
+ Up to 3 Websites
+ 50 GB Storage
+ Unlimited Visitors
+ Unlimited Bandwidth
+
+Performance specs
+ 36 GB RAM
+ 3 CPU Cores
+ 40 PHP Workers
+
+Features
+ Custom high-speed global CDN
+ Site and Email Migrations
+ Free SSL Certificates
+ Daily Backups
+ Malware scans and removal
+ Business Email + Webmail
+ Unlimited Mail Boxes
+ AI-Powered Email Protection
+ Temp URL
+ Fixed For You Guarantee
+ 24/7 Technical Support
+ Redis Cache
+ Optimized for WooCommerce
+ 
+ ***************************************
+ 
+
+ WooCommerce Hosting
+
+ Hyperstore
+For peak ecommerce performance
+
+$149.99/mo
+2 months free if you pay yearly
+
+$124.99/mo
+$1,499.90 USD
+Yearly Purchase
+2 months free included
+
+$118.74/mo
+Prepaid $2,849.81 USD
+for 2 years
+5 months free included
+
+$104.16/mo
+Prepaid $3,749.75 USD
+for 3 years
+11 months free included
+
+$103.12/mo
+Prepaid $4,949.67 USD
+for 4 years
+15 months free included
+
+$99.99/mo
+Prepaid $5,999.60 USD
+for 5 years
+20 months free included
+
+Core resources
+ Up to 5 Websites
+ 100 GB Storage
+ Unlimited Visitors
+ Unlimited Bandwidth
+
+Performance specs
+ 80 GB RAM
+ 4 CPU Cores
+ 80 PHP Workers
+
+Features
+ Custom high-speed global CDN
+ Site and Email Migrations
+ Free SSL Certificates
+ Daily Backups
+ Malware scans and removal
+ Business Email + Webmail
+ Unlimited Mail Boxes
+ AI-Powered Email Protection
+ Temp URL
+ Fixed For You Guarantee
+ 24/7 Technical Support
+ Redis Cache
+ Optimized for WooCommerce

@@ -1,0 +1,131 @@
+CONTENT WRITING & HUMANIZATION RULES — MANDATORY
+
+Whenever you create, update, import, rewrite, or publish any customer-facing content, write it like a professional human content writer, not like an AI assistant, developer, database importer, or documentation writer.
+
+The final content must sound natural, polished, premium, commercial, reader-friendly, and suitable for a real SaaS/software marketplace website. It must never feel AI-generated, robotic, placeholder-like, over-explained, or copied from internal data.
+
+Write as if the content is final website copy written by an experienced SaaS, software, and digital product content writer.
+
+STRICTLY DO NOT USE THESE PHRASES OR SIMILAR VARIATIONS:
+- as per supplied data
+- as per provided data
+- based on supplied data
+- based on provided information
+- according to the data
+- according to the supplied information
+- from the provided details
+- from the supplied content
+- as a marketplace
+- in this marketplace
+- marketplace context
+- Shopify pricing
+- Shopify product
+- Shopify data
+- Shopify listing
+- this product data
+- product metadata
+- metafields
+- Firestore
+- collection handle
+- product ID
+- source file
+- imported data
+- vendor-provided data
+- generated description
+- AI-generated
+- this page provides
+- this section explains
+- users can find
+- users can compare
+- the platform offers
+- the product is listed
+- the vendor has provided
+- official data says
+
+DO NOT mention internal systems, backend logic, Shopify, metafields, Firestore, APIs, product IDs, collection handles, import scripts, source files, database fields, admin panel fields, or any technical/internal source of the content in customer-facing text.
+
+DO NOT write content that sounds like:
+- a database record explanation
+- an AI-generated summary
+- a product import note
+- a developer comment
+- a documentation paragraph
+- a placeholder description
+- a robotic SEO paragraph
+
+TONE REQUIREMENTS:
+- Professional
+- Natural
+- Human
+- Confident
+- Helpful
+- Clear
+- Premium
+- Commercial but not pushy
+- SEO-friendly without keyword stuffing
+- Written for buyers, vendors, founders, or business users depending on context
+
+STYLE REQUIREMENTS:
+- Use normal human sentence flow.
+- Keep paragraphs short and readable.
+- Avoid repeating the same phrase structure.
+- Avoid overusing the product name.
+- Avoid generic AI phrases such as “robust solution,” “seamless experience,” “empower businesses,” “cutting-edge,” “unlock potential,” and “revolutionize” unless they genuinely fit.
+- Avoid repetitive phrases like “users can,” “businesses can,” “this tool helps,” again and again.
+- Prefer specific benefits, practical use cases, buyer intent, decision-making value, and business outcomes.
+- Make every sentence sound useful to a real visitor.
+- Write with the quality expected from a premium SaaS marketplace, software directory, comparison website, or startup landing page.
+
+CONTENT STRUCTURE RULES:
+For product descriptions:
+1. Start with a natural buyer-focused sentence explaining what the product helps with.
+2. Mention practical benefits and common use cases.
+3. Explain who it is useful for.
+4. Close with a helpful buying, comparison, or evaluation-focused sentence.
+5. Do not mention where the information came from.
+
+For category descriptions:
+1. Explain what the category covers in natural language.
+2. Mention common product types or use cases.
+3. Help buyers understand how to compare options.
+4. Keep it useful, search-friendly, and non-generic.
+
+For comparison pages:
+1. Write like a neutral expert comparison writer.
+2. Help readers understand the difference between products.
+3. Focus on use cases, pricing considerations, features, support, scalability, and decision factors.
+4. Avoid fake certainty if exact data is unavailable.
+5. Do not say “as per supplied data” or “based on provided data.”
+
+For vendor-facing content:
+1. Sound premium, founder-friendly, and opportunity-driven.
+2. Avoid cheap discount language.
+3. Emphasize trust, visibility, early advantage, growth potential, and long-term value.
+4. Keep the tone professional and credible.
+
+FINAL HUMANIZATION PASS — REQUIRED BEFORE SAVING:
+Before saving, publishing, or returning the final content, review every generated line and rewrite anything that sounds:
+- AI-generated
+- robotic
+- repetitive
+- generic
+- overly formal
+- unnatural
+- source-referencing
+- database-like
+- placeholder-like
+- keyword-stuffed
+
+Final output must not contain even one sentence that sounds like it was written by AI or copied from supplied data.
+
+QUALITY CHECK BEFORE COMPLETION:
+Confirm internally that:
+1. No forbidden phrases are present.
+2. No internal systems or source references are mentioned.
+3. The content sounds like professional human website copy.
+4. The tone is natural, polished, and commercially useful.
+5. The text is suitable for public display on ITMart24 or a similar premium SaaS/software marketplace.
+6. The content is SEO-friendly but not spammy.
+7. The wording is unique, varied, and not repetitive.
+
+If any generated content fails these rules, rewrite it automatically before final output.

@@ -200,6 +200,22 @@ const navItems: NavItem[] = [
     name: "Marketing",
     subItems: [
       {
+        name: "CRM",
+        subItems: [
+          { name: "CRM Dashboard", path: "/marketing/crm" },
+          { name: "Leads", path: "/marketing/crm/leads" },
+          { name: "Contacts", path: "/marketing/crm/contacts" },
+          { name: "Companies", path: "/marketing/crm/companies" },
+          { name: "Deals / Pipeline", path: "/marketing/crm/deals" },
+          { name: "Tasks & Follow-ups", path: "/marketing/crm/tasks" },
+          { name: "Activities", path: "/marketing/crm/activities" },
+          { name: "Email Campaigns", path: "/marketing/crm/email-campaigns" },
+          { name: "Segments", path: "/marketing/crm/segments" },
+          { name: "Reports", path: "/marketing/crm/reports" },
+          { name: "CRM Settings", path: "/marketing/crm/settings" },
+        ],
+      },
+      {
         name: "Blog Manager",
         subItems: [
           { name: "Jobs", path: "/marketing/blog-manager/jobs" },
@@ -209,6 +225,10 @@ const navItems: NavItem[] = [
       {
         name: "SM Manager",
         path: "/marketing/sm-manager",
+      },
+      {
+        name: "Email Manager",
+        path: "/marketing/email-manager",
       },
       {
         name: "Settings",
