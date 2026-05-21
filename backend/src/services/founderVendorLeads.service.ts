@@ -1,36 +1,24 @@
 import { ensureTables, getAnalyticsPool } from "./analyticsPostgres.service";
 
-type CustomPortfolioLeadPayload = {
+type FounderVendorLeadPayload = {
   leadType?: unknown;
+  fullName?: unknown;
+  businessEmail?: unknown;
   companyName?: unknown;
   website?: unknown;
-  businessEmail?: unknown;
-  contactName?: unknown;
-  jobTitle?: unknown;
-  country?: unknown;
-  productCountRange?: unknown;
   categories?: unknown;
-  promotionGoals?: unknown;
-  visibilityLevel?: unknown;
-  budgetRange?: unknown;
+  phone?: unknown;
   message?: unknown;
   sourcePage?: unknown;
   shopifyPageId?: unknown;
 };
 
-const SOURCE_PAGE = "vendor_page";
-const SHOPIFY_PAGE_ID = "124057551087";
-const LEAD_SOURCE = "Vendor Page - Custom Portfolio Pricing";
-const LEAD_TAG = "custom_portfolio_pricing";
+const LEAD_TYPE = "founder_vendor_program";
+const DEFAULT_SOURCE_PAGE = "founder_vendor_program_page";
+const LEAD_SOURCE = "Founder Vendor Program Page";
+const LEAD_TAG = "founder_vendor_program";
 
-const PRODUCT_COUNT_OPTIONS = new Set([
-  "21-25 products",
-  "26-35 products",
-  "36-50 products",
-  "50+ products",
-]);
-
-const CATEGORY_OPTIONS = new Set([
+const PRODUCT_CATEGORY_OPTIONS = new Set([
   "Web Hosting",
   "WordPress Hosting",
   "VPS Hosting",
@@ -44,42 +32,22 @@ const CATEGORY_OPTIONS = new Set([
   "Other",
 ]);
 
-const PROMOTION_GOAL_OPTIONS = new Set([
-  "More product impressions",
-  "More website clicks",
-  "Better category visibility",
-  "Featured placement",
-  "Comparison page inclusion",
-  "Vendor profile promotion",
-  "Lead generation",
-  "Brand awareness",
-  "Launch campaign",
-  "Long-term marketplace visibility",
-]);
-
-const VISIBILITY_OPTIONS = new Set([
-  "Basic portfolio listing",
-  "Growth visibility package",
-  "Enterprise visibility package",
-  "Maximum category exposure",
-  "Not sure, please recommend",
-]);
-
-const BUDGET_OPTIONS = new Set([
-  "Below $1,000",
-  "$1,000 - $2,500",
-  "$2,500 - $5,000",
-  "$5,000 - $10,000",
-  "$10,000+",
-  "Not decided yet",
-]);
-
 const trim = (value: unknown) => String(value ?? "").trim();
+
+const requiredText = (value: unknown, label: string) => {
+  const normalized = trim(value);
+  if (!normalized) {
+    throw new Error(`${label} is required.`);
+  }
+  return normalized;
+};
+
+const optionalText = (value: unknown) => trim(value) || null;
 
 const normalizeWebsite = (value: unknown) => {
   const raw = trim(value);
   if (!raw) {
-    throw new Error("Official Website is required.");
+    throw new Error("Website URL is required.");
   }
 
   const withProtocol = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
@@ -107,29 +75,8 @@ const normalizeEmail = (value: unknown) => {
   return email;
 };
 
-const requiredText = (value: unknown, label: string) => {
-  const normalized = trim(value);
-  if (!normalized) {
-    throw new Error(`${label} is required.`);
-  }
-  return normalized;
-};
-
-const optionalText = (value: unknown) => trim(value) || null;
-
 const normalizeChoice = (value: unknown, allowed: Set<string>, label: string) => {
   const normalized = requiredText(value, label);
-  if (!allowed.has(normalized)) {
-    throw new Error(`${label} has an invalid value.`);
-  }
-  return normalized;
-};
-
-const normalizeOptionalChoice = (value: unknown, allowed: Set<string>, label: string) => {
-  const normalized = optionalText(value);
-  if (!normalized) {
-    return null;
-  }
   if (!allowed.has(normalized)) {
     throw new Error(`${label} has an invalid value.`);
   }
@@ -157,73 +104,6 @@ const normalizeMultiChoice = (value: unknown, allowed: Set<string>, label: strin
   return uniqueValues;
 };
 
-const getLeadPriority = (productCountRange: string, budgetRange: string | null) => {
-  if (productCountRange === "50+ products" || budgetRange === "$10,000+") {
-    return "High";
-  }
-
-  if (
-    ["21-25 products", "26-35 products", "36-50 products"].includes(productCountRange) ||
-    ["$2,500 - $5,000", "$5,000 - $10,000"].includes(budgetRange ?? "")
-  ) {
-    return "Medium";
-  }
-
-  return "Normal";
-};
-
-const buildNote = (lead: ReturnType<typeof sanitizeCustomPortfolioLead>) =>
-  [
-    "Custom Portfolio Pricing Inquiry",
-    `Product count range: ${lead.productCountRange}`,
-    `Selected categories: ${lead.categories.join(", ")}`,
-    `Promotion goals: ${lead.promotionGoals.join(", ")}`,
-    `Preferred visibility level: ${lead.visibilityLevel}`,
-    `Budget range: ${lead.budgetRange ?? "Not provided"}`,
-    `Message: ${lead.message ?? "Not provided"}`,
-    `Source page: ${lead.sourcePage}`,
-    `Shopify Page ID: ${lead.shopifyPageId}`,
-  ].join("\n");
-
-const sanitizeCustomPortfolioLead = (payload: CustomPortfolioLeadPayload) => ({
-  leadType: "custom_portfolio_pricing",
-  companyName: requiredText(payload.companyName, "Company Name"),
-  website: normalizeWebsite(payload.website),
-  businessEmail: normalizeEmail(payload.businessEmail),
-  contactName: requiredText(payload.contactName, "Contact Person Name"),
-  jobTitle: optionalText(payload.jobTitle),
-  country: optionalText(payload.country),
-  productCountRange: normalizeChoice(
-    payload.productCountRange,
-    PRODUCT_COUNT_OPTIONS,
-    "Number of Products / Plans"
-  ),
-  categories: normalizeMultiChoice(
-    payload.categories,
-    CATEGORY_OPTIONS,
-    "Primary Product Categories"
-  ),
-  promotionGoals: normalizeMultiChoice(
-    payload.promotionGoals,
-    PROMOTION_GOAL_OPTIONS,
-    "Promotion Goals"
-  ),
-  visibilityLevel: normalizeChoice(
-    payload.visibilityLevel,
-    VISIBILITY_OPTIONS,
-    "Preferred Visibility Level"
-  ),
-  budgetRange: normalizeOptionalChoice(
-    payload.budgetRange,
-    BUDGET_OPTIONS,
-    "Estimated Yearly Budget"
-  ),
-  message: optionalText(payload.message),
-  sourcePage: SOURCE_PAGE,
-  shopifyPageId: SHOPIFY_PAGE_ID,
-  status: "new",
-});
-
 const splitContactName = (name: string) => {
   const parts = name.split(/\s+/).filter(Boolean);
   const firstName = parts.shift() ?? name;
@@ -247,24 +127,57 @@ const appendLeadNote = (existing: unknown, noteText: string) => {
   return [
     ...notes,
     {
-      id: `note-custom-portfolio-${Date.now()}`,
+      id: `note-founder-vendor-${Date.now()}`,
       text: noteText,
       authorId: null,
-      authorName: "Vendor Page",
+      authorName: "Founder Vendor Program Page",
       createdAt: new Date().toISOString(),
     },
   ];
 };
 
-export const submitCustomPortfolioLead = async (
-  payload: CustomPortfolioLeadPayload
-) => {
+const sanitizeFounderVendorLead = (payload: FounderVendorLeadPayload) => ({
+  leadType: LEAD_TYPE,
+  fullName: requiredText(payload.fullName, "Full Name"),
+  businessEmail: normalizeEmail(payload.businessEmail),
+  companyName: requiredText(payload.companyName, "Company Name"),
+  website: normalizeWebsite(payload.website),
+  categories: normalizeMultiChoice(
+    payload.categories,
+    PRODUCT_CATEGORY_OPTIONS,
+    "Primary Product Categories"
+  ),
+  phone: optionalText(payload.phone),
+  message: optionalText(payload.message),
+  sourcePage: optionalText(payload.sourcePage) || DEFAULT_SOURCE_PAGE,
+  shopifyPageId: optionalText(payload.shopifyPageId) || null,
+  status: "new",
+});
+
+const buildMessage = (lead: ReturnType<typeof sanitizeFounderVendorLead>) =>
+  [
+    `Founder Vendor Program Application`,
+    `Primary product categories: ${lead.categories.join(", ")}`,
+    `Phone / WhatsApp: ${lead.phone ?? "Not provided"}`,
+    `Message: ${lead.message ?? "Not provided"}`,
+  ].join("\n");
+
+const buildNote = (lead: ReturnType<typeof sanitizeFounderVendorLead>) =>
+  [
+    "Founder Vendor Program Inquiry",
+    `Primary product categories: ${lead.categories.join(", ")}`,
+    `Phone / WhatsApp: ${lead.phone ?? "Not provided"}`,
+    `Message: ${lead.message ?? "Not provided"}`,
+    `Source page: ${lead.sourcePage}`,
+    `Shopify Page ID: ${lead.shopifyPageId ?? "Not provided"}`,
+  ].join("\n");
+
+export const submitFounderVendorLead = async (payload: FounderVendorLeadPayload) => {
   await ensureTables();
 
-  const lead = sanitizeCustomPortfolioLead(payload);
-  const priority = getLeadPriority(lead.productCountRange, lead.budgetRange);
+  const lead = sanitizeFounderVendorLead(payload);
   const noteText = buildNote(lead);
-  const contactName = splitContactName(lead.contactName);
+  const contactName = splitContactName(lead.fullName);
   const pool = await getAnalyticsPool();
 
   const client = await pool.connect();
@@ -287,20 +200,20 @@ export const submitCustomPortfolioLead = async (
         )
         RETURNING id
       `,
-      [
-        lead.leadType,
-        lead.companyName,
-        lead.website,
-        lead.businessEmail,
-        lead.contactName,
-        lead.jobTitle,
-        lead.country,
-        lead.productCountRange,
-        JSON.stringify(lead.categories),
-        JSON.stringify(lead.promotionGoals),
-        lead.visibilityLevel,
-        lead.budgetRange,
-        lead.message,
+        [
+          lead.leadType,
+          lead.companyName,
+          lead.website,
+          lead.businessEmail,
+          lead.fullName,
+          null,
+          null,
+          "Not specified",
+          JSON.stringify(lead.categories),
+          JSON.stringify([]),
+          "Founder Vendor Program",
+          null,
+        buildMessage(lead),
         lead.sourcePage,
         lead.shopifyPageId,
         lead.status,
@@ -332,13 +245,12 @@ export const submitCustomPortfolioLead = async (
               last_name = COALESCE(last_name, $3),
               email = COALESCE(email, $4),
               company_name = COALESCE(NULLIF(company_name, ''), $5),
-              job_title = COALESCE(NULLIF(job_title, ''), $6),
-              website = COALESCE(NULLIF(website, ''), $7),
-              lead_source = $8,
-              lead_status = $9,
-              lead_priority = $10,
-              tags = $11::jsonb,
-              notes = $12::jsonb,
+              website = COALESCE(NULLIF(website, ''), $6),
+              lead_source = $7,
+              lead_status = $8,
+              lead_priority = $9,
+              tags = $10::jsonb,
+              notes = $11::jsonb,
               last_activity_at = NOW(),
               updated_at = NOW()
           WHERE id = $1 AND deleted_at IS NULL
@@ -350,11 +262,10 @@ export const submitCustomPortfolioLead = async (
           contactName.lastName,
           lead.businessEmail,
           lead.companyName,
-          lead.jobTitle,
           lead.website,
           LEAD_SOURCE,
           "New",
-          priority,
+          "Normal",
           JSON.stringify(mergeTags(existing.tags)),
           JSON.stringify(appendLeadNote(existing.notes, noteText)),
         ]
@@ -364,13 +275,13 @@ export const submitCustomPortfolioLead = async (
       const insertLeadResult = await client.query(
         `
           INSERT INTO crm_leads (
-            first_name, last_name, email, company_name, job_title, website,
+            first_name, last_name, email, company_name, website,
             lead_source, lead_status, lead_priority, tags, notes,
             last_activity_at, created_at, updated_at
           )
           VALUES (
-            $1, $2, $3, $4, $5, $6,
-            $7, $8, $9, $10::jsonb, $11::jsonb,
+            $1, $2, $3, $4, $5,
+            $6, $7, $8, $9::jsonb, $10::jsonb,
             NOW(), NOW(), NOW()
           )
           RETURNING id
@@ -380,11 +291,10 @@ export const submitCustomPortfolioLead = async (
           contactName.lastName,
           lead.businessEmail,
           lead.companyName,
-          lead.jobTitle,
           lead.website,
           LEAD_SOURCE,
           "New",
-          priority,
+          "Normal",
           JSON.stringify([LEAD_TAG]),
           JSON.stringify(appendLeadNote([], noteText)),
         ]

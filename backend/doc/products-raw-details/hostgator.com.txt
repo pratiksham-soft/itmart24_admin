@@ -1,0 +1,4412 @@
+I. Web Hosting Plans
+URL: https://www.hostgator.com/web-hosting
+
+1) Hatchling Plan
+
+Pricing
+- Introductory offer: $3.75/mo*
+- Renewal price:
+  - 1 Month: $17.59/mo
+  - 3 Months: $16.49/mo
+  - 6 Months: $15.39/mo
+  - 1 Year: $13.19/mo
+  - 2 Years: $12.09/mo
+  - 3 Years: $10.99/mo
+
+Top features:
+- 10 Websites
+- 10 GB SSD Storage
+- Ideal for 40K visits/mo
+- 30-day Money-Back Guarantee
+- Free Domain 1st Year
+- Free Site Migration Tool
+- Free CDN - Cloudflare with Argo Routing
+- Managed WordPress Updates
+- 24/7 Chat Support
+- Free SSL - Let's Encrypt
+- Free Malware Scanning
+- Malware Detection & Removal
+- Web Application Firewall
+- DDoS Protection Included
+- Yoast SEO - Free Plugin
+- Pro Email - Free Trial
+- Creative Mail - Email Marketing
+- Static Content Caching
+- Object Caching
+- SSH & WP-CLI
+- WordPress Staging Site
+
+cPanel:
+- Latest cPanel web hosting control panel
+- Website statistic tools
+- AWStats
+- Webalizer
+- Raw Log Manager
+- Referrer Logs
+- Error Logs
+- Application installs
+- Instant Shopping Carts
+- Blogs
+- Portals
+- Forums
+- Counters
+- Password protected directories
+- Custom error pages
+- Expert management tools
+- Web Based File Manager
+- Hotlink Protection
+- IP Deny Manager
+- Redirect URL
+
+Email:
+- POP3 email accounts with SMTP: Included
+- Webmail access
+- Access email via available webmail clients
+- Get email on phone via IMAP support
+- SpamAssassin spam protection
+- Advanced email tools
+- Unlimited Email Aliases
+- Autoresponders
+- Mail Forwards
+- 25 Mailing Lists
+- Pro Email - Free Trial
+- Creative Mail - Email Marketing
+
+Domain/FTP:
+- Free Domain 1st Year
+- FTP accounts: Unlimited
+- Addon/Parked domains
+- Free SSL - Let's Encrypt
+
+Support:
+- Chat Only
+- 24/7 Chat Support
+- 30-day Money-Back Guarantee
+- Courtesy website backups
+- 24/7/365 hosting server monitoring
+
+Programming/Databases:
+- MySQL databases with phpMyAdmin access
+- Supported programming languages:
+  - CGI
+  - Fast CGI
+  - PHP 8.2
+  - Ruby on Rails
+  - Perl
+  - Python
+  - SSL
+- Supported programming modules:
+  - Curl
+  - CPAN
+  - GD Library
+  - ImageMagick
+- System management:
+  - SSH Access
+  - Cron Job Scheduling
+- SSH & WP-CLI
+
+Application:
+- One-click installs
+- Instantly install over 75 open-source scripts with one click
+- WordPress Hosting
+- Joomla Hosting
+- Drupal Hosting
+- Magento Hosting
+- Wiki Hosting
+- WordPress Staging Site
+- Managed WordPress Updates
+
+
+2) Baby Plan
+
+Pricing
+- Introductory offer: $4.50/mo*
+- Renewal price:
+  - 1 Month: $24.19/mo
+  - 3 Months: $23.09/mo
+  - 6 Months: $21.77/mo
+  - 1 Year: $18.69/mo
+  - 2 Years: $17.59/mo
+  - 3 Years: $16.49/mo
+
+Top features:
+- 20 Websites
+- 20 GB SSD Storage
+- Ideal for 50K visits/mo
+- 30-day Money-Back Guarantee
+- Free Domain 1st Year
+- Free Site Migration Tool
+- Free CDN - Cloudflare with Argo Routing
+- Managed WordPress Updates
+- 24/7 Chat & Phone Support
+- Free SSL - Let's Encrypt
+- Free Malware Scanning
+- AI-Powered Malware Detection & Removal
+- Web Application Firewall
+- DDoS Protection Included
+- Yoast SEO - Free Plugin
+- Pro Email - Free Trial
+- Creative Mail - Email Marketing
+- Static Content Caching
+- Object Caching
+- SSH & WP-CLI
+- WordPress Staging Site
+
+cPanel:
+- Latest cPanel web hosting control panel
+- Website statistic tools
+- AWStats
+- Webalizer
+- Raw Log Manager
+- Referrer Logs
+- Error Logs
+- Application installs
+- Instant Shopping Carts
+- Blogs
+- Portals
+- Forums
+- Counters
+- Password protected directories
+- Custom error pages
+- Expert management tools
+- Web Based File Manager
+- Hotlink Protection
+- IP Deny Manager
+- Redirect URL
+
+Email:
+- POP3 email accounts with SMTP: Included
+- Webmail access
+- Access email via available webmail clients
+- Get email on phone via IMAP support
+- SpamAssassin spam protection
+- Advanced email tools
+- Unlimited Email Aliases
+- Autoresponders
+- Mail Forwards
+- 25 Mailing Lists
+- Pro Email - Free Trial
+- Creative Mail - Email Marketing
+
+Domain/FTP:
+- Free Domain 1st Year
+- FTP accounts: Unlimited
+- Addon/Parked domains: Unlimited
+- Free SSL - Let's Encrypt
+
+Support:
+- Phone & Chat
+- 24/7 Chat & Phone Support
+- 30-day Money-Back Guarantee
+- Courtesy website backups
+- 24/7/365 hosting server monitoring
+
+Programming/Databases:
+- MySQL databases with phpMyAdmin access
+- Supported programming languages:
+  - CGI
+  - Fast CGI
+  - PHP 8.2
+  - Ruby on Rails
+  - Perl
+  - Python
+  - SSL
+- Supported programming modules:
+  - Curl
+  - CPAN
+  - GD Library
+  - ImageMagick
+- System management:
+  - SSH Access
+  - Cron Job Scheduling
+- SSH & WP-CLI
+
+Application:
+- One-click installs
+- Instantly install over 75 open-source scripts with one click
+- WordPress Hosting
+- Joomla Hosting
+- Drupal Hosting
+- Magento Hosting
+- Wiki Hosting
+- WordPress Staging Site
+- Managed WordPress Updates
+
+
+3) Business Plan
+
+Pricing
+- Introductory offer: $6.25/mo*
+- Renewal price:
+  - 1 Month: $30.79/mo
+  - 3 Months: $29.69/mo
+  - 6 Months: $28.59/mo
+  - 1 Year: $24.19/mo
+  - 2 Years: $23.09/mo
+  - 3 Years: $21.99/mo
+
+Top features:
+- 50 Websites
+- 50 GB SSD Storage
+- Ideal for 200K visits/mo
+- 30-day Money-Back Guarantee
+- Free Domain 1st Year
+- Free Site Migration Tool
+- Free CDN - Cloudflare with Argo Routing
+- Managed WordPress Updates
+- 24/7 Chat & Phone Support
+- Free SSL - Let's Encrypt
+- Free Malware Scanning
+- AI-Powered Malware Detection & Removal
+- Web Application Firewall
+- DDoS Protection Included
+- Domain Privacy - Free 1st Year
+- Yoast SEO - Free Plugin
+- Pro Email - Free Trial
+- Creative Mail - Email Marketing
+- Static Content Caching
+- Object Caching
+- SSH & WP-CLI
+- WordPress Staging Site
+
+cPanel:
+- Latest cPanel web hosting control panel
+- Website statistic tools
+- AWStats
+- Webalizer
+- Raw Log Manager
+- Referrer Logs
+- Error Logs
+- Application installs
+- Instant Shopping Carts
+- Blogs
+- Portals
+- Forums
+- Counters
+- Password protected directories
+- Custom error pages
+- Expert management tools
+- Web Based File Manager
+- Hotlink Protection
+- IP Deny Manager
+- Redirect URL
+
+Email:
+- POP3 email accounts with SMTP: Included
+- Webmail access
+- Access email via available webmail clients
+- Get email on phone via IMAP support
+- SpamAssassin spam protection
+- Advanced email tools
+- Unlimited Email Aliases
+- Autoresponders
+- Mail Forwards
+- 25 Mailing Lists
+- Pro Email - Free Trial
+- Creative Mail - Email Marketing
+
+Domain/FTP:
+- Free Domain 1st Year
+- Domain Privacy - Free 1st Year
+- FTP accounts: Unlimited
+- Addon/Parked domains: Unlimited
+- Free SSL - Let's Encrypt
+
+Support:
+- Phone & Chat
+- 24/7 Chat & Phone Support
+- 30-day Money-Back Guarantee
+- Courtesy website backups
+- 24/7/365 hosting server monitoring
+
+Programming/Databases:
+- MySQL databases with phpMyAdmin access
+- Supported programming languages:
+  - CGI
+  - Fast CGI
+  - PHP 8.2
+  - Ruby on Rails
+  - Perl
+  - Python
+  - SSL
+- Supported programming modules:
+  - Curl
+  - CPAN
+  - GD Library
+  - ImageMagick
+- System management:
+  - SSH Access
+  - Cron Job Scheduling
+- SSH & WP-CLI
+
+Application:
+- One-click installs
+- Instantly install over 75 open-source scripts with one click
+- WordPress Hosting
+- Joomla Hosting
+- Drupal Hosting
+- Magento Hosting
+- Wiki Hosting
+- WordPress Staging Site
+- Managed WordPress Updates
+
+
+4) Pro Plan
+
+Pricing
+- Introductory offer: $13.95/mo*
+- Renewal price:
+  - 1 Month: $38.49/mo
+  - 3 Months: $37.39/mo
+  - 6 Months: $36.29/mo
+  - 1 Year: $31.89/mo
+  - 3 Years: $29.69/mo
+
+Top features:
+- 100 Websites
+- 100 GB SSD Storage
+- Ideal for 400K visits/mo
+- 30-day Money-Back Guarantee
+- Free Domain 1st Year
+- Free Site Migration Tool
+- Free CDN - Cloudflare with Argo Routing
+- Managed WordPress Updates
+- 24/7 Chat & Phone Support
+- Free SSL - Let's Encrypt
+- Free Malware Scanning
+- AI-Powered Malware Detection & Removal
+- Web Application Firewall
+- DDoS Protection Included
+- Domain Privacy - Free 1st Year
+- Yoast SEO - Free Plugin
+- Pro Email - Free Trial
+- Creative Mail - Email Marketing
+- Static Content Caching
+- Object Caching
+- SSH & WP-CLI
+- WordPress Staging Site
+
+cPanel:
+- Latest cPanel web hosting control panel
+- Website statistic tools
+- AWStats
+- Webalizer
+- Raw Log Manager
+- Referrer Logs
+- Error Logs
+- Application installs
+- Instant Shopping Carts
+- Blogs
+- Portals
+- Forums
+- Counters
+- Password protected directories
+- Custom error pages
+- Expert management tools
+- Web Based File Manager
+- Hotlink Protection
+- IP Deny Manager
+- Redirect URL
+
+Email:
+- POP3 email accounts with SMTP
+- Webmail access
+- Access email via available webmail clients
+- Get email on phone via IMAP support
+- SpamAssassin spam protection
+- Advanced email tools
+- Unlimited Email Aliases
+- Autoresponders
+- Mail Forwards
+- 25 Mailing Lists
+- Pro Email - Free Trial
+- Creative Mail - Email Marketing
+
+Domain/FTP:
+- Free Domain 1st Year
+- Domain Privacy - Free 1st Year
+- FTP accounts
+- Addon/Parked domains
+- Free SSL - Let's Encrypt
+
+Support:
+- 24/7 Chat & Phone Support
+- 30-day Money-Back Guarantee
+- Courtesy website backups
+- 24/7/365 hosting server monitoring
+
+Programming/Databases:
+- MySQL databases with phpMyAdmin access
+- Supported programming languages:
+  - CGI
+  - Fast CGI
+  - PHP 8.2
+  - Ruby on Rails
+  - Perl
+  - Python
+  - SSL
+- Supported programming modules:
+  - Curl
+  - CPAN
+  - GD Library
+  - ImageMagick
+- System management:
+  - SSH Access
+  - Cron Job Scheduling
+- SSH & WP-CLI
+
+Application:
+- One-click installs
+- Instantly install over 75 open-source scripts with one click
+- WordPress Hosting
+- Joomla Hosting
+- Drupal Hosting
+- Magento Hosting
+- Wiki Hosting
+- WordPress Staging Site
+- Managed WordPress Updates
+
+II) Wordpress Hosting
+URL: https://www.hostgator.com/managed-wordpress-hosting
+
+1) Baby Plan
+
+Pricing:
+- Introductory offer: $4.50/mo*
+- Renewal price:
+  - 1 Month: $24.19/mo
+  - 3 Months: $23.09/mo
+  - 6 Months: $21.77/mo
+  - 1 Year: $18.69/mo
+  - 3 Years: $16.49/mo
+
+Top features:
+- 20 websites
+- 20GB SSD Storage
+- Phone & Chat support
+- Unmetered bandwidth
+- Basic email included
+- Free domain 1st year
+- Free SSL
+- WordPress pre-installed
+- Malware Scanning
+- AI-Powered Malware Detection & Removal
+- Cloudflare CDN
+- Increased performance: 2 vCPUs
+- One-click WordPress installs
+- 30-day money-back guarantee
+- Auto-renewed SSL certification
+- Paid Migration Available
+
+cPanel:
+- Latest cPanel web hosting control panel
+- Website statistic tools:
+  - AWStats
+  - Webalizer
+  - Raw Log Manager
+  - Referrer Logs
+  - Error Logs
+- Application installs:
+  - Instant Shopping Carts
+  - Blogs
+  - Portals
+  - Forums
+  - Counters
+- Password protected directories
+- Custom error pages
+- Expert management tools:
+  - Web Based File Manager
+  - Hotlink Protection
+  - IP Deny Manager
+  - Redirect URL
+
+Email:
+- POP3 email accounts with SMTP: Included
+- Webmail access
+- Access email via available webmail clients
+- Get email on phone via IMAP support
+- Spam protection with SpamAssassin
+- Advanced email tools:
+  - Unlimited Email Aliases
+  - Autoresponders
+  - Mail Forwards
+  - 25 Mailing Lists
+- Basic email included
+
+Domain/FTP:
+- Free domain 1st year
+- FTP accounts: Unlimited
+- Addon/Parked domains: Unlimited
+- Free SSL
+- Auto-renewed SSL certification
+
+Support:
+- Phone & Chat support
+- Customer support: Phone & Chat
+- Courtesy website backups
+- 24/7/365 hosting server monitoring
+- Paid Migration Available
+- 30-day money-back guarantee
+
+Programming/Databases:
+- MySQL databases with phpMyAdmin access
+- Supported programming languages:
+  - CGI
+  - Fast CGI
+  - PHP 8.2
+  - Ruby on Rails
+  - Perl
+  - Python
+  - SSL
+- Supported programming modules:
+  - Curl
+  - CPAN
+  - GD Library
+  - ImageMagick
+- System Management:
+  - SSH Access
+  - Cron Job Scheduling
+
+Application:
+- WordPress pre-installed
+- One-click installs
+- Instantly install over 75 open-source scripts with one click
+- WordPress Hosting
+- Joomla & Drupal Hosting
+- Magento Hosting
+- Wiki Hosting
+
+
+2) Business Plan
+
+
+Pricing:
+- Introductory offer: $6.25/mo*
+- Renewal price:
+  - 1 Month: $30.79/mo
+  - 3 Months: $29.69/mo
+  - 6 Months: $28.59/mo
+  - 1 Year: $24.19/mo
+  - 3 Years: $21.99/mo
+
+Top features:
+- 50 websites
+- 50GB SSD Storage
+- Phone & Chat support
+- Unmetered bandwidth
+- Basic email included
+- Free Domain 1st Year
+- Free SSL
+- WordPress pre-installed
+- Malware Scanning
+- AI-Powered Malware Detection & Removal
+- Cloudflare CDN
+- Increased performance: 3 vCPUs
+- Weekly Website Backups
+- Domain Privacy - 1st Year
+- One-click WordPress installs
+- 30-day money-back guarantee
+- Auto-renewed SSL certification
+- Paid Migration Available
+
+cPanel:
+- Latest cPanel web hosting control panel
+- Website statistic tools:
+  - AWStats
+  - Webalizer
+  - Raw Log Manager
+  - Referrer Logs
+  - Error Logs
+- Application installs:
+  - Instant Shopping Carts
+  - Blogs
+  - Portals
+  - Forums
+  - Counters
+- Password protected directories
+- Custom error pages
+- Expert management tools:
+  - Web Based File Manager
+  - Hotlink Protection
+  - IP Deny Manager
+  - Redirect URL
+
+Email:
+- POP3 email accounts with SMTP: Included
+- Webmail access
+- Access email via available webmail clients
+- Get email on phone via IMAP support
+- Spam protection with SpamAssassin
+- Advanced email tools:
+  - Unlimited Email Aliases
+  - Autoresponders
+  - Mail Forwards
+  - 25 Mailing Lists
+- Basic email included
+
+Domain/FTP:
+- Free Domain 1st Year
+- Domain Privacy - 1st Year
+- FTP accounts: Unlimited
+- Addon/Parked domains: Unlimited
+- Free SSL
+- Auto-renewed SSL certification
+
+Support:
+- Phone & Chat support
+- Customer support: Phone & Chat
+- Courtesy website backups
+- Weekly Website Backups
+- 24/7/365 hosting server monitoring
+- Paid Migration Available
+- 30-day money-back guarantee
+
+Programming/Databases:
+- MySQL databases with phpMyAdmin access
+- Supported programming languages:
+  - CGI
+  - Fast CGI
+  - PHP 8.2
+  - Ruby on Rails
+  - Perl
+  - Python
+  - SSL
+- Supported programming modules:
+  - Curl
+  - CPAN
+  - GD Library
+  - ImageMagick
+- System Management:
+  - SSH Access
+  - Cron Job Scheduling
+
+Application:
+- WordPress pre-installed
+- One-click installs
+- Instantly install over 75 open-source scripts with one click
+- WordPress Hosting
+- Joomla & Drupal Hosting
+- Magento Hosting
+- Wiki Hosting
+
+
+3) Pro Plan
+
+Pricing:
+- Introductory offer: $13.95/mo*
+- Renewal price:
+  - 1 Month: $38.49/mo
+  - 3 Months: $37.39/mo
+  - 6 Months: $36.29/mo
+  - 1 Year: $31.89/mo
+
+
+Top features:
+- 100 websites
+- 100GB SSD Storage
+- Phone & Chat support
+- Unmetered bandwidth
+- Basic email included
+- Free Domain 1st Year
+- Free SSL
+- WordPress pre-installed
+- Malware Scanning
+- AI-Powered Malware Detection & Removal
+- Cloudflare CDN
+- Maximum performance: 5 vCPUs
+- Weekly Website Backups
+- Domain Privacy - 1st year
+- One-click WordPress installs
+- 30-day money-back guarantee
+- Auto-renewed SSL certification
+- Paid Migration Available
+
+cPanel:
+- Latest cPanel web hosting control panel
+- Website statistic tools:
+  - AWStats
+  - Webalizer
+  - Raw Log Manager
+  - Referrer Logs
+  - Error Logs
+- Application installs:
+  - Instant Shopping Carts
+  - Blogs
+  - Portals
+  - Forums
+  - Counters
+- Password protected directories
+- Custom error pages
+- Expert management tools:
+  - Web Based File Manager
+  - Hotlink Protection
+  - IP Deny Manager
+  - Redirect URL
+
+Email:
+- POP3 email accounts with SMTP: Included
+- Webmail access
+- Access email via available webmail clients
+- Get email on phone via IMAP support
+- Spam protection with SpamAssassin
+- Advanced email tools:
+  - Unlimited Email Aliases
+  - Autoresponders
+  - Mail Forwards
+  - 25 Mailing Lists
+- Basic email included
+
+Domain/FTP:
+- Free Domain 1st Year
+- Domain Privacy - 1st year
+- FTP accounts: Unlimited
+- Addon/Parked domains: Unlimited
+- Free SSL
+- Auto-renewed SSL certification
+
+Support:
+- Phone & Chat support
+- Customer support: Phone & Chat
+- Courtesy website backups
+- Weekly Website Backups
+- 24/7/365 hosting server monitoring
+- Paid Migration Available
+- 30-day money-back guarantee
+
+Programming/Databases:
+- MySQL databases with phpMyAdmin access
+- Supported programming languages:
+  - CGI
+  - Fast CGI
+  - PHP 8.2
+  - Ruby on Rails
+  - Perl
+  - Python
+  - SSL
+- Supported programming modules:
+  - Curl
+  - CPAN
+  - GD Library
+  - ImageMagick
+- System Management:
+  - SSH Access
+  - Cron Job Scheduling
+
+Application:
+- WordPress pre-installed
+- One-click installs
+- Instantly install over 75 open-source scripts with one click
+- WordPress Hosting
+- Joomla & Drupal Hosting
+- Magento Hosting
+- Wiki Hosting
+
+
+III) eCommerce Hosting
+URL: https://www.hostgator.com/ecommerce
+
+1) ONLINE STORE
+
+Pricing
+- Introductory offer: $9.95/mo* 
+- Renewal price:
+  - 1 Month: $29.95/mo
+  - 1 Year: $24.95/mo
+  - 3 Years: $24.95/mo
+
+Top features:
+- Online Store Website
+- Website Analytics
+- 50 GB SSD Storage
+- Free Domain 1st Year
+- Pro Email - Free Trial
+- Free SSL
+- Yoast SEO
+- Powered by YITH
+- Bookings & Appointments
+- Gift Cards
+- Store Creation - NEW Wonder Theme
+- Wishlists
+- Product Search & Filtering
+- Additional eCommerce Features
+- Weekly Website Backups
+- Automated WordPress Updates
+- Secure Online Payments
+- Unlimited Products
+
+Store / eCommerce:
+- Online Store Website
+- Store Creation - NEW Wonder Theme
+- Powered by YITH
+- Secure Online Payments
+- Unlimited Products
+- Product Search & Filtering
+- Gift Cards
+- Wishlists
+- Bookings & Appointments
+- Customer Account Creation
+
+Analytics:
+- Website Analytics
+
+Storage:
+- 50 GB SSD Storage
+
+Domain / SSL:
+- Free Domain 1st Year
+- Free SSL
+
+Email:
+- Pro Email - Free Trial
+- Professional Email trial renews at $2.99/mo after first billing cycle unless cancelled
+
+SEO:
+- Yoast SEO
+- Automatic Yoast SEO
+
+Backups / Updates:
+- Weekly Website Backups
+- Jetpack Daily Backups
+- Automated WordPress Updates
+
+Support:
+- 24/7/365 support
+- Call support
+- Live Chat
+- Knowledge Base
+- HostGator Blog
+- 30-day Money-Back Guarantee
+
+Additional page benefits:
+- Custom account pages
+- Purchasable gift cards
+- Customer wishlists
+- Appointment scheduling
+- Strong security
+- Unmetered web hosting / bandwidth policy
+
+
+2) ONLINE STORE + MARKETPLACE
+
+Pricing
+- Introductory offer: $12.95/mo*
+- Renewal price:
+  - 1 Month: $47.95/mo
+  - 1 Year: $39.95/mo
+  - 3 Years: $39.95/mo
+
+Top features:
+- Online Store Website
+- Website Analytics
+- 100 GB SSD Storage
+- Free Domain 1st Year
+- Pro Email - Free Trial
+- Free SSL
+- Yoast SEO
+- Powered by YITH
+- Bookings & Appointments
+- Gift Cards
+- Store Creation - NEW Wonder Theme
+- Wishlists
+- Product Search & Filtering
+- Additional eCommerce Features
+- Weekly Website Backups
+- Automated WordPress Updates
+- Secure Online Payments
+- Unlimited Products
+- Multi-Channel Inventory
+
+Store / eCommerce:
+- Online Store Website
+- Store Creation - NEW Wonder Theme
+- Powered by YITH
+- Secure Online Payments
+- Unlimited Products
+- Product Search & Filtering
+- Gift Cards
+- Wishlists
+- Bookings & Appointments
+- Customer Account Creation
+- Multi-Channel Inventory Management
+- Shipping Labels
+- Sell across multiple marketplaces
+- Inventory management across sales channels
+
+Analytics:
+- Website Analytics
+
+Storage:
+- 100 GB SSD Storage
+
+Domain / SSL:
+- Free Domain 1st Year
+- Free SSL
+
+Email:
+- Pro Email - Free Trial
+- Professional Email trial renews at $2.99/mo after first billing cycle unless cancelled
+
+SEO:
+- Yoast SEO
+- Automatic Yoast SEO
+
+Backups / Updates:
+- Weekly Website Backups
+- Jetpack Daily Backups
+- Automated WordPress Updates
+
+Support:
+- 24/7/365 support
+- Call support
+- Live Chat
+- Knowledge Base
+- HostGator Blog
+- 30-day Money-Back Guarantee
+
+Additional page benefits:
+- Custom account pages
+- Purchasable gift cards
+- Customer wishlists
+- Appointment scheduling
+- Strong security
+- Unmetered web hosting / bandwidth policy
+- Multi-Channel Inventory Management
+
+
+IV) Dedicated Hosting
+https://www.hostgator.com/dedicated-server
+
+
+1) Value Dedicated - NVMe 32
+
+Pricing
+- Introductory offer: $144.19/mo*
+- Renewal price - Linux NVMe Dedicated Hosting WITH cPanel License:
+  - 1 Month: $206.47/mo
+  - 3 Months: $197.63/mo
+  - 6 Months: $197.63/mo
+  - 1 Year: $192.32/mo
+  - 2 Years: $188.79/mo
+  - 3 Years: $188.79/mo
+
+Top features:
+- 8 core CPU
+- 32 GB DDR5 RAM
+- 1000 GB NVMe storage
+- Unmetered bandwidth
+- 3 dedicated IPs shown on plan card
+- Free migration available
+- Full root access
+- Dedicated resources
+- Free content transfers
+- Unlimited MySQL
+- Linux or Windows operating system option
+- 100% server control
+- Powerful AMD EPYC hardware
+- High-speed websites
+- Security & protection
+- Instant scalability
+- Tier 3 data center
+- 99.9% uptime guarantee
+- Guided server setup
+- 24/7/365 support
+- Linux security patches
+- Full control
+- Free migration
+
+Hardware:
+- vCPU: 8 core
+- RAM: 32 GB DDR5
+- Storage: 1000 GB NVMe
+- Data transfer: Unmetered
+- Bandwidth: Unmetered
+- CPU type: AMD EPYC
+- Port speed: 100 Gbps
+- Storage protection: RAID 6 storage configuration
+
+Features:
+- Full root access
+- Dedicated resources
+- Free content transfers
+- MySQL: Unlimited
+- Dedicated server resources
+- Limitless customization
+- Optimization and resource management
+- Seamless upgrades to higher plans
+- Guided server setup
+- cPanel & WordPress installation help
+
+Control Panel:
+- cPanel/WHM: Linux
+- Softaculous: Linux
+- Plesk: Windows
+- Plesk Application Vault: Windows
+
+Email:
+- Dedicated IPv4 IPs
+- Maximum outgoing emails: Unlimited
+- Maximum POP/IMAP connections: Unlimited
+
+Security:
+- Advanced DDoS Protection Scrub Center
+- Create manual backups
+- Create scheduled backups
+- DDoS protection
+- SSL certificates
+- RAID 6 storage configuration
+- Linux security patches
+- Live kernel patches without reboot
+
+Network:
+- US-based Data Centers
+- Fully redundant network
+- Multiple bandwidth providers:
+  - AboveNet
+  - AT&T
+  - Comcast
+  - Global Crossing
+  - Level 3
+  - NTT
+- 100 Gbps port speed
+- Unmetered data transfer
+
+Support:
+- Premium support
+- Server monitoring and remediation
+- 24/7/365 support
+- 24/7 chat & phone support
+- Individual help
+- Server monitoring
+- Free migration
+- Request a call back option
+
+
+2) Power Dedicated - NVMe 64
+
+Pricing
+- Introductory offer: $241.79/mo*
+- Renewal price - Linux NVMe Dedicated Hosting WITH cPanel License:
+  - 1 Month: $297.11/mo
+  - 3 Months: $284.15/mo
+  - 6 Months: $284.15/mo
+  - 1 Year: $276.37/mo
+  - 2 Years: $271.19/mo
+  - 3 Years: $271.19/mo
+
+Top features:
+- 16 core CPU
+- 64 GB DDR5 RAM
+- 2000 GB NVMe storage
+- Unmetered bandwidth
+- 3 dedicated IPs shown on plan card
+- Free migration available
+- Full root access
+- Dedicated resources
+- Free content transfers
+- Unlimited MySQL
+- Linux or Windows operating system option
+- 100% server control
+- Powerful AMD EPYC hardware
+- High-speed websites
+- Security & protection
+- Instant scalability
+- Tier 3 data center
+- 99.9% uptime guarantee
+- Guided server setup
+- 24/7/365 support
+- Linux security patches
+- Full control
+- Free migration
+
+Hardware:
+- vCPU: 16 cores
+- RAM: 64 GB DDR5
+- Storage: 2000 GB NVMe
+- Data transfer: Unmetered
+- Bandwidth: Unmetered
+- CPU type: AMD EPYC
+- Port speed: 100 Gbps
+- Storage protection: RAID 6 storage configuration
+
+Features:
+- Full root access
+- Dedicated resources
+- Free content transfers
+- MySQL: Unlimited
+- Dedicated server resources
+- Limitless customization
+- Optimization and resource management
+- Seamless upgrades to higher plans
+- Guided server setup
+- cPanel & WordPress installation help
+
+Control Panel:
+- cPanel/WHM: Linux
+- Softaculous: Linux
+- Plesk: Windows
+- Plesk Application Vault: Windows
+
+Email:
+- Dedicated IPv4 IPs
+- Maximum outgoing emails: Unlimited
+- Maximum POP/IMAP connections: Unlimited
+
+Security:
+- Advanced DDoS Protection Scrub Center
+- Create manual backups
+- Create scheduled backups
+- DDoS protection
+- SSL certificates
+- RAID 6 storage configuration
+- Linux security patches
+- Live kernel patches without reboot
+
+Network:
+- US-based Data Centers
+- Fully redundant network
+- Multiple bandwidth providers:
+  - AboveNet
+  - AT&T
+  - Comcast
+  - Global Crossing
+  - Level 3
+  - NTT
+- 100 Gbps port speed
+- Unmetered data transfer
+
+Support:
+- Premium support
+- Server monitoring and remediation
+- 24/7/365 support
+- 24/7 chat & phone support
+- Individual help
+- Server monitoring
+- Free migration
+- Request a call back option
+
+
+3) Enterprise Dedicated - NVMe 128
+
+Pricing
+- Introductory offer: $346.79/mo*
+- Renewal price - Linux NVMe Dedicated Hosting WITH cPanel License:
+  - 1 Month: $429.11/mo
+  - 3 Months: $410.15/mo
+  - 6 Months: $410.15/mo
+  - 1 Year: $398.77/mo
+  - 2 Years: $391.19/mo
+  - 3 Years: $391.19/mo
+
+Top features:
+- 32 core CPU
+- 128 GB DDR5 RAM
+- 3000 GB NVMe storage
+- Unmetered bandwidth
+- 3 dedicated IPs shown on plan card
+- Free migration available
+- Full root access
+- Dedicated resources
+- Free content transfers
+- Unlimited MySQL
+- Linux or Windows operating system option
+- 100% server control
+- Powerful AMD EPYC hardware
+- High-speed websites
+- Security & protection
+- Instant scalability
+- Tier 3 data center
+- 99.9% uptime guarantee
+- Guided server setup
+- 24/7/365 support
+- Linux security patches
+- Full control
+- Free migration
+
+Hardware:
+- vCPU: 32 cores
+- RAM: 128 GB DDR5
+- Storage: 3000 GB NVMe
+- Data transfer: Unmetered
+- Bandwidth: Unmetered
+- CPU type: AMD EPYC
+- Port speed: 100 Gbps
+- Storage protection: RAID 6 storage configuration
+
+Features:
+- Full root access
+- Dedicated resources
+- Free content transfers
+- MySQL: Unlimited
+- Dedicated server resources
+- Limitless customization
+- Optimization and resource management
+- Seamless upgrades to higher plans
+- Guided server setup
+- cPanel & WordPress installation help
+
+Control Panel:
+- cPanel/WHM: Linux
+- Softaculous: Linux
+- Plesk: Windows
+- Plesk Application Vault: Windows
+
+Email:
+- Dedicated IPv4 IPs
+- Maximum outgoing emails: Unlimited
+- Maximum POP/IMAP connections: Unlimited
+
+Security:
+- Advanced DDoS Protection Scrub Center
+- Create manual backups
+- Create scheduled backups
+- DDoS protection
+- SSL certificates
+- RAID 6 storage configuration
+- Linux security patches
+- Live kernel patches without reboot
+
+Network:
+- US-based Data Centers
+- Fully redundant network
+- Multiple bandwidth providers:
+  - AboveNet
+  - AT&T
+  - Comcast
+  - Global Crossing
+  - Level 3
+  - NTT
+- 100 Gbps port speed
+- Unmetered data transfer
+
+Support:
+- Premium support
+- Server monitoring and remediation
+- 24/7/365 support
+- 24/7 chat & phone support
+- Individual help
+- Server monitoring
+- Free migration
+- Request a call back option
+
+
+A) Linux NVMe Dedicated Hosting - WITHOUT cPanel License
+
+1) Value - NVMe 32
+
+Pricing
+- Introductory offer: $144.19/mo*
+- Renewal price:
+  - 1 Month: $194.47/mo
+  - 3 Months: $185.63/mo
+  - 6 Months: $185.63/mo
+  - 1 Year: $180.32/mo
+  - 2 Years: $176.79/mo
+  - 3 Years: $176.79/mo
+
+Top features:
+- 8 core CPU
+- 32 GB DDR5 RAM
+- 1000 GB NVMe storage
+- Unmetered bandwidth
+- 3 dedicated IPs
+- Full root access
+- Dedicated resources
+- Free content transfers
+- Unlimited MySQL
+- Linux operating system
+- 100% server control
+- AMD EPYC hardware
+- High-speed websites
+- Security & protection
+- Instant scalability
+- Tier 3 data center
+- 99.9% uptime guarantee
+- Guided server setup
+- 24/7/365 support
+- Linux security patches
+- Free migration
+
+Control Panel:
+- cPanel license: Not included
+- cPanel cost is not included in the renewal price
+- User can manage server without cPanel or add control panel separately if available
+
+Security:
+- Advanced DDoS Protection Scrub Center
+- Manual backups
+- Scheduled backups
+- DDoS protection
+- SSL certificates
+- RAID 6 storage configuration
+- Linux security patches
+- Live kernel patches without reboot
+
+Support:
+- Premium support
+- Server monitoring and remediation
+- 24/7/365 support
+- 24/7 chat & phone support
+- Free migration
+
+
+2) Power - NVMe 64
+
+Pricing
+- Introductory offer: $241.79/mo*
+- Renewal price:
+  - 1 Month: $285.11/mo
+  - 3 Months: $272.15/mo
+  - 6 Months: $272.15/mo
+  - 1 Year: $264.37/mo
+  - 2 Years: $259.19/mo
+  - 3 Years: $259.19/mo
+
+Top features:
+- 16 core CPU
+- 64 GB DDR5 RAM
+- 2000 GB NVMe storage
+- Unmetered bandwidth
+- 3 dedicated IPs
+- Full root access
+- Dedicated resources
+- Free content transfers
+- Unlimited MySQL
+- Linux operating system
+- 100% server control
+- AMD EPYC hardware
+- High-speed websites
+- Security & protection
+- Instant scalability
+- Tier 3 data center
+- 99.9% uptime guarantee
+- Guided server setup
+- 24/7/365 support
+- Linux security patches
+- Free migration
+
+Control Panel:
+- cPanel license: Not included
+- cPanel cost is not included in the renewal price
+
+Security:
+- Advanced DDoS Protection Scrub Center
+- Manual backups
+- Scheduled backups
+- DDoS protection
+- SSL certificates
+- RAID 6 storage configuration
+- Linux security patches
+- Live kernel patches without reboot
+
+Support:
+- Premium support
+- Server monitoring and remediation
+- 24/7/365 support
+- 24/7 chat & phone support
+- Free migration
+
+
+3) Enterprise - NVMe 128
+
+Pricing
+- Introductory offer: $346.79/mo*
+- Renewal price:
+  - 1 Month: $417.11/mo
+  - 3 Months: $398.15/mo
+  - 6 Months: $398.15/mo
+  - 1 Year: $386.77/mo
+  - 2 Years: $379.19/mo
+  - 3 Years: $379.19/mo
+
+Top features:
+- 32 core CPU
+- 128 GB DDR5 RAM
+- 3000 GB NVMe storage
+- Unmetered bandwidth
+- 3 dedicated IPs
+- Full root access
+- Dedicated resources
+- Free content transfers
+- Unlimited MySQL
+- Linux operating system
+- 100% server control
+- AMD EPYC hardware
+- High-speed websites
+- Security & protection
+- Instant scalability
+- Tier 3 data center
+- 99.9% uptime guarantee
+- Guided server setup
+- 24/7/365 support
+- Linux security patches
+- Free migration
+
+Control Panel:
+- cPanel license: Not included
+- cPanel cost is not included in the renewal price
+
+Security:
+- Advanced DDoS Protection Scrub Center
+- Manual backups
+- Scheduled backups
+- DDoS protection
+- SSL certificates
+- RAID 6 storage configuration
+- Linux security patches
+- Live kernel patches without reboot
+
+Support:
+- Premium support
+- Server monitoring and remediation
+- 24/7/365 support
+- 24/7 chat & phone support
+- Free migration
+
+
+B) Windows NVMe Dedicated Hosting - WITHOUT Control Panel License
+
+1) Value - NVMe 32 (Windows)
+
+Pricing
+- Introductory offer: Not Available
+- Renewal price:
+  - 1 Month: $242.47/mo
+  - 3 Months: $201.63/mo
+  - 6 Months: $233.53/mo
+  - 1 Year: $228.33/mo
+  - 2 Years: $136.40/mo
+  - 3 Years: $106.92/mo
+
+Top features:
+- 8 core CPU
+- 32 GB DDR5 RAM
+- 1000 GB NVMe storage
+- Unmetered bandwidth
+- Windows Dedicated Server
+- Dedicated resources
+- Full server control
+- Dedicated IPs
+- Security & protection
+- DDoS protection
+- Server monitoring
+- 24/7/365 support
+
+Control Panel:
+- Control panel license: Not included
+- Control panel cost is not included in the renewal price
+
+Support:
+- 24/7/365 support
+- Server monitoring
+- Chat & phone support
+
+
+2) Power - NVMe 64 (Windows)
+
+Pricing
+- Introductory offer: Not Available
+- Renewal price:
+  - 1 Month: $381.11/mo
+  - 3 Months: $368.14/mo
+  - 6 Months: $368.14/mo
+  - 1 Year: $360.37/mo
+  - 2 Years: $225.59/mo
+  - 3 Years: $182.41/mo
+
+Top features:
+- 16 core CPU
+- 64 GB DDR5 RAM
+- 2000 GB NVMe storage
+- Unmetered bandwidth
+- Windows Dedicated Server
+- Dedicated resources
+- Full server control
+- Dedicated IPs
+- Security & protection
+- DDoS protection
+- Server monitoring
+- 24/7/365 support
+
+Control Panel:
+- Control panel license: Not included
+- Control panel cost is not included in the renewal price
+
+Support:
+- 24/7/365 support
+- Server monitoring
+- Chat & phone support
+
+
+3) Enterprise - NVMe 128 (Windows)
+
+Pricing
+- Introductory offer: Not Available
+- Renewal price:
+  - 1 Month: $609.11/mo
+  - 3 Months: $590.15/mo
+  - 6 Months: $590.15/mo
+  - 1 Year: $289.39/mo
+  - 2 Years: $381.59/mo
+  - 3 Years: $318.40/mo
+
+Top features:
+- 32 core CPU
+- 128 GB DDR5 RAM
+- 3000 GB NVMe storage
+- Unmetered bandwidth
+- Windows Dedicated Server
+- Dedicated resources
+- Full server control
+- Dedicated IPs
+- Security & protection
+- DDoS protection
+- Server monitoring
+- 24/7/365 support
+
+Control Panel:
+- Control panel license: Not included
+- Control panel cost is not included in the renewal price
+
+Support:
+- 24/7/365 support
+- Server monitoring
+- Chat & phone support
+
+
+C) Windows NVMe Dedicated Hosting - WITH Control Panel License
+
+Note:
+- HostGator currently lists the same renewal prices for Windows Dedicated Hosting with and without control panel license.
+
+1) Value - NVMe 32 (Windows)
+
+Pricing
+- Introductory offer: Not Available
+- Renewal price:
+  - 1 Month: $242.47/mo
+  - 3 Months: $201.63/mo
+  - 6 Months: $233.53/mo
+  - 1 Year: $228.33/mo
+  - 2 Years: $136.40/mo
+  - 3 Years: $106.92/mo
+
+Top features:
+- Same as Value - NVMe 32 (Windows)
+- Control panel license included
+
+
+2) Power - NVMe 64 (Windows)
+
+Pricing
+- Introductory offer: Not Available
+- Renewal price:
+  - 1 Month: $381.11/mo
+  - 3 Months: $368.14/mo
+  - 6 Months: $368.14/mo
+  - 1 Year: $360.37/mo
+  - 2 Years: $225.59/mo
+  - 3 Years: $182.41/mo
+
+Top features:
+- Same as Power - NVMe 64 (Windows)
+- Control panel license included
+
+
+3) Enterprise - NVMe 128 (Windows)
+
+Pricing
+- Introductory offer: Not Available
+- Renewal price:
+  - 1 Month: $609.11/mo
+  - 3 Months: $590.15/mo
+  - 6 Months: $590.15/mo
+  - 1 Year: $289.39/mo
+  - 2 Years: $381.59/mo
+  - 3 Years: $318.40/mo
+
+Top features:
+- Same as Enterprise - NVMe 128 (Windows)
+- Control panel license included
+
+V) VPS Hosting
+URL: https://www.hostgator.com/vps-hosting
+
+A) Current NVMe VPS Hosting - WITHOUT cPanel License
+
+1) Snappy 2000 - NVMe 4
+
+Pricing
+- Introductory offer: $34.99/mo*
+- Renewal price:
+  - 1 Month: $59.99/mo
+  - 3 Months: $56.99/mo
+  - 6 Months: $56.99/mo
+  - 1 Year: $54.99/mo
+  - 2 Years: $53.99/mo
+  - 3 Years: $53.99/mo
+
+
+Top features:
+- 2 vCPU cores
+- 4 GB DDR5 RAM
+- 100 GB NVMe storage
+- Unmetered bandwidth
+- 1 dedicated IP
+- Free migration available
+- Full VPS-level control
+- Dedicated resources
+- AMD EPYC servers
+- NVMe storage
+- High-speed websites
+- 10 Gbps port speed
+- Unmetered data transfer
+- Security & protection
+- DDoS protection
+- SSL certificates
+- RAID 6 storage configuration
+- 99.9% uptime
+- Tier 3 data center
+- Instant scalability
+- 30-day money-back guarantee
+- 24/7 support
+- Server monitoring
+- Guided server setup
+- Linux security patches
+- Live kernel patches without reboot
+
+Control Panel:
+- cPanel license: Not included
+- cPanel cost is not included in this renewal price
+- HostGator Portal Control Panel
+- Guided server setup available
+- cPanel & WordPress installation help may require eligible setup/support conditions
+
+Server / Hardware:
+- AMD EPYC chips
+- DDR5 RAM
+- NVMe storage
+- 10 Gbps port speed
+- RAID 6 storage configuration
+- Tier 3 data center
+
+Network:
+- Unmetered bandwidth
+- Unmetered data transfer
+- 10 Gbps port speed
+- 99.9% uptime
+- Network guarantee
+
+Security:
+- DDoS protection
+- SSL certificates
+- RAID 6 storage configuration
+- Linux security patches
+- Live kernel patches without reboot
+
+Support:
+- 24/7 chat & phone support
+- Individual help
+- Server monitoring
+- Guided server setup
+- Free migration available
+- 30-day money-back guarantee
+
+Advanced Features:
+- Unlimited MySQL Databases
+- Subversion Repository (SVN)
+- Server Side Includes (SSI)
+- PHP support
+- HostGator Portal Control Panel
+- Full Unix Shell
+- Access to Raw Log Files
+- Crontab Access
+- Full CGI Access
+- Canned CGI Scripts
+- Reseller & Sub Accounts
+- Secure Shell (SSH) Access
+- IPv6 Support
+- Rails, Python, Perl Support
+- Unlimited SFTP Users
+
+Application:
+- One-click app installer
+- Popular application installation
+- WordPress setup support
+- Web hosting use
+- eCommerce use
+- Heavy app & email use
+
+
+2) Snappy 4000 - NVMe 8
+
+Pricing
+- Introductory offer: $53.99/mo*
+- Renewal price:
+  - 1 Month: $92.99/mo
+  - 3 Months: $88.99/mo
+  - 6 Months: $87.99/mo
+  - 1 Year: $85.99/mo
+  - 2 Years: $83.99/mo
+  - 3 Years: $83.99/mo
+
+Top features:
+- 4 vCPU cores
+- 8 GB DDR5 RAM
+- 200 GB NVMe storage
+- Unmetered bandwidth
+- 1 dedicated IP
+- Free migration available
+- Full VPS-level control
+- Dedicated resources
+- AMD EPYC servers
+- NVMe storage
+- High-speed websites
+- 10 Gbps port speed
+- Unmetered data transfer
+- Security & protection
+- DDoS protection
+- SSL certificates
+- RAID 6 storage configuration
+- 99.9% uptime
+- Tier 3 data center
+- Instant scalability
+- 30-day money-back guarantee
+- 24/7 support
+- Server monitoring
+- Guided server setup
+- Linux security patches
+- Live kernel patches without reboot
+
+Control Panel:
+- cPanel license: Not included
+- cPanel cost is not included in this renewal price
+- HostGator Portal Control Panel
+- Guided server setup available
+
+Server / Hardware:
+- AMD EPYC chips
+- DDR5 RAM
+- NVMe storage
+- 10 Gbps port speed
+- RAID 6 storage configuration
+- Tier 3 data center
+
+Network:
+- Unmetered bandwidth
+- Unmetered data transfer
+- 10 Gbps port speed
+- 99.9% uptime
+- Network guarantee
+
+Security:
+- DDoS protection
+- SSL certificates
+- RAID 6 storage configuration
+- Linux security patches
+- Live kernel patches without reboot
+
+Support:
+- 24/7 chat & phone support
+- Individual help
+- Server monitoring
+- Guided server setup
+- Free migration available
+- 30-day money-back guarantee
+
+Advanced Features:
+- Unlimited MySQL Databases
+- Subversion Repository (SVN)
+- Server Side Includes (SSI)
+- PHP support
+- HostGator Portal Control Panel
+- Full Unix Shell
+- Access to Raw Log Files
+- Crontab Access
+- Full CGI Access
+- Canned CGI Scripts
+- Reseller & Sub Accounts
+- Secure Shell (SSH) Access
+- IPv6 Support
+- Rails, Python, Perl Support
+- Unlimited SFTP Users
+
+Application:
+- One-click app installer
+- Popular application installation
+- WordPress setup support
+- Web hosting use
+- eCommerce use
+- Heavy app & email use
+
+
+3) Snappy 8000 - NVMe 16
+
+Pricing
+- Introductory offer: $82.99/mo*
+- Renewal price:
+  - 1 Month: $141.99/mo
+  - 3 Months: $137.99/mo
+  - 6 Months: $136.99/mo
+  - 1 Year: $131.99/mo
+  - 2 Years: $129.99/mo
+  - 3 Years: $128.99/mo
+
+Top features:
+- 8 vCPU cores
+- 16 GB DDR5 RAM
+- 450 GB NVMe storage
+- Unmetered bandwidth
+- 1 dedicated IP
+- Free migration available
+- Full VPS-level control
+- Dedicated resources
+- AMD EPYC servers
+- NVMe storage
+- High-speed websites
+- 10 Gbps port speed
+- Unmetered data transfer
+- Security & protection
+- DDoS protection
+- SSL certificates
+- RAID 6 storage configuration
+- 99.9% uptime
+- Tier 3 data center
+- Instant scalability
+- 30-day money-back guarantee
+- 24/7 support
+- Server monitoring
+- Guided server setup
+- Linux security patches
+- Live kernel patches without reboot
+
+Control Panel:
+- cPanel license: Not included
+- cPanel cost is not included in this renewal price
+- HostGator Portal Control Panel
+- Guided server setup available
+
+Server / Hardware:
+- AMD EPYC chips
+- DDR5 RAM
+- NVMe storage
+- 10 Gbps port speed
+- RAID 6 storage configuration
+- Tier 3 data center
+
+Network:
+- Unmetered bandwidth
+- Unmetered data transfer
+- 10 Gbps port speed
+- 99.9% uptime
+- Network guarantee
+
+Security:
+- DDoS protection
+- SSL certificates
+- RAID 6 storage configuration
+- Linux security patches
+- Live kernel patches without reboot
+
+Support:
+- 24/7 chat & phone support
+- Individual help
+- Server monitoring
+- Guided server setup
+- Free migration available
+- 30-day money-back guarantee
+
+Advanced Features:
+- Unlimited MySQL Databases
+- Subversion Repository (SVN)
+- Server Side Includes (SSI)
+- PHP support
+- HostGator Portal Control Panel
+- Full Unix Shell
+- Access to Raw Log Files
+- Crontab Access
+- Full CGI Access
+- Canned CGI Scripts
+- Reseller & Sub Accounts
+- Secure Shell (SSH) Access
+- IPv6 Support
+- Rails, Python, Perl Support
+- Unlimited SFTP Users
+
+Application:
+- One-click app installer
+- Popular application installation
+- WordPress setup support
+- Web hosting use
+- eCommerce use
+- Heavy app & email use
+
+
+B) Current NVMe VPS Hosting - WITH cPanel License
+
+1) Snappy 2000 - NVMe 4
+
+Pricing
+- Introductory offer: Not Available
+- Renewal price:
+  - 1 Month: $71.99/mo
+  - 3 Months: $68.99/mo
+  - 6 Months: $68.99/mo
+  - 1 Year: $66.99/mo
+  - 2 Years: $65.99/mo
+  - 3 Years: $65.99/mo
+
+Top features:
+- Same core features as Snappy 2000 - NVMe 4
+- cPanel license included in renewal price
+- 2 vCPU cores
+- 4 GB DDR5 RAM
+- 100 GB NVMe storage
+- Unmetered bandwidth
+- 1 dedicated IP
+- Free migration available
+- Guided server setup
+- cPanel & WordPress installation help
+
+
+2) Snappy 4000 - NVMe 8
+
+Pricing
+- Introductory offer: Not Available
+- Renewal price:
+  - 1 Month: $104.99/mo
+  - 3 Months: $100.99/mo
+  - 6 Months: $99.99/mo
+  - 1 Year: $97.99/mo
+  - 2 Years: $95.99/mo
+  - 3 Years: $95.99/mo
+
+Top features:
+- Same core features as Snappy 4000 - NVMe 8
+- cPanel license included in renewal price
+- 4 vCPU cores
+- 8 GB DDR5 RAM
+- 200 GB NVMe storage
+- Unmetered bandwidth
+- 1 dedicated IP
+- Free migration available
+- Guided server setup
+- cPanel & WordPress installation help
+
+
+3) Snappy 8000 - NVMe 16
+
+Pricing
+- Introductory offer: Not Available
+- Renewal price:
+  - 1 Month: $153.99/mo
+  - 3 Months: $149.99/mo
+  - 6 Months: $148.99/mo
+  - 1 Year: $143.99/mo
+  - 2 Years: $141.99/mo
+  - 3 Years: $140.99/mo
+
+Top features:
+- Same core features as Snappy 8000 - NVMe 16
+- cPanel license included in renewal price
+- 8 vCPU cores
+- 16 GB DDR5 RAM
+- 450 GB NVMe storage
+- Unmetered bandwidth
+- 1 dedicated IP
+- Free migration available
+- Guided server setup
+- cPanel & WordPress installation help
+
+
+C) Legacy VPS Hosting (centOS) - WITHOUT cPanel License
+
+1) Snappy 500
+
+Pricing
+- Renewal price:
+  - 1 Month: $19.95/mo
+  - 3 Months: $19.95/mo
+  - 6 Months: $19.95/mo
+  - 1 Year: $19.95/mo
+  - 2 Years: $19.95/mo
+  - 3 Years: $19.95/mo
+
+Top features:
+- Legacy VPS plan
+- Grandfathered / no longer available for new packages
+- cPanel license not included
+
+
+2) Snappy 1000
+
+Pricing
+- Renewal price:
+  - 1 Month: $39.95/mo
+  - 3 Months: $39.95/mo
+  - 6 Months: $39.95/mo
+  - 1 Year: $39.95/mo
+  - 2 Years: $39.95/mo
+  - 3 Years: $39.95/mo
+
+Top features:
+- Legacy VPS plan
+- Grandfathered / no longer available for new packages
+- cPanel license not included
+
+
+3) Snappy 2000
+
+Pricing
+- Renewal price:
+  - 1 Month: $79.99/mo
+  - 3 Months: $77.99/mo
+  - 6 Months: $75.99/mo
+  - 1 Year: $73.99/mo
+  - 2 Years: $69.99/mo
+  - 3 Years: $69.99/mo
+
+Top features:
+- Legacy VPS plan
+- cPanel license not included
+
+
+4) Snappy 4000
+
+Pricing
+- Renewal price:
+  - 1 Month: $119.95/mo
+  - 3 Months: $116.99/mo
+  - 6 Months: $113.99/mo
+  - 1 Year: $109.99/mo
+  - 2 Years: $104.99/mo
+  - 3 Years: $104.99/mo
+
+Top features:
+- Legacy VPS plan
+- cPanel license not included
+
+
+5) Snappy 8000
+
+Pricing
+- Renewal price:
+  - 1 Month: $149.99/mo
+  - 3 Months: $145.99/mo
+  - 6 Months: $141.99/mo
+  - 1 Year: $136.99/mo
+  - 2 Years: $132.99/mo
+
+Top features:
+- Legacy VPS plan
+- cPanel license not included
+
+
+D) Legacy VPS Hosting (centOS) - WITH cPanel License
+
+1) Snappy 2000
+
+Pricing
+- Renewal price:
+  - 1 Month: $91.99/mo
+  - 3 Months: $89.99/mo
+  - 6 Months: $87.99/mo
+  - 1 Year: $85.99/mo
+  - 2 Years: $81.99/mo
+  - 3 Years: $81.99/mo
+
+Top features:
+- Legacy VPS plan
+- cPanel license included in renewal price
+
+
+2) Snappy 4000
+
+Pricing
+- Renewal price:
+  - 1 Month: $131.95/mo
+  - 3 Months: $128.99/mo
+  - 6 Months: $125.99/mo
+  - 1 Year: $121.99/mo
+  - 2 Years: $116.99/mo
+  - 3 Years: $116.99/mo
+
+Top features:
+- Legacy VPS plan
+- cPanel license included in renewal price
+
+
+3) Snappy 8000
+
+Pricing
+- Renewal price:
+  - 1 Month: $161.99/mo
+  - 3 Months: $157.99/mo
+  - 6 Months: $153.99/mo
+  - 1 Year: $148.99/mo
+  - 2 Years: $144.99/mo
+  - 3 Years: $144.99/mo
+
+Top features:
+- Legacy VPS plan
+- cPanel license included in renewal price
+
+VI) Reseller Hosting
+URL: https://www.hostgator.com/reseller-hosting
+
+A) Current Reseller Hosting Plans - NVMe
+
+1) Snappy 2000 - NVMe 4
+
+Pricing
+- Introductory offer: $34.99/mo*
+- Renewal price WITHOUT cPanel License:
+  - 1 Month: $59.99/mo
+  - 3 Months: $56.99/mo
+  - 6 Months: $56.99/mo
+  - 1 Year: $54.99/mo
+  - 2 Years: $53.99/mo
+  - 3 Years: $53.99/mo
+- Renewal price WITH cPanel License:
+  - 1 Month: $71.99/mo
+  - 3 Months: $68.99/mo
+  - 6 Months: $68.99/mo
+  - 1 Year: $66.99/mo
+  - 2 Years: $65.99/mo
+  - 3 Years: $65.99/mo
+
+Top features:
+- 2 vCPU cores
+- 4 GB DDR5 RAM
+- 100 GB NVMe storage
+- Unmetered bandwidth
+- 1 dedicated IP
+- Free migration available
+- Root access
+- cPanel/WHM optional
+- AlmaLinux 9
+- Softaculous script installer
+- Let’s Encrypt SSL included
+- Unlimited email accounts
+- Free content transfers
+- Network guarantee
+- MySQL
+- Maximum outgoing emails: Unlimited
+- Maximum POP/IMAP connections: Unlimited
+- Centralized DDoS Protection
+- Create manual backups
+- Create scheduled backups
+- Network uptime guarantee
+- US-based data centers
+- Fully redundant network
+- Multiple bandwidth providers
+- Premium support
+- Server monitoring and remediation
+
+Reseller / Business Features:
+- White-label hosting business support
+- WHM tools
+- Billing software support
+- cPanel control panel support
+- Resource allocation control
+- Payment method control
+- Client service control
+- Free and simple upgrades
+- Unlimited websites
+- Unlimited email accounts
+- Unlimited MySQL databases
+- Unlimited FTP accounts
+
+Hardware:
+- vCPU: 2 cores
+- RAM: 4 GB DDR5
+- Storage: 100 GB NVMe
+- Bandwidth: Unmetered
+- Dedicated IP: 1
+
+Control Panel:
+- cPanel/WHM: Optional
+- Softaculous script installer: Included
+- AlmaLinux 9: Included
+
+Email:
+- Unlimited email accounts
+- Maximum outgoing emails: Unlimited
+- Maximum POP/IMAP connections: Unlimited
+
+Security:
+- Let’s Encrypt SSL included
+- Centralized DDoS Protection
+- Create manual backups
+- Create scheduled backups
+
+Network:
+- Network uptime guarantee
+- US-based data centers
+- Fully redundant network
+- Multiple bandwidth providers:
+  - AboveNet
+  - AT&T
+  - Comcast
+  - Global Crossing
+  - Level 3
+  - NTT
+
+Support:
+- Premium support
+- Server monitoring and remediation
+- 24/7/365 support
+- 30-day money-back guarantee
+- Free migration available
+
+
+2) Snappy 4000 - NVMe 8
+
+Pricing
+- Introductory offer: $53.99/mo*
+- Renewal price WITHOUT cPanel License:
+  - 1 Month: $92.99/mo
+  - 3 Months: $88.99/mo
+  - 6 Months: $87.99/mo
+  - 1 Year: $85.99/mo
+  - 2 Years: $83.99/mo
+  - 3 Years: $83.99/mo
+- Renewal price WITH cPanel License:
+  - 1 Month: $104.99/mo
+  - 3 Months: $100.99/mo
+  - 6 Months: $99.99/mo
+  - 1 Year: $97.99/mo
+  - 2 Years: $95.99/mo
+  - 3 Years: $95.99/mo
+
+Top features:
+- 4 vCPU cores
+- 8 GB DDR5 RAM
+- 200 GB NVMe storage
+- Unmetered bandwidth
+- 1 dedicated IP
+- Free migration available
+- Root access
+- cPanel/WHM optional
+- AlmaLinux 9
+- Softaculous script installer
+- Let’s Encrypt SSL included
+- Unlimited email accounts
+- Free content transfers
+- Network guarantee
+- MySQL
+- Maximum outgoing emails: Unlimited
+- Maximum POP/IMAP connections: Unlimited
+- Centralized DDoS Protection
+- Create manual backups
+- Create scheduled backups
+- Network uptime guarantee
+- US-based data centers
+- Fully redundant network
+- Multiple bandwidth providers
+- Premium support
+- Server monitoring and remediation
+
+Reseller / Business Features:
+- White-label hosting business support
+- WHM tools
+- Billing software support
+- cPanel control panel support
+- Resource allocation control
+- Payment method control
+- Client service control
+- Free and simple upgrades
+- Unlimited websites
+- Unlimited email accounts
+- Unlimited MySQL databases
+- Unlimited FTP accounts
+
+Hardware:
+- vCPU: 4 cores
+- RAM: 8 GB DDR5
+- Storage: 200 GB NVMe
+- Bandwidth: Unmetered
+- Dedicated IP: 1
+
+Control Panel:
+- cPanel/WHM: Optional
+- Softaculous script installer: Included
+- AlmaLinux 9: Included
+
+Email:
+- Unlimited email accounts
+- Maximum outgoing emails: Unlimited
+- Maximum POP/IMAP connections: Unlimited
+
+Security:
+- Let’s Encrypt SSL included
+- Centralized DDoS Protection
+- Create manual backups
+- Create scheduled backups
+
+Network:
+- Network uptime guarantee
+- US-based data centers
+- Fully redundant network
+- Multiple bandwidth providers:
+  - AboveNet
+  - AT&T
+  - Comcast
+  - Global Crossing
+  - Level 3
+  - NTT
+
+Support:
+- Premium support
+- Server monitoring and remediation
+- 24/7/365 support
+- 30-day money-back guarantee
+- Free migration available
+
+
+3) Snappy 8000 - NVMe 16
+
+Pricing
+- Introductory offer: $82.99/mo*
+- Renewal price WITHOUT cPanel License:
+  - 1 Month: $141.99/mo
+  - 3 Months: $137.99/mo
+  - 6 Months: $136.99/mo
+  - 1 Year: $131.99/mo
+  - 2 Years: $129.99/mo
+  - 3 Years: $128.99/mo
+- Renewal price WITH cPanel License:
+  - 1 Month: $153.99/mo
+  - 3 Months: $149.99/mo
+  - 6 Months: $148.99/mo
+  - 1 Year: $143.99/mo
+  - 2 Years: $141.99/mo
+  - 3 Years: $140.99/mo
+
+Top features:
+- 8 vCPU cores
+- 16 GB DDR5 RAM
+- 450 GB NVMe storage
+- Unmetered bandwidth
+- 1 dedicated IP
+- Free migration available
+- Root access
+- cPanel/WHM optional
+- AlmaLinux 9
+- Softaculous script installer
+- Let’s Encrypt SSL included
+- Unlimited email accounts
+- Free content transfers
+- Network guarantee
+- MySQL
+- Maximum outgoing emails: Unlimited
+- Maximum POP/IMAP connections: Unlimited
+- Centralized DDoS Protection
+- Create manual backups
+- Create scheduled backups
+- Network uptime guarantee
+- US-based data centers
+- Fully redundant network
+- Multiple bandwidth providers
+- Premium support
+- Server monitoring and remediation
+
+Reseller / Business Features:
+- White-label hosting business support
+- WHM tools
+- Billing software support
+- cPanel control panel support
+- Resource allocation control
+- Payment method control
+- Client service control
+- Free and simple upgrades
+- Unlimited websites
+- Unlimited email accounts
+- Unlimited MySQL databases
+- Unlimited FTP accounts
+
+Hardware:
+- vCPU: 8 cores
+- RAM: 16 GB DDR5
+- Storage: 450 GB NVMe
+- Bandwidth: Unmetered
+- Dedicated IP: 1
+
+Control Panel:
+- cPanel/WHM: Optional
+- Softaculous script installer: Included
+- AlmaLinux 9: Included
+
+Email:
+- Unlimited email accounts
+- Maximum outgoing emails: Unlimited
+- Maximum POP/IMAP connections: Unlimited
+
+Security:
+- Let’s Encrypt SSL included
+- Centralized DDoS Protection
+- Create manual backups
+- Create scheduled backups
+
+Network:
+- Network uptime guarantee
+- US-based data centers
+- Fully redundant network
+- Multiple bandwidth providers:
+  - AboveNet
+  - AT&T
+  - Comcast
+  - Global Crossing
+  - Level 3
+  - NTT
+
+Support:
+- Premium support
+- Server monitoring and remediation
+- 24/7/365 support
+- 30-day money-back guarantee
+- Free migration available
+
+
+
+VII) OpenClaw VPS Hosting Plans
+URL: https://www.hostgator.com/vps-hosting/openclaw
+
+1) NVMe 2
+
+Pricing
+- Monthly introductory offer: $4.13/mo
+- 1 Year introductory offer: $2.64/mo
+- 2 Years introductory offer: $2.09/mo*
+- 2 Years renewal price: $4.68/mo
+- Term shown: For 24 month term
+
+Top features:
+- 1 vCPU Core
+- 2 GB DDR5 RAM
+- 50GB NVMe Storage
+- Unmetered Bandwidth
+- 24/7 Support
+- Self-managed VPS hosting for OpenClaw
+- Dedicated resources
+- Full server control
+- Predictable performance
+- One-click OpenClaw deployment
+- Real-time monitoring
+- Role-based access
+- Infrastructure-level control
+- Containerized OpenClaw environment
+- Fault isolation architecture
+
+Performance & Scale:
+- NVMe SSD storage
+- High-speed storage for workflow logs, state updates, and integration data handling
+- Unmetered bandwidth for OpenClaw API calls and integrations
+- Add resources on demand
+- Handles traffic spikes
+- Stable OpenClaw event processing during concurrent workflows
+
+Control & Access:
+- Infrastructure-level control
+- Full server-level control
+- Centralized container management
+- Portainer-style visual container management mentioned on page
+- Governance and access control
+- Role-based permissions
+- Run custom AI workflow systems
+- Deploy OpenClaw and containerized apps
+
+Security & Reliability:
+- Role-based permissions / RBAC
+- Continuous operational visibility
+- Real-time monitoring
+- Fault isolation architecture
+- Containerized services isolate dependencies and failures
+
+Support:
+- 24/7 Support
+- Infrastructure-only support
+- HostGator maintains hardware, network, and virtualization layer
+- User manages OS, configurations, and applications
+
+
+2) NVMe 4
+
+Pricing
+- Monthly introductory offer: $8.25/mo
+- 1 Year introductory offer: $5.28/mo
+- 2 Years introductory offer: $4.18/mo*
+- 2 Years renewal price: $9.35/mo
+- Term shown: For 24 month term
+
+Top features:
+- 2 vCPU Cores
+- 4 GB DDR5 RAM
+- 100GB NVMe Storage
+- Unmetered Bandwidth
+- 24/7 Support
+- Recommended plan
+- Self-managed VPS hosting for OpenClaw
+- Dedicated resources
+- Full server control
+- Predictable performance
+- One-click OpenClaw deployment
+- Real-time monitoring
+- Role-based access
+- Infrastructure-level control
+- Containerized OpenClaw environment
+- Fault isolation architecture
+
+Performance & Scale:
+- NVMe SSD storage
+- High-speed storage for workflow logs, state updates, and integration data handling
+- Unmetered bandwidth for OpenClaw API calls and integrations
+- Add resources on demand
+- Handles traffic spikes
+- Stable OpenClaw event processing during concurrent workflows
+
+Control & Access:
+- Infrastructure-level control
+- Full server-level control
+- Centralized container management
+- Portainer-style visual container management mentioned on page
+- Governance and access control
+- Role-based permissions
+- Run custom AI workflow systems
+- Deploy OpenClaw and containerized apps
+
+Security & Reliability:
+- Role-based permissions / RBAC
+- Continuous operational visibility
+- Real-time monitoring
+- Fault isolation architecture
+- Containerized services isolate dependencies and failures
+
+Support:
+- 24/7 Support
+- Infrastructure-only support
+- HostGator maintains hardware, network, and virtualization layer
+- User manages OS, configurations, and applications
+
+
+3) NVMe 8
+
+Pricing
+- Monthly introductory offer: $16.50/mo
+- 1 Year introductory offer: $10.56/mo*
+- 2 Years introductory offer: $8.36/mo*
+- 2 Years renewal price: $18.70/mo
+- Term shown: For 24 month term
+
+Top features:
+- 4 vCPU Cores
+- 8 GB DDR5 RAM
+- 200GB NVMe Storage
+- Unmetered Bandwidth
+- 24/7 Support
+- Self-managed VPS hosting for OpenClaw
+- Dedicated resources
+- Full server control
+- Predictable performance
+- One-click OpenClaw deployment
+- Real-time monitoring
+- Role-based access
+- Infrastructure-level control
+- Containerized OpenClaw environment
+- Fault isolation architecture
+
+Performance & Scale:
+- NVMe SSD storage
+- High-speed storage for workflow logs, state updates, and integration data handling
+- Unmetered bandwidth for OpenClaw API calls and integrations
+- Add resources on demand
+- Handles traffic spikes
+- Stable OpenClaw event processing during concurrent workflows
+
+Control & Access:
+- Infrastructure-level control
+- Full server-level control
+- Centralized container management
+- Portainer-style visual container management mentioned on page
+- Governance and access control
+- Role-based permissions
+- Run custom AI workflow systems
+- Deploy OpenClaw and containerized apps
+
+Security & Reliability:
+- Role-based permissions / RBAC
+- Continuous operational visibility
+- Real-time monitoring
+- Fault isolation architecture
+- Containerized services isolate dependencies and failures
+
+Support:
+- 24/7 Support
+- Infrastructure-only support
+- HostGator maintains hardware, network, and virtualization layer
+- User manages OS, configurations, and applications
+
+
+4) NVMe 16
+
+Pricing
+- Monthly introductory offer: $34.88/mo
+- 1 Year introductory offer: $22.32/mo
+- 2 Years introductory offer: $17.67/mo*
+- 2 Years renewal price: $39.53/mo
+- Term shown: For 24 month term
+
+Top features:
+- 8 vCPU Cores
+- 16 GB DDR5 RAM
+- 450GB NVMe Storage
+- Unmetered Bandwidth
+- 24/7 Support
+- Fastest / highest-performing plan
+- Self-managed VPS hosting for OpenClaw
+- Dedicated resources
+- Full server control
+- Predictable performance
+- One-click OpenClaw deployment
+- Real-time monitoring
+- Role-based access
+- Infrastructure-level control
+- Containerized OpenClaw environment
+- Fault isolation architecture
+
+Performance & Scale:
+- NVMe SSD storage
+- High-speed storage for workflow logs, state updates, and integration data handling
+- Unmetered bandwidth for OpenClaw API calls and integrations
+- Add resources on demand
+- Handles traffic spikes
+- Stable OpenClaw event processing during concurrent workflows
+
+Control & Access:
+- Infrastructure-level control
+- Full server-level control
+- Centralized container management
+- Portainer-style visual container management mentioned on page
+- Governance and access control
+- Role-based permissions
+- Run custom AI workflow systems
+- Deploy OpenClaw and containerized apps
+
+Security & Reliability:
+- Role-based permissions / RBAC
+- Continuous operational visibility
+- Real-time monitoring
+- Fault isolation architecture
+- Containerized services isolate dependencies and failures
+
+Support:
+- 24/7 Support
+- Infrastructure-only support
+- HostGator maintains hardware, network, and virtualization layer
+- User manages OS, configurations, and applications
+
+
+Common OpenClaw Hosting Features
+
+OpenClaw Setup:
+- One-click OpenClaw deployment
+- Required containers, dependencies, and configuration are installed automatically
+- Full server-level control remains available
+- Customize integrations, prompts, and automation inside own infrastructure
+- OpenClaw added during VPS setup from Software > Application > OpenClaw
+
+Use Cases:
+- Run OpenClaw workflows on isolated infrastructure
+- Event-driven automation workflows
+- AI agents and workflow orchestration
+- CI/CD pipelines
+- Internal systems
+- Distributed systems
+- Remote services
+- Edge environments
+
+OpenClaw Benefits:
+- Dedicated CPU, RAM, and storage
+- Better suited than shared hosting for complex OpenClaw workflows
+- Scalable CPU, RAM, and storage
+- Supports higher workflow volumes
+- Supports additional integrations
+- Supports advanced event-driven execution
+- Supports role-based access control
+- Supports real-time monitoring
+- Supports high availability and stable workflow execution
+
+
+VIII) GatorClaw VPS Hosting Plans
+URL: https://www.hostgator.com/vps-hosting/gatorclaw
+
+
+1) NVMe 2
+
+Pricing
+- Monthly introductory offer: $4.13/mo
+- 1 Year introductory offer: $2.64/mo
+- 2 Years introductory offer: $2.09/mo*
+- 2 Years renewal price: $4.68/mo
+- Term shown: For 24 month term
+
+Top features:
+- 1 vCPU Core
+- 2 GB DDR5 RAM
+- 50GB NVMe Storage
+- Unmetered Bandwidth
+- 24/7 Support
+- Self-managed VPS hosting for GatorClaw
+- No-code AI agent automation
+- Guided setup with less complexity
+- Secure VPS with full control
+- Dedicated resources
+- Full server-level control
+- Predictable performance
+- Simpler AI-agent automation setup
+- AI workflows without technical complexity
+- Support for Gmail, Slack, and CRM-style tool connections
+- Automation for replies, updates, and ticket handling
+- Secure VPS environment
+- Infrastructure-only support
+
+Performance & Scale:
+- NVMe SSD storage
+- Dedicated CPU, RAM, and storage
+- Unmetered bandwidth
+- Suitable for AI-agent workflows
+- Scalable VPS environment
+- Can increase resources as automation grows
+- Supports higher workflow volumes and integrations
+
+Control & Access:
+- Full server-level control
+- User manages OS, configurations, and applications
+- Suitable for self-managed VPS users
+- Flexible infrastructure for AI automation
+- Root/server control implied through self-managed VPS model
+
+Security & Reliability:
+- Secure VPS environment
+- Isolated infrastructure
+- Infrastructure maintained by HostGator
+- HostGator maintains hardware, network, and virtualization layer
+- User controls software, runtime, configuration, and applications
+
+Support:
+- 24/7 Support
+- Infrastructure-only support
+- HostGator maintains hardware, network, and virtualization layer
+- User manages OS, configurations, and applications
+
+
+2) NVMe 4
+
+Pricing
+- Monthly introductory offer: $8.25/mo
+- 1 Year introductory offer: $5.28/mo
+- 2 Years introductory offer: $4.18/mo*
+- 2 Years renewal price: $9.35/mo
+- Term shown: For 24 month term
+
+Top features:
+- 2 vCPU Cores
+- 4 GB DDR5 RAM
+- 100GB NVMe Storage
+- Unmetered Bandwidth
+- 24/7 Support
+- Recommended plan
+- Self-managed VPS hosting for GatorClaw
+- No-code AI agent automation
+- Guided setup with less complexity
+- Secure VPS with full control
+- Dedicated resources
+- Full server-level control
+- Predictable performance
+- Simpler AI-agent automation setup
+- AI workflows without technical complexity
+- Support for Gmail, Slack, and CRM-style tool connections
+- Automation for replies, updates, and ticket handling
+- Secure VPS environment
+- Infrastructure-only support
+
+Performance & Scale:
+- NVMe SSD storage
+- Dedicated CPU, RAM, and storage
+- Unmetered bandwidth
+- Suitable for AI-agent workflows
+- Scalable VPS environment
+- Can increase resources as automation grows
+- Supports higher workflow volumes and integrations
+
+Control & Access:
+- Full server-level control
+- User manages OS, configurations, and applications
+- Suitable for self-managed VPS users
+- Flexible infrastructure for AI automation
+- Guided setup for launching AI-powered workflows
+
+Security & Reliability:
+- Secure VPS environment
+- Isolated infrastructure
+- Infrastructure maintained by HostGator
+- HostGator maintains hardware, network, and virtualization layer
+- User controls software, runtime, configuration, and applications
+
+Support:
+- 24/7 Support
+- Infrastructure-only support
+- HostGator maintains hardware, network, and virtualization layer
+- User manages OS, configurations, and applications
+
+
+3) NVMe 8
+
+Pricing
+- Monthly introductory offer: $16.50/mo
+- 1 Year introductory offer: $10.56/mo*
+- 2 Years introductory offer: $8.36/mo*
+- 2 Years renewal price: $18.70/mo
+- Term shown: For 24 month term
+
+Top features:
+- 4 vCPU Cores
+- 8 GB DDR5 RAM
+- 200GB NVMe Storage
+- Unmetered Bandwidth
+- 24/7 Support
+- Self-managed VPS hosting for GatorClaw
+- No-code AI agent automation
+- Guided setup with less complexity
+- Secure VPS with full control
+- Dedicated resources
+- Full server-level control
+- Predictable performance
+- More storage for bigger tech stacks
+- Simpler AI-agent automation setup
+- AI workflows without technical complexity
+- Support for Gmail, Slack, and CRM-style tool connections
+- Automation for replies, updates, and ticket handling
+- Secure VPS environment
+- Infrastructure-only support
+
+Performance & Scale:
+- NVMe SSD storage
+- Dedicated CPU, RAM, and storage
+- Unmetered bandwidth
+- Suitable for larger AI-agent workflows
+- Scalable VPS environment
+- Can increase resources as automation grows
+- Supports higher workflow volumes and integrations
+- More storage for bigger tech stacks
+
+Control & Access:
+- Full server-level control
+- User manages OS, configurations, and applications
+- Suitable for self-managed VPS users
+- Flexible infrastructure for AI automation
+- Guided setup for launching AI-powered workflows
+
+Security & Reliability:
+- Secure VPS environment
+- Isolated infrastructure
+- Infrastructure maintained by HostGator
+- HostGator maintains hardware, network, and virtualization layer
+- User controls software, runtime, configuration, and applications
+
+Support:
+- 24/7 Support
+- Infrastructure-only support
+- HostGator maintains hardware, network, and virtualization layer
+- User manages OS, configurations, and applications
+
+
+4) NVMe 16
+
+Pricing
+- Monthly introductory offer: $34.88/mo
+- 1 Year introductory offer: $22.32/mo
+- 2 Years introductory offer: $17.67/mo*
+- 2 Years renewal price: $39.53/mo
+- Term shown: For 24 month term
+
+Top features:
+- 8 vCPU Cores
+- 16 GB DDR5 RAM
+- 450GB NVMe Storage
+- Unmetered Bandwidth
+- 24/7 Support
+- Fastest / highest-performing plan
+- Self-managed VPS hosting for GatorClaw
+- No-code AI agent automation
+- Guided setup with less complexity
+- Secure VPS with full control
+- Dedicated resources
+- Full server-level control
+- Predictable performance
+- Simpler AI-agent automation setup
+- AI workflows without technical complexity
+- Support for Gmail, Slack, and CRM-style tool connections
+- Automation for replies, updates, and ticket handling
+- Secure VPS environment
+- Infrastructure-only support
+
+Performance & Scale:
+- NVMe SSD storage
+- Dedicated CPU, RAM, and storage
+- Unmetered bandwidth
+- Highest-performing GatorClaw VPS plan
+- Suitable for larger and more demanding AI-agent workflows
+- Scalable VPS environment
+- Can increase resources as automation grows
+- Supports higher workflow volumes and integrations
+
+Control & Access:
+- Full server-level control
+- User manages OS, configurations, and applications
+- Suitable for self-managed VPS users
+- Flexible infrastructure for AI automation
+- Guided setup for launching AI-powered workflows
+
+Security & Reliability:
+- Secure VPS environment
+- Isolated infrastructure
+- Infrastructure maintained by HostGator
+- HostGator maintains hardware, network, and virtualization layer
+- User controls software, runtime, configuration, and applications
+
+Support:
+- 24/7 Support
+- Infrastructure-only support
+- HostGator maintains hardware, network, and virtualization layer
+- User manages OS, configurations, and applications
+
+
+Common GatorClaw Hosting Details
+
+GatorClaw Positioning:
+- GatorClaw VPS Hosting - Self Managed
+- Build and run AI agents without the complexity
+- Designed for users who want a simpler, faster path to automation
+- No-code AI agent automation
+- Guided setup with less complexity
+- Secure VPS with full control
+- Now powered by Bluehost
+
+How GatorClaw Works:
+- GatorClaw makes AI agent automation easier to adopt
+- Users move through guided setup
+- Users connect tools and launch AI-powered workflows faster
+- Designed to reduce the steep learning curve of more technical agent platforms
+- Supports tools like Gmail, Slack, and CRM systems
+- Helps streamline replies, updates, and ticket handling
+- Runs in a secure VPS environment
+
+Use Cases:
+- AI agent automation
+- Workflow automation
+- Customer reply automation
+- Ticket handling
+- CRM updates
+- Slack or email workflow support
+- Automation for teams that want simpler AI-agent setup
+- Self-managed automation infrastructure
+
+Support Model:
+- Infrastructure-only support
+- HostGator maintains:
+  - Hardware
+  - Network
+  - Virtualization layer
+- Customer manages:
+  - Operating system
+  - Configurations
+  - Applications
+  - Software setup
+  
+  
+IX) HostGator SSL Certificates Products
+URL: https://www.hostgator.com/ssl-certificates
+
+
+1) Single Domain SSL
+
+Pricing
+- Annual price shown on live SSL page: $39.96/yr*
+- Positive SSL exact price from HostGator help article: $39.99/year
+- Sectigo SSL exact price from HostGator help article: $99.99/year
+- Registration term: 1 year
+
+Top features:
+- Domain validated SSL
+- Protects one domain and one subdomain
+- Included TrustLogo® Site Seal
+- Quickest / most cost-effective paid SSL option
+- eCommerce SSL
+- 2048-bit signatures
+- Up to 256-bit encryption
+- Recognized by all major browsers
+- Helps show HTTPS / secure browser status
+- Helps protect sensitive data
+- Helps increase customer trust
+- Helps support SEO
+- 30-day money-back guarantee
+- 24/7/365 support
+
+Domains Included:
+- Protects one domain and one subdomain
+- Example:
+  - example.com
+  - www.example.com or another single subdomain
+
+Validation:
+- Domain Validation (DV)
+- Verifies control of the domain at the time of purchase
+
+Warranty:
+- Positive SSL warranty: $10,000
+- Sectigo SSL warranty: $250,000
+- Main SSL comparison page lists Single Domain SSL warranty as $10,000
+
+Encryption:
+- 2048-bit signatures
+- 256-bit encryption
+
+Browser Compatibility:
+- Recognized by all major browsers
+
+Trust Seal:
+- TrustLogo® Site Seal: Included
+
+Best For:
+- Small business websites
+- Single-domain websites
+- Basic eCommerce websites
+- Websites needing a paid SSL certificate with warranty and trust seal
+- Cost-effective SSL protection for one domain
+
+
+2) Wildcard SSL
+
+Pricing
+- Annual price shown on live SSL page: $239.88/yr*
+- Exact price from HostGator Wildcard SSL help article: $119.99/year
+- Registration term: 1 year
+- Installation:
+  - Free installation for primary domain and first five subdomains
+  - Additional subdomains: $5 each for installation
+  - Additional server installation: $25 per additional server, up to 100 servers
+
+Top features:
+- Secures one primary domain and unlimited subdomains
+- Domain validated SSL
+- $50,000 warranty shown on main SSL comparison page
+- Included TrustLogo® Site Seal
+- 2048-bit signatures
+- Up to 256-bit encryption
+- Recognized by all major browsers
+- One SSL certificate for main domain and subdomains
+- Simplifies certificate management
+- Subdomain validation not required separately
+- Cost-effective for websites using many subdomains
+- 30-day money-back guarantee
+- 24/7/365 support
+
+Domains Included:
+- Secures one primary domain and unlimited subdomains
+- Example:
+  - example.com
+  - www.example.com
+  - blog.example.com
+  - store.example.com
+  - billing.example.com
+
+Important Limitation:
+- Subdomains must share the same primary domain
+- A subdomain under a different primary domain is not covered
+
+Validation:
+- Domain Validation (DV)
+
+Warranty:
+- Main SSL page comparison table: $50,000 warranty
+- HostGator Wildcard help article mentions Sectigo warranty as $10,000 limited warranty
+- Note: HostGator sources show conflicting warranty values for Wildcard SSL
+
+Encryption:
+- 2048-bit signatures
+- Up to 256-bit encryption
+
+Browser Compatibility:
+- Recognized by all major browsers
+
+Trust Seal:
+- TrustLogo® Site Seal: Included
+
+Best For:
+- Websites with multiple subdomains
+- eCommerce stores using subdomains
+- Membership portals
+- SaaS-style websites
+- Education or client portals
+- Businesses that want one certificate for many subdomains
+
+
+3) EV SSL
+
+Pricing
+- Annual price shown on live SSL page: $239.88/yr*
+- Exact price from HostGator EV SSL help article: $269.99/year
+- Registration term: 1 year
+
+Top features:
+- Extended Validation SSL
+- Highest level of protection and trust assurance
+- Protects either one domain or one subdomain
+- $1,750,000 warranty
+- Included TrustLogo® Site Seal
+- 2048-bit signatures
+- Up to 256-bit encryption
+- Recognized by all major browsers
+- Stronger business validation
+- Helps confirm website legitimacy
+- Designed for higher trust and business assurance
+- 30-day money-back guarantee
+- 24/7/365 support
+
+Domains Included:
+- Protects either one domain or one subdomain
+- One hostname is associated with an EV SSL certificate
+
+Validation:
+- Extended Validation (EV)
+- Requires rigorous validation before issuance
+- HostGator notes the process can take time and may require business verification documentation
+
+Warranty:
+- $1,750,000 limited warranty
+
+Encryption:
+- 2048-bit signatures
+- Up to 256-bit encryption
+
+Browser Compatibility:
+- Recognized by all major browsers
+
+Trust Seal:
+- TrustLogo® Site Seal: Included
+
+Best For:
+- Established businesses
+- Financial websites
+- eCommerce websites handling sensitive data
+- Sites that need stronger business identity assurance
+- Brands that want the highest warranty level among HostGator SSL options
+
+
+Common SSL Benefits Mentioned by HostGator
+
+Security:
+- Encrypts data transmission
+- Helps prevent attacks when data is transmitted from the site
+- Helps protect visitors’ personal information
+- Helps show browsers that the site is secure
+
+Trust:
+- Shows HTTPS in the browser
+- Helps increase customer trust
+- Helps protect brand reputation
+- TrustLogo® Site Seal included with paid SSL options
+
+SEO:
+- SSL can help support better search visibility
+- Secure sites are more trusted by users and browsers
+
+Compliance:
+- SSL helps support privacy/security compliance needs
+- HostGator mentions PCI DSS and HIPAA-related security expectations
+
+Support:
+- All SSL plans include 24/7/365 support
+- 30-day money-back guarantee is listed for SSL plans
+
+
+X) HostGator Professional Email / Titan Products
+URL: https://www.hostgator.com/titan
+
+
+1) PROFESSIONAL EMAIL
+
+Pricing
+- Introductory offer: Starting at $1.67/mo*
+- Renewal price: Not publicly available
+- Billing terms: Monthly or 1 Year
+- Price is likely per mailbox / per user
+
+Best For:
+- Solopreneurs
+- Freelancers
+- Small businesses needing branded email on their own domain
+
+Top features:
+- 10 GB Email Storage
+- 10 Read Receipts
+- 1 Email Template
+- 1 Contact Group
+- Calendar & Contacts
+- Vacation Responder
+- Undo Send
+- Allowlist
+- Block Sender
+- Advanced Anti-Spam & Anti-Virus
+- Data Encryption
+- Professional custom email address using your domain
+- Webmail access
+- Mobile app access
+- Email forwarding support
+- Built-in migration tools for emails and contacts
+- 24/7 support
+
+Email Storage:
+- 10 GB Email Storage per mailbox
+
+Productivity:
+- 10 Read Receipts
+- 1 Email Template
+- 1 Contact Group
+- Calendar & Contacts
+- Vacation Responder
+- Undo Send
+
+Security:
+- Advanced Anti-Spam & Anti-Virus
+- Data Encryption
+- Allowlist
+- Block Sender
+- Custom DKIM mentioned as part of Titan security benefits
+
+Access:
+- Webmail access
+- Mobile applications
+- Android and iOS app support
+- Browser access
+
+Migration:
+- Built-in migration tools for existing emails and contacts
+
+Support:
+- 24/7 HostGator support
+- Email or live chat support
+
+
+2) PROFESSIONAL EMAIL PLUS
+
+Pricing
+- Introductory offer: $2.50/mo*
+- Renewal price: Not publicly available
+- Billing terms: Monthly or 1 Year
+- Price is likely per mailbox / per user
+
+Best For:
+- Professionals
+- Growing businesses
+- Teams that need stronger productivity and collaboration features
+
+Top features:
+- Everything included in Professional Email
+- 50 GB Email Storage
+- Titan Drive: 1 GB
+- Unlimited Read Receipts
+- Unlimited Email Templates
+- Unlimited Contact Groups
+- Send Later
+- Follow-Up Reminders
+- Turbo Search
+- Send as Alias
+- Grammar & Spell Check
+- HTML in Composer
+- Two-factor Authentication
+- Priority Inbox
+- Email Labels
+- Auto Clean
+- Branding
+- Business Auto-Reply
+- Team Chat
+- Tasks
+
+Email Storage:
+- 50 GB Email Storage per mailbox
+
+Drive / File Storage:
+- Titan Drive: 1 GB
+- Cloud storage integrated with business email
+- Titan Drive storage is separate from email storage
+
+Productivity:
+- Unlimited Read Receipts
+- Unlimited Email Templates
+- Unlimited Contact Groups
+- Send Later
+- Follow-Up Reminders
+- Turbo Search
+- Send as Alias
+- Grammar & Spell Check
+- HTML in Composer
+- Priority Inbox
+- Email Labels
+- Auto Clean
+- Tasks
+
+Branding:
+- Branding
+- Add company logo
+- Choose colors to brand the email interface
+
+Team / Collaboration:
+- Team Chat
+- Business Auto-Reply
+- Calendar & Contacts
+- Tasks
+
+Security:
+- Advanced Anti-Spam & Anti-Virus
+- Data Encryption
+- Two-factor Authentication
+- Allowlist
+- Block Sender
+- Custom DKIM mentioned as part of Titan security benefits
+
+Access:
+- Webmail access
+- Mobile applications
+- Android and iOS app support
+- Browser access
+
+Migration:
+- Built-in migration tools for existing emails and contacts
+
+Support:
+- 24/7 HostGator support
+- Email or live chat support
+
+
+3) PROFESSIONAL EMAIL ULTRA
+
+Pricing
+- Introductory offer: $5.83/mo*
+- Renewal price: Publicly not available
+- Billing terms: Monthly or 1 Year
+- Price is likely per mailbox / per user
+
+Best For:
+- Scaling teams
+- High-performance professionals
+- Businesses needing AI email, backups, campaigns, file tracking, bookings, and invoices
+
+Top features:
+- Everything included in Professional Email Plus
+- 100 GB Email Storage
+- 50 GB Email Backup Storage
+- Titan Drive: 50 GB
+- File Transfer
+- Email AI
+- Signature Designer
+- File & Link Tracking
+- Email Designer
+- Email Campaigns
+- Calendar Bookings
+- Invoice Builder
+- AI Summary
+
+Email Storage:
+- 100 GB Email Storage per mailbox
+
+Backup Storage:
+- 50 GB Email Backup Storage
+- Unlimited automatic daily backups
+- One-click recovery for lost messages
+
+Drive / File Storage:
+- Titan Drive: 50 GB
+- Dedicated cloud storage integrated with business email
+- Storage is separate from email storage
+
+AI Features:
+- Email AI
+- AI Summary
+- Draft emails faster
+- Refine emails
+- Summarize full email conversations
+
+Productivity:
+- Signature Designer
+- File & Link Tracking
+- Email Designer
+- Email Campaigns
+- Calendar Bookings
+- Invoice Builder
+- Send Later
+- Follow-Up Reminders
+- Turbo Search
+- Priority Inbox
+- Email Labels
+- Tasks
+
+Marketing / Sales:
+- Email Campaigns
+- File & Link Tracking
+- Track when recipients open emails, click links, or download files
+- Calendar Bookings
+- Invoice Builder
+- Email Designer
+
+Team / Collaboration:
+- Team Chat
+- Calendar & Contacts
+- File Transfer
+- Branded file-sharing links
+- Business Auto-Reply
+
+Security:
+- Advanced Anti-Spam & Anti-Virus
+- Data Encryption
+- Two-factor Authentication
+- Custom DKIM mentioned as part of Titan security benefits
+- Email Backup Storage
+
+Access:
+- Webmail access
+- Mobile applications
+- Android and iOS app support
+- Browser access
+
+Migration:
+- Built-in migration tools for existing emails and contacts
+
+Support:
+- 24/7 HostGator support
+- Email or live chat support
+
+
+Common Features Included in All Business Email Plans
+
+Delivery:
+- Guaranteed Email Delivery
+- Strong IP reputation
+- Reliable email delivery
+
+Security:
+- Advanced Security
+- Custom DKIM
+- Data Encryption
+- Advanced Anti-Spam
+- Anti-Virus filtering
+
+Access:
+- Powerful webmail
+- Mobile applications
+- Android and iOS app access
+- Browser access
+
+Support:
+- 24/7 HostGator Support
+- Email support
+- Live chat support
+
+Professional Email Setup:
+- Choose a professional email plan
+- Select the number of professional mailboxes
+- Enter the domain for the email account at checkout
+- Register a new domain during checkout if needed
+- Complete purchase and access the portal
+
+Important Notes:
+- Professional email address uses your domain, for example: username@yourdomain.com
+- You need to own a domain to use Titan Professional Email
+- You can create multiple custom email accounts for employees, departments, or services
+- Titan supports email forwarding
+- Titan includes migration tools for moving existing emails and contacts
+- HostGator help flow says billing term can be Monthly or 1 Year 
+
+
+XI) HostGator CodeGuard Website Backup Products
+URL:https://www.hostgator.com/codeguard
+
+1) Basic
+
+Pricing
+- Introductory offer: $1.99/mo*
+- Renewal price:
+  - 1 Year: $47.88/year
+  - Monthly cost breakdown: $3.99/mo
+- Billing note:
+  - The full 1-year term is billed upfront at renewal
+
+Top features:
+- Daily automatic backups
+- 1 GB of storage
+- Up to 5 websites
+- Unlimited databases
+- Unlimited files
+- 3 restores per month
+- Daily site-change monitoring
+- File change monitoring
+- Email alerts
+- Protection against viruses, hackers, and broken code
+- Restore website from a previous version
+- Backup progress alerts
+- Website change alerts
+
+Storage:
+- 1 GB backup storage
+
+Websites:
+- Up to 5 websites per account
+
+Databases:
+- Unlimited databases
+
+Files:
+- Unlimited files
+
+Backups:
+- Daily automatic backups
+- Initial website backup
+- Continued backups when changes are made
+- On-demand backups: Not included
+
+Restores:
+- 3 restores per month
+- Restore files, databases, or entire website
+- Restore previous website versions
+
+Monitoring:
+- Daily site-change monitoring
+- File change monitoring
+- Alerts when suspicious or unexpected changes are detected
+
+Security:
+- Helps recover from hacks, malware, broken code, accidental changes, or website crashes
+- Website security monitoring
+- Email notifications for changes
+
+Best For:
+- Small websites
+- Basic backup protection
+- Users who only need limited restores and small backup storage
+
+
+2) Professional
+
+Pricing
+- Introductory offer: $4.99/mo*
+- Renewal price:
+  - 1 Year: $59.88/year
+  - Monthly cost breakdown: $4.99/mo
+- Billing note:
+  - The full 1-year term is billed upfront at renewal
+
+Top features:
+- Daily automatic backups
+- 5 GB of storage
+- Up to 10 websites
+- Unlimited databases
+- Unlimited files
+- Unlimited restores
+- On-demand backups
+- Priority queuing
+- Daily site-change monitoring
+- File change monitoring
+- Email alerts
+- Protection against viruses, hackers, and broken code
+- Restore website from a previous version
+- Backup progress alerts
+- Website change alerts
+
+Storage:
+- 5 GB backup storage
+
+Websites:
+- Up to 10 websites per account
+
+Databases:
+- Unlimited databases
+
+Files:
+- Unlimited files
+
+Backups:
+- Daily automatic backups
+- Initial website backup
+- Continued backups when changes are made
+- On-demand backups: Included
+
+Restores:
+- Unlimited restores
+- Restore files, databases, or entire website
+- Restore previous website versions
+
+Monitoring:
+- Daily site-change monitoring
+- File change monitoring
+- Alerts when suspicious or unexpected changes are detected
+
+Security:
+- Helps recover from hacks, malware, broken code, accidental changes, or website crashes
+- Website security monitoring
+- Email notifications for changes
+
+Priority:
+- Priority queuing included
+
+Best For:
+- Multiple small websites
+- Users who need more restores
+- Businesses that need on-demand backups and higher priority processing
+
+
+3) Premium
+
+Pricing
+- Introductory offer: $8.99/mo*
+- Renewal price:
+  - 1 Year: $107.88/year
+  - Monthly cost breakdown: $8.99/mo
+- Billing note:
+  - The full 1-year term is billed upfront at renewal
+
+Top features:
+- Daily automatic backups
+- 10 GB of storage
+- Up to 25 websites
+- Unlimited databases
+- Unlimited files
+- Unlimited restores
+- On-demand backups
+- Priority queuing
+- Daily site-change monitoring
+- File change monitoring
+- Email alerts
+- Protection against viruses, hackers, and broken code
+- Restore website from a previous version
+- Backup progress alerts
+- Website change alerts
+
+Storage:
+- 10 GB backup storage
+
+Websites:
+- Up to 25 websites per account
+
+Databases:
+- Unlimited databases
+
+Files:
+- Unlimited files
+
+Backups:
+- Daily automatic backups
+- Initial website backup
+- Continued backups when changes are made
+- On-demand backups: Included
+
+Restores:
+- Unlimited restores
+- Restore files, databases, or entire website
+- Restore previous website versions
+
+Monitoring:
+- Daily site-change monitoring
+- File change monitoring
+- Alerts when suspicious or unexpected changes are detected
+
+Security:
+- Helps recover from hacks, malware, broken code, accidental changes, or website crashes
+- Website security monitoring
+- Email notifications for changes
+
+Priority:
+- Priority queuing included
+
+Best For:
+- Agencies
+- Growing websites
+- Users managing many websites
+- Businesses that need more storage, on-demand backups, and unlimited restores
+
+
+4) Enterprise
+
+Pricing
+- Introductory offer: Dynamic / not clearly exposed in accessible live page HTML
+- Renewal price:
+  - 1 Year: $239.88/year
+  - Monthly cost breakdown: $19.99/mo
+- Billing note:
+  - The full 1-year term is billed upfront at renewal
+
+Top features:
+- Daily automatic backups
+- 25 GB of storage
+- Up to 100 websites
+- Unlimited databases
+- Unlimited files
+- Unlimited restores
+- On-demand backups
+- Priority queuing
+- Daily site-change monitoring
+- File change monitoring
+- Email alerts
+- Protection against viruses, hackers, and broken code
+- Restore website from a previous version
+- Backup progress alerts
+- Website change alerts
+
+Storage:
+- 25 GB backup storage
+
+Websites:
+- Up to 100 websites per account
+
+Databases:
+- Unlimited databases
+
+Files:
+- Unlimited files
+
+Backups:
+- Daily automatic backups
+- Initial website backup
+- Continued backups when changes are made
+- On-demand backups: Included
+
+Restores:
+- Unlimited restores
+- Restore files, databases, or entire website
+- Restore previous website versions
+
+Monitoring:
+- Daily site-change monitoring
+- File change monitoring
+- Alerts when suspicious or unexpected changes are detected
+
+Security:
+- Helps recover from hacks, malware, broken code, accidental changes, or website crashes
+- Website security monitoring
+- Email notifications for changes
+
+Priority:
+- Priority queuing included
+
+Best For:
+- Large website portfolios
+- Agencies managing many client sites
+- Businesses needing higher storage and website coverage
+- Users who need backup coverage for up to 100 websites
+
+
+Common CodeGuard Features
+
+Website Backup:
+- Automatic website backups
+- Initial backup after setup
+- Continued backups when website changes are detected
+- Cloud backup storage
+
+Website Restore:
+- Restore a previous version of the website
+- Restore single file, database, or entire website
+- Backup is created after restoration changes
+- Email notification after restoration is complete
+
+Monitoring:
+- Daily monitoring
+- File change monitoring
+- Website change alerts
+- Backup progress notifications
+- Email alerts for detected changes
+
+Security / Recovery:
+- Helps recover from:
+  - Accidental website changes
+  - Broken code
+  - Malware or virus damage
+  - Hacks
+  - Site crashes
+- Website security monitoring
+
+Availability:
+- CodeGuard through HostGator is available for Shared hosting plans
+- For VPS and Dedicated hosting plans, HostGator directs users to CodeGuard server backup plans separately
+
+Support / Management:
+- CodeGuard can be purchased and managed from the HostGator Customer Portal
+- Users can install, upgrade, modify, or cancel CodeGuard from the portal
+
+
+XII) HostGator AI All Access Products
+URL: https://www.hostgator.com/all-access
+
+
+1) AI All-Access Pack
+
+Pricing
+- Billing: Monthly
+- Price: $20.00/mo/user
+- Renewal price: $20.00/mo/user
+- Hosting requirement: No Bluehost hosting plan needed
+
+Top features:
+- Access ChatGPT, Gemini, Claude, and Grok in one place
+- Switch between models based on the task
+- Compare multiple responses before choosing an answer
+- Research Agent for cited reports and deep analysis
+- Presentation Builder
+- AI Article Writer
+- Account Management Dashboard for teams and clients
+- Use your preferred AI model
+- Includes free-to-use pre-built AI agents
+- One central dashboard for multiple AI models
+
+Included AI Models:
+- ChatGPT
+- Gemini
+- Claude Sonnet
+- Grok
+
+AI Model Positioning:
+- ChatGPT:
+  - The well-rounded model
+  - Good for organization, templating, and clear straightforward answers
+- Gemini:
+  - The well-read model
+  - Useful for distilling complex topics with research-backed knowledge
+- Claude Sonnet:
+  - The QA model
+  - Useful for coding, safety, and high-accuracy tasks
+- Grok:
+  - The creative model
+  - Useful for human-like creative responses
+  - Includes native access to X
+
+Agents / Tools:
+- Research Agent
+- Presentation Builder
+- AI Article Writer
+- Pre-built AI agents
+- Multi-model response comparison
+
+Dashboard / Management:
+- Account Management Dashboard
+- Built for teams and clients
+- Centralized AI model access
+- Switch between models from one place
+
+Privacy / Security:
+- Standard AI All-Access privacy level
+- Privacy+ features are not included in this base plan
+
+Best For:
+- Users who want one dashboard for multiple leading AI models
+- Teams that want to compare answers across models
+- Users who need AI writing, presentations, research, and general productivity
+- Users who do not require the stronger privacy controls of Privacy+
+
+
+2) AI All-Access Pack Privacy+
+
+Pricing
+- Billing: Monthly
+- Price: $25.00/mo/user
+- Renewal price: $25.00/mo/user
+- Hosting requirement: No Bluehost hosting plan needed
+
+Top features:
+- Everything in AI All-Access Pack
+- Access ChatGPT, Gemini, Claude, and Grok in one place
+- Switch between models based on the task
+- Compare multiple responses before choosing an answer
+- Research Agent for cited reports and deep analysis
+- Presentation Builder
+- AI Article Writer
+- Account Management Dashboard for teams and clients
+- Privacy Mode with a sanitization layer for sensitive prompts
+- Privately hosted LLM access
+- End-to-end encryption
+- Encrypted searches
+- User-specific PIN protection
+- Incognito Mode for highly sensitive conversations
+
+Included AI Models:
+- ChatGPT
+- Gemini
+- Claude Sonnet
+- Grok
+
+Privacy / Security:
+- Privacy Mode
+- Sanitization layer for sensitive prompts
+- Privately hosted LLM access
+- End-to-end encryption
+- Encrypted searches
+- User-specific PIN protection
+- Incognito Mode for highly sensitive conversations
+
+Agents / Tools:
+- Research Agent
+- Presentation Builder
+- AI Article Writer
+- Pre-built AI agents
+- Multi-model response comparison
+
+Dashboard / Management:
+- Account Management Dashboard
+- Built for teams and clients
+- Centralized AI model access
+- Switch between models from one place
+
+Best For:
+- Users who need stronger privacy controls
+- Teams handling sensitive prompts or client work
+- Users who want encrypted searches and incognito conversations
+- Businesses that need AI tools with additional privacy safeguards
+
+
+Common AI All Access Details
+
+Product Positioning:
+- All-in-one AI assistant
+- All your favorite AI models for one monthly price
+- Designed to stop switching between multiple AI platforms
+- Lets users choose the best model for each task
+- Bundles ChatGPT, Gemini, Claude Sonnet, and Grok into one dashboard
+
+Hosting Requirement:
+- No Bluehost hosting plan needed
+
+Billing:
+- Monthly billing
+- Per-user pricing
+
+Important Pricing Note:
+- HostGator states pricing may reflect a discount on the first invoice only.
+- VAT is not included in advertised pricing and may be charged separately where applicable.
+
+
+
+XIII) HostGator Domain Products
+URL: https://www.hostgator.com/domains
+
+1) .com Domain
+
+Pricing
+- Introductory offer: $12.99/yr*
+- Renewal price: $22.99/yr
+
+Top features:
+- Most popular domain extension
+- Suitable for businesses, brands, blogs, SaaS, services, and general websites
+- Can be searched and registered from HostGator domain search
+- Eligible for domain management through HostGator Customer Portal
+
+Domain Management:
+- Domain registration
+- Domain renewal
+- Domain locking
+- DNS/domain management from Customer Portal
+- Optional Domain Privacy + Protection
+
+Best For:
+- Business websites
+- Professional brands
+- General-purpose websites
+- Online stores
+- Blogs and portfolios
+
+
+2) .net Domain
+
+Pricing
+- Introductory offer: $18.99/yr*
+- Renewal price: $22.99/yr
+
+Top features:
+- Popular alternative to .com
+- Commonly used for technology, hosting, networking, and software-related websites
+- Domain registration through HostGator
+- Customer Portal management
+
+Domain Management:
+- Domain registration
+- Domain renewal
+- Domain locking
+- Optional Domain Privacy + Protection
+
+Best For:
+- Tech businesses
+- Hosting/networking projects
+- SaaS and IT websites
+- Alternative when .com is unavailable
+
+
+3) .org Domain
+
+Pricing
+- Introductory offer: $14.99/yr*
+- Renewal price: $20.99/yr
+
+Top features:
+- Commonly used by organizations, communities, associations, and non-profits
+- Can also be used by educational, open-source, and public-interest projects
+- HostGator domain registration and management
+
+Domain Management:
+- Domain registration
+- Domain renewal
+- Domain locking
+- Optional Domain Privacy + Protection
+
+Best For:
+- Organizations
+- Communities
+- Non-profits
+- Open-source projects
+- Public-interest websites
+
+
+4) .site Domain
+
+Pricing
+- Introductory offer: $0.99/yr*
+- Renewal price: $39.99/yr
+
+Top features:
+- Low introductory price
+- Flexible domain extension for websites, landing pages, personal brands, and projects
+- HostGator domain search and registration
+
+Domain Management:
+- Domain registration
+- Domain renewal
+- Domain locking
+- Optional Domain Privacy + Protection
+
+Best For:
+- New websites
+- Landing pages
+- Personal projects
+- Promotional sites
+
+
+5) .online Domain
+
+Pricing
+- Introductory offer: $1.99/yr*
+- Renewal price: $49.99/yr
+
+Top features:
+- Modern domain extension for online-first businesses
+- Useful for digital products, online stores, communities, and web-based services
+- HostGator domain registration and management
+
+Domain Management:
+- Domain registration
+- Domain renewal
+- Domain locking
+- Optional Domain Privacy + Protection
+
+Best For:
+- Online businesses
+- Digital products
+- Online communities
+- SaaS websites
+- eCommerce websites
+
+
+6) .tech Domain
+
+Pricing
+- Introductory offer: $3.99/yr*
+- Renewal price: $69.99/yr
+
+Top features:
+- Technology-focused domain extension
+- Useful for software, AI, SaaS, developer tools, startups, and tech blogs
+- HostGator domain search and registration
+
+Domain Management:
+- Domain registration
+- Domain renewal
+- Domain locking
+- Optional Domain Privacy + Protection
+
+Best For:
+- Tech startups
+- SaaS products
+- AI tools
+- Developer tools
+- IT services
+- Technology blogs
+
+
+7) .website Domain
+
+Pricing
+- Introductory offer: $0.99/yr*
+- Renewal price: $29.99/yr
+
+Top features:
+- General-purpose website extension
+- Low introductory price
+- Suitable for simple websites, portfolios, blogs, and landing pages
+
+Domain Management:
+- Domain registration
+- Domain renewal
+- Domain locking
+- Optional Domain Privacy + Protection
+
+Best For:
+- General websites
+- Portfolios
+- Small business websites
+- Starter projects
+
+
+8) .me Domain
+
+Pricing
+- Introductory offer: $17.99/yr*
+- Renewal price: $19.95/yr
+
+Top features:
+- Personal-brand-friendly domain extension
+- Useful for portfolios, resumes, creator websites, and personal landing pages
+- HostGator registration and management
+
+Domain Management:
+- Domain registration
+- Domain renewal
+- Domain locking
+- Optional Domain Privacy + Protection
+
+Best For:
+- Personal brands
+- Creators
+- Freelancers
+- Portfolios
+- Resume websites
+
+
+9) .info Domain
+
+Pricing
+- Introductory offer: $21.99/yr*
+- Renewal price: $31.99/yr
+
+Top features:
+- Information-focused domain extension
+- Useful for directories, guides, knowledge bases, blogs, and informational websites
+- HostGator domain registration
+
+Domain Management:
+- Domain registration
+- Domain renewal
+- Domain locking
+- Optional Domain Privacy + Protection
+
+Best For:
+- Informational websites
+- Guides
+- Knowledge bases
+- Blogs
+- Directories
+
+
+10) .club Domain
+
+Pricing
+- Introductory offer: $14.99/yr*
+- Renewal price: $15.00/yr
+
+Top features:
+- Community-focused domain extension
+- Suitable for clubs, memberships, groups, communities, and fan sites
+
+Domain Management:
+- Domain registration
+- Domain renewal
+- Domain locking
+- Optional Domain Privacy + Protection
+
+Best For:
+- Clubs
+- Membership communities
+- Fan communities
+- Groups and associations
+
+
+11) .biz Domain
+
+Pricing
+- Introductory offer: $19.99/yr*
+- Renewal price: $26.99/yr
+
+Top features:
+- Business-focused domain extension
+- Alternative to .com for companies and commercial websites
+
+Domain Management:
+- Domain registration
+- Domain renewal
+- Domain locking
+- Optional Domain Privacy + Protection
+
+Best For:
+- Small businesses
+- Service providers
+- Commercial websites
+- Business landing pages
+
+
+12) .co Domain
+
+Pricing
+- Introductory offer: $29.99/yr*
+- Renewal price: $35.00/yr
+
+Top features:
+- Short, brandable domain extension
+- Often used by startups, SaaS companies, and modern brands
+- Popular alternative to .com
+
+Domain Management:
+- Domain registration
+- Domain renewal
+- Domain locking
+- Optional Domain Privacy + Protection
+
+Best For:
+- Startups
+- SaaS brands
+- Tech companies
+- Short brand names
+- Modern business websites
+
+
+13) .host Domain
+
+Pricing
+- Introductory offer: $6.99/yr*
+- Renewal price: $129.99/yr
+
+Top features:
+- Hosting-focused domain extension
+- Suitable for web hosting companies, cloud providers, server businesses, and managed service providers
+
+Domain Management:
+- Domain registration
+- Domain renewal
+- Domain locking
+- Optional Domain Privacy + Protection
+
+Best For:
+- Hosting providers
+- Cloud companies
+- VPS/server businesses
+- Web infrastructure brands
+
+
+14) .space Domain
+
+Pricing
+- Introductory offer: $1.99/yr*
+- Renewal price: $29.99/yr
+
+Top features:
+- Flexible, creative domain extension
+- Useful for communities, portfolios, creative projects, startups, and landing pages
+
+Domain Management:
+- Domain registration
+- Domain renewal
+- Domain locking
+- Optional Domain Privacy + Protection
+
+Best For:
+- Creative websites
+- Personal projects
+- Startups
+- Communities
+- Experimental brands
+
+
+15) .us Domain
+
+Pricing
+- Introductory offer: $18.99/yr*
+- Renewal price: $19.99/yr
+
+Top features:
+- US-focused country domain
+- Useful for US-based businesses, local brands, and regional websites
+
+Domain Management:
+- Domain registration
+- Domain renewal
+- Domain locking
+- Optional Domain Privacy + Protection
+
+Best For:
+- US-based businesses
+- Local websites
+- Regional services
+- US-focused brands
+
+
+Common HostGator Domain Product Features
+
+Domain Search:
+- Search for domain availability
+- Register available domains
+- Search alternate domain names when first choice is unavailable
+- HostGator domain page includes a domain search box
+
+AI Domain Generator:
+- Generate a domain name with AI
+- Useful when the user needs domain name ideas
+- Helps discover brandable domain options
+
+Free Domain with Hosting:
+- HostGator promotes a free domain for 1 year with eligible hosting plans
+- Applies to qualifying 12, 24, or 36 month Shared, WordPress, or Cloud hosting plans
+- After the first year, the domain renews at the regular rate
+- If hosting is cancelled within the first year, a non-refundable domain fee may apply
+
+Domain Locking:
+- Helps prevent unauthorized domain transfers
+- Protects against domain hijacking
+- User can unlock the domain if needed
+
+Easy Domain Management:
+- Domains can be managed from a single Customer Portal dashboard
+- Domain functions include registration, transfer, renewal, domain lock, domain connections, privacy/protection, expiration protection, and auth code requests
+
+Domain Renewal:
+- Registered domains auto-renew by default
+- Helps prevent accidental domain expiration
+
+Domain Privacy + Protection:
+- Optional privacy add-on
+- Helps keep personal information unavailable in public WHOIS databases
+- Can be kept or removed during checkout
+
+Security / Trust:
+- HostGator page shows secure shopping messaging
+- Domain registration checkout supports credit card payment
+- Domain management is handled through the Customer Portal
+
+Important Pricing Notes:
+- Pricing reflects a discount on the first invoice only
+- Promotional rates apply for the initial term only
+- Renewal happens at the regular rate
+- VAT is not included in advertised prices and may be charged separately where applicable

@@ -1,0 +1,1178 @@
+Task: Update existing Shopify products from Section B using the product/details data from Section C. If any Section B product does not exist in Shopify, create the missing product with complete Shopify fields, metafields, filters, SEO, pricing, and logo.
+
+Work only in:
+D:\IT MART24\System_Programs\itmart24_admin
+
+Use existing project scripts/helpers wherever possible:
+- Shopify product helpers
+- Shopify metafield helpers
+- Shopify file upload helpers
+- CSV/category mapping helpers
+- filter definition helpers
+- existing product import/update conventions
+
+Make minimum code changes only.
+Do not refactor unrelated files.
+Do not modify unrelated workflows.
+The workflow must be safe to rerun.
+
+Input format:
+- Section B contains target Shopify product titles and optional Shopify Product IDs.
+- Section C contains product/company/pricing/features/details to use for updates.
+- If Product ID is provided, first try to fetch/update by Product ID.
+- If Product ID is missing or not found, match by normalized handle.
+- Fallback match by normalized title + official URL.
+- Fallback match by normalized title only if clearly safe.
+- If no safe match exists, create a new product.
+
+Strict rules:
+1. Never create duplicate products.
+2. Never create duplicate Shopify files.
+3. Never duplicate metafield values.
+4. Never attach logo as product media unless explicitly required.
+5. Never store literal \n in metafields or HTML.
+6. Use proper HTML lists, paragraphs, headings, or real line breaks.
+7. Preserve existing valid product data unless this task explicitly updates it.
+8. Use only factual information from Section C.
+9. Do not invent unsupported pricing, specs, awards, performance claims, or features.
+10. Make all updates idempotent.
+11. Final customer-facing copy must read like natural human-written professional content, not AI-generated filler.
+12. Do not mention internal workflow terms such as "Shopify", "marketplace", "Section B", "Section C", "source text", "we found", or "according to" inside customer-facing copy unless absolutely necessary.
+13. If Section C clearly contains multiple real named plans and the task asks for remaining products, create separate products for each real plan using the strongest safe title, pricing, and category mapping from the provided data.
+
+Required Shopify product fields:
+
+Title
+- Keep existing title from Section B.
+- If creating missing product, create related title.
+
+Handle
+- Keep existing handle if valid.
+- If creating product, generate clean lowercase hyphenated handle from title.
+- Handle must be deterministic and should not cause duplicate “-1” suffixes.
+
+Vendor
+- Fill using brand/company name from Section C.
+- If brand is unclear, infer from product title only when obvious.
+
+Product Category
+- Use closest valid Shopify/product category based on product type.
+- Read existing project category mappings if available:
+  backend\imports\categories.csv
+  backend\imports\category-collections.csv
+
+Product Type / Collections / custom.type_multiple
+- Read:
+  backend\imports\category-collections.csv
+- Fill product type/collection data using only valid allowed collection/category names.
+- custom.type_multiple must be a list of single-line text values.
+- Preserve existing valid relevant values.
+- Add missing relevant values only.
+- Do not duplicate values.
+- Use strongest relevant categories only.
+- Avoid vague or unsupported matches.
+- If existing custom.type_multiple values are clearly wrong and this task is explicitly correcting category mapping, replace the wrong values with the strongest relevant valid values instead of preserving bad mappings.
+
+Body HTML
+- Create/update Shopify body_html.
+- Minimum 300 words per product.
+- Must be unique per product, not copy-pasted generic text.
+- Professional, natural, customer-facing tone.
+- The writing must sound like it was written by a skilled human content writer, not a generic AI template.
+- Avoid robotic structure, repetitive sentence patterns, obvious filler, and vague generic claims.
+- Customer-facing and neutral.
+- Mention:
+  - what the product/service is
+  - who it is best for
+  - important features
+  - pricing model or starting price if available
+  - renewal/billing notes if available
+  - practical use cases
+  - support/security/performance details if available
+  - limitations or buyer considerations where relevant
+- Use clean HTML:
+  <h2>, <h3>, <p>, <ul>, <li>
+- Do not include meta commentary such as:
+  “official site says”
+  “we found”
+  “reviewed source”
+  “according to Section C”
+- Avoid unnecessary use of the words "Shopify" or "marketplace" in body copy.
+- Do not plagiarize source text directly; rewrite professionally.
+
+Variant / Price
+- Use lowest visible non-zero starting/base price from Section C.
+- Numeric only.
+- No currency symbol.
+- If multiple plans exist, use the lowest paid public plan as product price unless product title clearly maps to a higher plan.
+- If no public pricing exists, allow price = 0.
+- Do not write misleading text like “Shopify price is set to 0”.
+- If pricing is unavailable, use this customer-facing text in pricing metafield:
+  To visit product official website click "Get Now"
+
+Variant settings
+- Charge tax: false
+- Requires shipping: false
+- Inventory tracking: disabled
+- Digital/non-physical product setup
+- Product status: active
+- Publish to Online Store: true
+
+SEO Title
+- Fill Shopify SEO title.
+- Format:
+  [Product Name] + [Brand] + [Main Keyword]
+- Keep concise, readable, and natural.
+- Avoid keyword stuffing.
+
+SEO Description
+- Fill Shopify SEO description.
+- 140–160 characters preferred.
+- Natural customer-facing summary.
+- Mention main benefit/use case.
+- Avoid keyword stuffing.
+
+Metafields to update/fill:
+
+product.metafields.custom.custom
+- Store clean official product/company URL from Section C.
+- Use full https URL.
+- If multiple URLs exist, use the most relevant official product page.
+- Do not store tracking URLs.
+
+product.metafields.custom.plans_pricing
+- Fill with precise pricing and plan information from Section C. Show all available pricing variations do not summarise them
+- Include:
+  - starting price
+  - billing term
+  - renewal price if available
+  - plan differences if available
+  - important pricing limitations if available
+- This metafield must be plain text only.
+- Do not use HTML tags in this metafield.
+- Use readable multiline text with short headings and bullet-style lines if helpful.
+- Never store literal \n.
+- If pricing is unavailable, use exactly:
+  To visit product official website click "Get Now"
+
+product.metafields.custom.product_features
+- Fill with improved customer-facing feature bullets.
+- Use only supported features from Section C.
+- Group features logically where useful:
+  Core Features
+  Performance
+  Security
+  Support
+  Builder/AI Tools
+  Integrations
+  Managed Features
+- This metafield must be plain text only.
+- Do not use HTML tags in this metafield.
+- Use readable multiline text with grouped headings and bullet-style lines.
+- Never store literal \n.
+
+product.metafields.custom.pros_cons
+- Fill with factual pros and cons.
+- Pros should highlight clear strengths from Section C.
+- Cons should mention factual limitations only, such as:
+  renewal price increase
+  limited storage on entry plan
+  annual prepayment requirement
+  feature only available on higher plan
+- Do not add unsupported opinions.
+- This metafield must be plain text only.
+- Do not use HTML tags in this metafield.
+- Use readable multiline text with "Pros" and "Cons" headings and bullet-style lines.
+- Never store literal \n.
+
+product.metafields.custom.logo_image
+- Use "https://cdn.shopify.com/s/files/1/0770/5192/0623/files/inmotion-hosting.svg"  this URL for product.metafields.custom.logo_image.
+
+
+Ignored metafields/columns
+Do not update these unless existing project logic strictly requires it:
+- product.metafields.custom.target_use_case
+- product.metafields.custom.pricing_billing
+- product.metafields.custom.deployment_compatibility
+- product.metafields.custom.features_functionality
+- product.metafields.custom.security_backups
+- product.metafields.custom.performance_specs
+- product.metafields.custom.support
+- product.metafields.custom.team_collaboration
+- product.metafields.custom.developer_features
+
+Filters
+- Read:
+  backend\doc\shopify-filter-definitions.csv
+- Fill only supported filter metafields.
+- Use exact allowed values/formats from filter definitions.
+- Do not guess unsupported values.
+- Leave unknown filters blank.
+
+Images / Media
+- Do not upload logo as product media.
+- Do not duplicate existing product media.
+- If product media already exists, preserve it.
+- Only update media if existing project convention requires a non-logo product image and a valid non-logo image is available.
+- Otherwise leave product media untouched.
+
+Deduplication logic:
+Before creating any missing product, check:
+1. Product ID from Section B if available
+2. Existing Shopify products by normalized handle
+3. Existing Shopify products by normalized title + official URL
+4. Existing Shopify products by normalized title if clearly safe
+5. Current job in-memory processed map
+
+Current job deduplication:
+- Maintain in-memory sets/maps for:
+  - processed product IDs
+  - normalized handles
+  - normalized title + official URL
+  - uploaded logo/file keys
+- If duplicate appears in Section B, update once and log duplicate row as skipped_existing_current_job.
+
+Required logging statuses:
+- updated_existing_product
+- created_missing_product
+- skipped_existing_current_job
+- skipped_missing_required_data
+- skipped_pricing_unavailable
+- updated_type_multiple
+- skipped_logo_existing
+- logo_uploaded
+- failed
+
+Per-product logging must include:
+- product title
+- product ID if available
+- matched by: product_id / handle / title_url / title / created
+- price used
+- SEO updated yes/no
+- metafields updated list
+- logo action
+- final status
+
+Missing required data:
+Skip only if product cannot safely be created or updated because required data is missing:
+- title missing
+- no safe brand/vendor
+- no safe official URL when required by existing project convention
+- insufficient product details for meaningful body HTML
+
+For existing products:
+- Update all specified fields and metafields.
+- Preserve valid existing data not covered by this task.
+- Do not create duplicate product.
+- If custom.type_multiple is missing relevant allowed values, add them.
+- Do not remove existing valid custom.type_multiple values.
+
+For missing products:
+Create with:
+- Title
+- Handle
+- Vendor
+- Product category
+- Body HTML minimum 300 words
+- Price
+- Charge tax false
+- Requires shipping false
+- Inventory tracking disabled
+- Status active
+- Published to Online Store true
+- SEO title
+- SEO description
+- custom.custom official URL
+- custom.plans_pricing
+- custom.product_features
+- custom.pros_cons
+- custom.type_multiple
+- custom.logo_image if available
+- supported filter metafields
+
+Final output:
+After running, provide:
+1. Changed files
+2. Total Section B products received
+3. Existing products updated
+4. Missing products created
+5. Skipped current-job duplicates
+6. Skipped missing required data
+7. Skipped pricing unavailable
+8. Logo uploaded count
+9. Logo reused/skipped count
+10. Failed count
+11. Product-by-product summary
+12. Any assumptions made from Section C
+
+Important:
+Keep this task focused. Do not run a full category import. Do not process unrelated CSV folders. Only update/create the products listed in Section B using Section C.
+Shopify Admin API Credentials are in "D:\IT MART24\System_Programs\itmart24_admin\backend\.env"
+
+If Shopify do not have product mentioned in Section C then create new products in Shopify.
+
+Use following proper URLs in proper products 
+https://www.inmotionhosting.com/vps-hosting
+https://www.inmotionhosting.com/dedicated-servers
+https://www.inmotionhosting.com/bare-metal-servers
+https://www.inmotionhosting.com/dedicated-servers/high-capacity
+https://www.inmotionhosting.com/dedicated-servers/eco-friendly-servers
+https://www.inmotionhosting.com/shared-hosting/wordpress
+https://www.inmotionhosting.com/ultrastack-one-for-wordpress
+https://www.inmotionhosting.com/shared-hosting
+https://www.inmotionhosting.com/reseller-hosting
+
+******************************
+
+SECTION B:
+
+InMotion Core Shared Hosting
+9096035041519
+
+InMotion Launch Shared Hosting
+9096035107055
+
+InMotion WP Shared Hosting
+9096171815151
+
+InMotion Hosting Business Managed Hosting
+9096862236911
+
+InMotion Hosting Premium Managed Hosting
+9096862269679
+
+InMotion Hosting Pro Managed Hosting
+9096862335215
+
+InMotion Hosting (VPS   eCommerce)
+9102082015471
+
+InMotion OpenCart Hosting Power
+9345708490991
+
+InMotion PrestaShop Hosting Power
+9345708687599
+
+InMotion Reseller Hosting R-1000N
+9345708851439
+
+
+
+******************************
+SECTION C:
+
+VPS Hosting Plan
+
+VPS 4 vCPU
+Recommended at
+$14.99/mo
+Renews at $26.99/mo
+
+1 Month @ $16.99/mo
+6 Months @ $15.99/mo
+1 Year @ $14.99/mo
+2 Years @ $13.99/mo
+3 Years @ $9.99/mo
+
+4 vCPU Cores
+8GB RAM
+160GB NVMe SSD
+5TB Bandwidth
+2 Dedicated IPs
+Launch Assist Onboarding and Server Setup ($199 one-time value)
+
+******************************
+
+VPS Hosting Plan
+
+VPS 8 vCPU
+You Save 60%
+Recommended at
+$22.99/mo
+Renews at $56.99/mo
+
+1 Month @ $29.99/mo
+6 Months @ $23.99/mo
+1 Year @ $22.99/mo
+2 Years @ $21.99/mo
+3 Years @ $19.99/mo
+
+8 vCPU Cores
+16GB RAM
+260GB NVMe SSD
+Unlimited Bandwidth
+3 Dedicated IPs
+Launch Assist Onboarding and Server Setup ($199 one-time value)
+
+******************************
+
+VPS Hosting Plan
+
+VPS 12 vCPU
+You Save 62%
+Recommended at
+$32.99/mo
+Renews at $86.99/mo
+
+1 Month @ $39.99/mo
+6 Months @ $38.99/mo
+1 Year @ $32.99/mo
+2 Years @ $36.99/mo
+3 Years @ $31.99/mo
+
+12 vCPU Cores
+24GB RAM
+360GB NVMe SSD
+Unlimited Bandwidth
+5 Dedicated IPs
+Launch Assist Onboarding and Server Setup ($199 one-time value)
+
+******************************
+
+VPS Hosting Plan
+
+VPS 16 vCPU
+You Save 63%
+Recommended at
+$44.99/mo
+Renews at $121.99/mo
+
+1 Month @ $52.99/mo
+6 Months @ $50.99/mo
+1 Year @ $44.99/mo
+2 Years @ $48.99/mo
+3 Years @ $44.99/mo 
+
+16 vCPU Cores
+32GB RAM
+460GB NVMe SSD Green Speed Icon
+Unlimited Bandwidth
+10 Dedicated IPs
+Docker Compatible
+Launch Assist Onboarding and Server Setup ($199 one-time value)
+
+******************************
+
+Managed Dedicated Server
+
+Aspire
+$35.00/mo
+Renews at $49.99/mo
+
+1 Month @ $45.00/mo
+1 Year @ $34.99/mo
+2 Years @ $34.99/mo
+
+Xeon® E3-1246 v3*
+4 Core / 8 Thread
+16GB DDR3 RAM
+960GB SSD
+1Gbps Unmetered Bandwidth
+1 Dedicated IPs
+
+
+******************************
+
+
+Managed Dedicated Server
+
+Essential
+Premier Care
+$189.98/mo
+For 12 month term
+Renews at $189.98/mo
+
+Xeon® E-2134*
+4 Core / 8 Thread
+64GB DDR4 RAM
+2TB SSD
+1Gbps Unmetered Bandwidth
+5 Dedicated IPs
+cPanel Dedicated Premier Included ($49.99/mo value)
+APS Priority Support ($20/mo value)
+Launch Assist Onboarding and Server Setup ($199 one-time value)
+
+Premier Care Bundle Included
+($40/mo. Regular Price $157.99)
+Monarx Security ($19.99/mo value)
+500GB Backup Storage ($90/mo value)
+InMotion Solutions Consulting - 1hr/mo ($48/mo value)
+
+******************************
+
+Managed Dedicated Server
+
+Advanced
+Premier Care
+$239.98/mo
+For 12 month term
+Renews at $239.98/mo
+
+Xeon® E-2176G*
+6 Core / 12 Thread
+64GB DDR4 RAM
+2x1.92TB SSD
+Software RAID-1
+1Gbps Unmetered Bandwidth
+10 Dedicated IPs
+cPanel Dedicated Premier Included ($49.99/mo value)
+APS Priority Support ($20/mo value)
+Launch Assist Onboarding and Server Setup ($199 one-time value)
+
+Premier Care Bundle Included
+($40/mo. Regular Price $157.99)
+Monarx Security ($19.99/mo value)
+500GB Backup Storage ($90/mo value)
+InMotion Solutions Consulting - 1hr/mo ($48/mo value)
+
+******************************
+
+Managed Dedicated Server
+
+Elite
+Premier Care
+$289.98/mo
+For 12 month term
+Renews at $289.98/mo
+
+Xeon® E-2388G*
+8 Core / 16 Thread
+128GB DDR4 RAM
+2x1.92TB NVMe SSD
+Software RAID-1
+1Gbps Unmetered Bandwidth
+16 Dedicated IPs
+cPanel Dedicated Premier Included ($49.99/mo value)
+APS Priority Support ($20/mo value)
+Launch Assist Onboarding and Server Setup ($199 one-time value)
+
+Premier Care Bundle Included
+($40/mo. Regular Price $157.99)
+Monarx Security ($19.99/mo value)
+500GB Backup Storage ($90/mo value)
+InMotion Solutions Consulting - 1hr/mo ($48/mo value)
+
+******************************
+
+Managed Dedicated Server
+
+CC-2000
+Premier Care
+$419.98/mo
+For 12 month term
+Renews at $419.98/mo
+
+Dual Xeon® Silver 4214
+24 Core / 48 Thread
+256GB DDR4 RAM
+2x2TB Storage
+Software RAID-1
+NVMe SSD Green Speed Icon
+3Gbps - 10Gbps Unmetered Bandwidth
+25 Dedicated IPs
+Choice of Data Center Location
+Includes US and EU Locations
+cPanel Dedicated Premier Included ($49.99/mo value)
+APS Priority Support ($20/mo value)
+Launch Assist Onboarding and Server Setup ($199 one-time value)
+
++ Premier Care Bundle Included
+($40/mo. Regular Price $427.99)
+Monarx Security ($19.99/mo value)
+2TB Backup Storage ($360/mo value)
+InMotion Solutions Consulting - 1hr/mo ($48/mo value)
+
+******************************
+
+Dedicated Bare Metal Server Hosting Plan
+
+Aspire
+$35.00/mo
+For 12 month term
+Renews at $49.99/mo
+
+1 Month @ $45.00/mo
+1 Year @ $34.99/mo
+2 Years @ $34.99/mo
+
+Xeon® E3-1246 v3*
+4 Core / 8 Thread
+16GB DDR3 RAM
+960GB SSD
+1Gbps Unmetered Bandwidth
+1 Dedicated IPs
+
+******************************
+
+Dedicated Bare Metal Server Hosting Plan
+Essential
+$99.99/mo
+For 12 month term
+Renews at $99.99/mo
+
+1 Month @ $119.99/mo
+1 Year @ $99.99/mo
+2 Years @ $99.99/mo
+
+Xeon® E-2134*
+4 Core / 8 Thread
+64GB DDR4 RAM
+2TB SSD
+1Gbps Unmetered Bandwidth
+5 Dedicated IPs
+
+******************************
+
+Dedicated Bare Metal Server Hosting Plan
+Advanced
+$149.99/mo
+For 12 month term
+Renews at $149.99/mo
+
+1 Month @ $179.99/mo
+1 Year @ $149.99/mo
+2 Years @ $149.99/mo
+
+Xeon® E-2176G*
+6 Core / 12 Thread
+64GB DDR4 RAM
+2x1.92TB SSD
+Software RAID-1
+1Gbps Unmetered Bandwidth
+10 Dedicated IPs
+
+******************************
+
+Dedicated Bare Metal Server Hosting Plan
+Elite
+$199.99/mo
+For 12 month term
+Renews at $199.99/mo
+
+1 Month @ $239.99/mo
+1 Year @ $199.99/mo
+2 Years @ $199.99/mo
+
+Xeon® E-2388G*
+8 Core / 16 Thread
+128GB DDR4 RAM
+2x1.92TB NVMe SSD
+Software RAID-1
+NVMe SSD Green Speed Icon
+1Gbps Unmetered Bandwidth
+16 Dedicated IPs
+
+******************************
+
+Dedicated Bare Metal Server Hosting Plan
+Extreme
+$349.99/mo
+For 12 month term
+Renews at $349.99/mo
+
+AMD EPYC 4545p
+16 Core / 32 Thread
+192GB DDR5 ECC RAM
+2x3.84TB NVMe SSD
+Software RAID-1
+NVMe SSD Green Speed Icon
+3Gbps - 10Gbps Unmetered Bandwidth
+32 Dedicated IPs
+
+******************************
+
+Commercial Class Bare Metal Server Hosting Plan
+
+CC-1000
+$279.99/mo
+For 12 month term
+Renews at $279.99/mo
+
+1 Month @ $335.99/mo
+1 Year @ $279.99/mo
+2 Years @ $279.99/mo
+
+Xeon® Silver 4214
+12 Core / 24 Thread
+192GB DDR4 RAM
+2x1TB Storage
+Software RAID-1
+NVMe SSD Green Speed Icon
+3Gbps - 10Gbps Unmetered Bandwidth
+20 Dedicated IPs
+Choice of Data Center Location
+Includes US and EU Locations
+
+******************************
+
+Commercial Class Bare Metal Server Hosting Plan
+
+CC-2000
+$329.99/mo
+For 12 month term
+Renews at $329.99/mo
+
+1 Month @ $395.99/mo
+1 Year @ $329.99/mo
+2 Years @ $329.99/mo
+
+Dual Xeon® Silver 4214
+24 Core / 48 Thread
+256GB DDR4 RAM
+2x2TB Storage
+Software RAID-1
+NVMe SSD Green Speed Icon
+3Gbps - 10Gbps Unmetered Bandwidth
+25 Dedicated IPs
+Choice of Data Center Location
+Includes US and EU Locations
+
+******************************
+
+Commercial Class Bare Metal Server Hosting Plan
+
+CC-3000
+$799.99/mo
+For 12 month term
+Renews at $799.99/mo
+
+1 Month @ $959.99/mo
+1 Year @ $799.99/mo
+2 Years @ $799.99/mo
+
+Dual Xeon® Silver 4314
+32 Core / 64 Thread
+512GB DDR4 RAM
+2x3.2TB Storage
+Software RAID-1
+NVMe SSD Green Speed Icon
+3Gbps - 10Gbps Unmetered Bandwidth
+30 Dedicated IPs
+Choice of Data Center Location
+Includes US and EU Locations
+
+******************************
+
+Commercial Class Bare Metal Server Hosting Plan
+
+CC-4000
+$1,599.99/mo
+For 12 month term
+Renews at $1,599.99/mo
+
+1 Month @ $1,919.99/mo
+1 Year @ $1,599.99/mo
+2 Years @ $1,599.99/mo
+
+Dual Xeon® Gold 6530
+64 Core / 128 Thread
+1024GB DDR5 RAM
+2x6.4TB Storage
+Software RAID-1
+NVMe SSD Green Speed Icon
+10Gbps Unmetered Bandwidth
+64 Dedicated IPs
+Choice of Data Center Location
+Includes US and EU Locations
+
+******************************
+
+Eco Friendly Dedicated Server
+
+CP-A1
+Intel® Xeon® E5-2630 v3 @ 2.40GHz (X 2) OR Intel® Xeon® E5-2620 v4 @ 2.10GHz (X 2)
+8 Cores
+32 Threads
+Memory: 16 GB
+1x (SATA) SSD OR 1x 500 GB SSD
+1 Gbps Bandwidth
+$32.00 /mo
+Actual Price $40.00 /mo Save 20%
+
+1 Month @ $40.00/mo
+1 Year @ $32.00/mo
+2 Years @ $32.00/mo
+ 
+******************************
+
+Eco Friendly Dedicated Server
+
+CP-E1
+
+Intel® Xeon® E5-2630 v3 @ 2.40GHz (X 2) OR 
+Intel® Xeon® E5-2630 v3 @ 2.40GHz OR 
+Intel® Xeon® E5-2620 v4 @ 2.10GHz (X 2) OR
+	Intel® Xeon® E5-2620 v4 @ 2.10GHz
+8 Cores
+16 Threads OR 32 Threads
+Memory: 64 GB
+1x 500 GB SSD
+1 Gbps Bandwidth
+$80.00 /mo
+Actual Price $100.00 /mo Save 20%
+
+1 Month @ $100.00/mo
+1 Year @ $80.00/mo
+2 Years @ $80.00/mo
+
+******************************
+
+Eco Friendly Dedicated Server
+
+CP-E2
+
+Intel® Xeon® E5-2620 v4 @ 2.10GHz OR
+Intel® Xeon® E5-2620 v4 @ 2.10GHz (X 2)
+8 Cores
+16 Threads
+1x 500 GB SSD
+1 Gbps Bandwidth
+Memory: 96 GB OR Memory: 128 GB
+$120.00 /mo
+Actual Price $150.00 /mo Save 20%
+
+1 Month @ $150.00/mo
+1 Year @ $120.00/mo
+2 Years @ $120.00/mo
+
+For all Eco Friendly Dedicated Server:
+Sustainable Hosting 
+Every server keeps valuable hardware out of landfills.
+
+Reliable Performance
+Tested and optimized for uptime, speed, and scalability.
+
+Cost Effective
+High-performance hardware built for value, efficiency, and sustainable growth.
+
+Enterprise Features
+Includes security, backups, and 24/7 support options.
+
+******************************
+
+Shared Hosting for WordPress
+
+WP Launch
+
+Starting at
+$5.29/mo
+Renews at $15.49/mo
+
+2 Websites
+100GB NVMe Storage Green Speed Icon loading=
+20x WP Performance
+Unmetered Bandwidth
+3 PHP Workers per Site
+Advanced Caching
+WordPress Multisite
+WordPress Staging Tool
+Live Chat Support from Helpful Humans
+
+******************************
+
+Shared Hosting for WordPress
+
+WP Power
+You Save 73%
+Starting at
+$5.29/mo
+Renews at $19.49/mo
+
+10 Websites
+200GB NVMe Storage Green Speed Icon loading=
+30x WP Performance
+Unmetered Bandwidth
+4 PHP Workers per Site
+Advanced Caching
+Dedicated Opcode Cache Pool
+WordPress Multisite
+WordPress Staging Tool
+Choice of Data Center Location
+Includes US and EU Locations
+Live Chat and Phone Support from Helpful Humans
+
+******************************
+
+Shared Hosting for WordPress
+
+WP Pro
+You Save 54%
+Starting at
+$12.29/mo
+Renews at $26.49/mo
+
+40 Websites
+2 vCPU Cores
+4GB RAM
+300GB NVMe Storage Green Speed Icon loading=
+40x WP Performance
+Unmetered Bandwidth
+6 PHP Workers per Site
+Included Agency Features
+Advanced Caching
+Dedicated Opcode Cache Pool
+Pro Level Support
+Dedicated IP
+WordPress Multisite
+WordPress Staging Tool
+Choice of Data Center Location
+Includes US and EU Locations
+Live Chat and Phone Support from Helpful Humans
+
+
+Included In All Shared Hosting for WordPress Plans:
+Hosting Plus: Python, Node.JS, Ruby and GIT
+Free SSL
+Malware and DDoS Protection
+Web Firewall Application
+Native Backups and Migrations
+Free Domain
+($23)/yr value
+Free cPanel Email Accounts
+Professional Email with 30-Day Trial
+
+******************************
+
+High-Performance UltraStack ONE for WordPress
+
+UltraStack 8GB RAM
+$40.00/mo
+Renews at $40.00/mo
+Yearly
+$33.33/mo
+Renews at $33.33/mo
+
+1 WordPress Site
+8 vCPU Compute Power
+8GB RAM
+250GB NVMe SSD Green Speed Icon
+Unlimited Bandwidth
+35 PHP Workers
+128MB+ Redis Cache Green Speed Icon
+Advanced Security
+W3 Total Cache
+Choice of Data Center
+99.99% Uptime SLA
+Live Chat and Phone Support
+Migration Support Included
+White Glove Site Migration ($199 value)
+
+******************************
+
+High-Performance UltraStack ONE for WordPress
+
+UltraStack 12GB RAM
+$60.00/mo
+Renews at $60.00/mo
+Yearly
+$50.00/mo
+Renews at $50.00/mo
+
+1 WordPress Site
+12 vCPU Compute Power
+12GB RAM
+300GB NVMe SSD Green Speed Icon
+Unlimited Bandwidth
+45 PHP Workers
+192MB+ Redis Cache Green Speed Icon
+Advanced Security
+W3 Total Cache
+Choice of Data Center
+99.99% Uptime SLA
+Live Chat and Phone Support
+Migration Support Included
+White Glove Site Migration ($199 value)
+
+******************************
+High-Performance UltraStack ONE for WordPress
+
+UltraStack 16GB RAM
+$80.00/mo
+Renews at $80.00/mo
+Yearly
+$66.67/mo
+Renews at $66.67/mo
+
+1 WordPress Site
+16 vCPU Compute Power
+16GB RAM
+350GB NVMe SSD Green Speed Icon
+Unlimited Bandwidth
+60 PHP Workers
+256MB+ Redis Cache Green Speed Icon
+Advanced Security
+W3 Total Cache
+Choice of Data Center
+99.99% Uptime SLA
+Live Chat and Phone Support
+Migration Support Included
+White Glove Site Migration ($199 value)
+
+******************************
+
+High-Performance UltraStack ONE for WordPress
+
+UltraStack 24GB RAM
+$120.00/mo
+Renews at $120.00/mo
+Yearly
+$100.00/mo
+Renews at $100.00/mo
+
+1 WordPress Site
+24 vCPU Compute Power
+24GB RAM
+400GB NVMe SSD Green Speed Icon
+Unlimited Bandwidth
+120 PHP Workers
+512MB+ Redis Cache Green Speed Icon
+Advanced Security
+W3 Total Cache
+Choice of Data Center
+99.99% Uptime SLA
+Live Chat and Phone Support
+Dedicated Support Team
+Migration Support Included
+White Glove Site Migration ($199 value)
+
+******************************
+
+Reseller Hosting Plan
+
+R-1000N
+You Save 97%
+Starting at
+$0.99/mo
+Renews at $35.99/mo
+
+6 Months and onwards
+Starting at
+$19.99/mo
+Renews at $35.99/mo
+
+80GB SSD
+1000GB Bandwidth
+25 cPanel Licenses Included
+Unlimited Email Accounts
+1 Dedicated IP
+Security Suite
+Marketing Tools
+Hosting Plus
+Python,   Node.JS,   and GIT version control.
+Choice of Data Center Location
+Includes US and EU Locations
+Live Chat Support from Helpful Humans
+
+
+******************************
+
+R-2000N
+You Save 29%
+Starting at
+$39.99/mo
+Renews at $55.99/mo
+
+6 Months and onwards
+Starting at
+$26.99/mo
+Renews at $55.99/mo
+
+160GB NVMe SSD Green Speed Icon
+2000GB Bandwidth
+50 cPanel Licenses Included
+Unlimited Email Accounts
+2 Dedicated IPs
+Security Suite
+Marketing Tools
+Hosting Plus
+Python,   Node.JS,   and GIT version control.
+Choice of Data Center Location
+Includes US and EU Locations
+Live Chat and Phone Support from Helpful Humans
+
+******************************
+
+R-3000N
+You Save 34%
+Starting at
+$49.99/mo
+Renews at $75.99/mo
+
+6 Months and onwards
+Starting at
+$39.99/mo
+Renews at $75.99/mo
+
+200GB NVMe SSD Green Speed Icon
+Unlimited Bandwidth
+80 cPanel Licenses Included
+Unlimited Email Accounts
+3 Dedicated IPs
+Security Suite
+Marketing Tools
+Hosting Plus
+Python,   Node.JS,   and GIT version control.
+Choice of Data Center Location
+Includes US and EU Locations
+Live Chat and Phone Support from Helpful Humans
+
+******************************
+
+R-4000N
+You Save 45%
+Starting at
+$59.99/mo
+Renews at $109.99/mo
+
+6 Months and onwards
+Starting at
+$49.99/mo
+Renews at $109.99/mo
+
+300GB NVMe SSD Green Speed Icon
+Unlimited Bandwidth
+100 cPanel Licenses Included
+Unlimited Email Accounts
+5 Dedicated IPs
+2GB Backup Storage
+Security Suite
+Marketing Tools
+Hosting Plus
+Python,   Node.JS,   and GIT version control.
+Choice of Data Center Location
+Includes US and EU Locations
+Live Chat and Phone Support from Helpful Humans
+
+******************************
+
+******************************
+
+******************************
+
+******************************
+
+******************************
+
+
+
+Common for all Products
+
+24/7 Award Winning Human Support
+99.99% Uptime and Security Monitoring
+Up to 90-Day Money-Back Guarantee
+
+Definations;
+cPanel: cPanel is a web-based control panel with tools to manage files, email, databases, and more.
+APS: Priority access to our most experienced technicians 24/7 for faster, expert issue resolution.
+Launch Assist: Dedicated onboarding with Solutions consultants for migrations, tuning, and initial setup.
+Monarx: Monarx gives you proactive threat and malware protection, preventing security risks before they cause downtime
+Backup Storage: Automated daily backups with dedicated storage and quick point-and-click restore.
+InMotion Solutions: Our advanced consulting team for custom requests and complex issues that require deeper technical expertise.
+Software RAID-1: Software RAID improves the performance and reliability of your data storage.
+NVMe Storage: NVMe storage transfers data faster, decreases latency and reduces bottlenecks, increasing server performance.
+PHP workers: PHP workers determine the number of uncached requests your website can serve simultaneously.
+Staging Tool: A specific location that is setup to store, develop and test a copy of your website and database.
+Opcode caching: Opcode caching loads your website fast by storing compiled PHP code in the server’s memory
+Included Agency Features: Included features designed to help you manage multiple client sites with ease.
+Pro Level Support gives you a service level agreement (SLA) that guarantees 99.99% uptime for your website.
+ 

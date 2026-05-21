@@ -43,6 +43,28 @@ type RawSubscriptionPlan = {
   isActive?: boolean;
   periods?: RawPlanPeriod[];
   features?: RawPlanFeature[];
+  portfolioPlans?: RawPortfolioPlan[];
+};
+
+type RawPortfolioPricingOption = {
+  id?: string;
+  title?: string;
+  label?: string;
+  durationUnitName?: string;
+  periodInMonths?: number;
+  price?: number;
+};
+
+type RawPortfolioPlan = {
+  id?: string;
+  title?: string;
+  basePlanId?: string;
+  basePlanName?: string;
+  minProducts?: number;
+  maxProducts?: number;
+  pricingOptions?: RawPortfolioPricingOption[];
+  isActive?: boolean;
+  sortOrder?: number;
 };
 
 type VendorPagePeriod = {
@@ -72,6 +94,25 @@ type VendorPagePlan = {
   features: VendorPageFeature[];
 };
 
+type VendorPortfolioPricingOption = VendorPagePeriod;
+
+type VendorPortfolioPlan = {
+  id: string;
+  title: string;
+  minProducts: number;
+  maxProducts: number;
+  sortOrder: number;
+  pricingOptions: VendorPortfolioPricingOption[];
+};
+
+type VendorPortfolioGroup = {
+  basePlanId: string;
+  basePlanName: string;
+  summary: string;
+  badgeVariant: VendorPagePlan["badgeVariant"];
+  portfolioPlans: VendorPortfolioPlan[];
+};
+
 type PageRecord = {
   id: string;
   title: string;
@@ -96,7 +137,10 @@ type MenuNode = {
 };
 
 const VENDOR_PAGE_ID = "124057551087";
+const FOUNDER_VENDOR_PROGRAM_PAGE_ID = "132191748335";
 const VENDOR_PORTAL_URL = "https://vendor.itmart24.com";
+const CUSTOM_PORTFOLIO_ENDPOINT = "https://shavi.itmart24.com/api/custom-portfolio-pricing";
+const FOUNDER_VENDOR_PROGRAM_ENDPOINT = CUSTOM_PORTFOLIO_ENDPOINT;
 
 const PLAN_PRESENTATION: Record<
   string,
@@ -223,6 +267,25 @@ const formatPrice = (price: number) => {
   })}`;
 };
 
+const getPortfolioRangeLabel = (
+  minProducts: number,
+  maxProducts: number
+) => `${minProducts} to ${maxProducts} products`;
+
+const getPortfolioPlanSortRank = (plan: RawPortfolioPlan, index: number) =>
+  typeof plan.sortOrder === "number" ? plan.sortOrder : index + 1;
+
+const getPricingOptionSortRank = (
+  option: RawPortfolioPricingOption,
+  index: number
+) => {
+  if (typeof option.periodInMonths === "number" && option.periodInMonths > 0) {
+    return option.periodInMonths;
+  }
+
+  return index + 1;
+};
+
 const normalizeVendorPagePlan = (
   plan: RawSubscriptionPlan,
   index: number
@@ -292,6 +355,94 @@ const normalizeVendorPagePlan = (
     ctaLabel: presentation.ctaLabel,
     periods,
     features,
+  };
+};
+
+const normalizeVendorPortfolioGroup = (
+  plan: RawSubscriptionPlan,
+  vendorPlan: VendorPagePlan
+): VendorPortfolioGroup | null => {
+  const rawPortfolioPlans = Array.isArray(plan.portfolioPlans)
+    ? plan.portfolioPlans
+    : [];
+
+  const portfolioPlans = rawPortfolioPlans
+    .filter(
+      (portfolioPlan): portfolioPlan is RawPortfolioPlan =>
+        Boolean(
+          portfolioPlan &&
+            portfolioPlan.isActive !== false &&
+            typeof portfolioPlan.minProducts === "number" &&
+            typeof portfolioPlan.maxProducts === "number" &&
+            Array.isArray(portfolioPlan.pricingOptions)
+        )
+    )
+    .sort(
+      (left, right) =>
+        getPortfolioPlanSortRank(left, 0) - getPortfolioPlanSortRank(right, 0) ||
+        (left.minProducts ?? 0) - (right.minProducts ?? 0) ||
+        (left.maxProducts ?? 0) - (right.maxProducts ?? 0)
+    )
+    .map((portfolioPlan, portfolioIndex) => {
+      const pricingOptions = (portfolioPlan.pricingOptions ?? [])
+        .filter(
+          (option): option is RawPortfolioPricingOption =>
+            Boolean(option && typeof option.price === "number")
+        )
+        .sort(
+          (left, right) =>
+            getPricingOptionSortRank(left, 0) - getPricingOptionSortRank(right, 0)
+        )
+        .map((option, optionIndex) => {
+          const label =
+            option.title?.trim() ||
+            option.label?.trim() ||
+            option.durationUnitName?.trim() ||
+            `Option ${optionIndex + 1}`;
+
+          const key = slugifyToken(label);
+
+          return {
+            id:
+              option.id?.trim() ||
+              `${vendorPlan.slug}-portfolio-${portfolioIndex + 1}-${optionIndex + 1}`,
+            key,
+            label,
+            price: typeof option.price === "number" ? option.price : 0,
+            termLabel:
+              typeof option.periodInMonths === "number" && option.periodInMonths >= 24
+                ? `/ ${option.periodInMonths / 12} years`
+                : getTermLabel(label),
+          };
+        });
+
+      if (pricingOptions.length === 0) {
+        return null;
+      }
+
+      return {
+        id:
+          portfolioPlan.id?.trim() ||
+          `${vendorPlan.slug}-portfolio-${portfolioIndex + 1}`,
+        title: portfolioPlan.title?.trim() || `${vendorPlan.name} Portfolio`,
+        minProducts: Number(portfolioPlan.minProducts ?? 0),
+        maxProducts: Number(portfolioPlan.maxProducts ?? 0),
+        sortOrder: getPortfolioPlanSortRank(portfolioPlan, portfolioIndex),
+        pricingOptions,
+      };
+    })
+    .filter((portfolioPlan): portfolioPlan is VendorPortfolioPlan => Boolean(portfolioPlan));
+
+  if (portfolioPlans.length === 0) {
+    return null;
+  }
+
+  return {
+    basePlanId: vendorPlan.slug,
+    basePlanName: vendorPlan.name,
+    summary: vendorPlan.summary,
+    badgeVariant: vendorPlan.badgeVariant,
+    portfolioPlans,
   };
 };
 
@@ -434,7 +585,1344 @@ const renderPlanCard = (plan: VendorPagePlan) => {
   `.trim();
 };
 
-const buildVendorPageHtml = (plans: VendorPagePlan[]) => `
+const renderPortfolioCard = (group: VendorPortfolioGroup) => {
+  const cardClasses = [
+    "vendor-pricing-page__portfolio-card",
+    group.badgeVariant
+      ? `vendor-pricing-page__portfolio-card--${group.badgeVariant}`
+      : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  const badgeClass = [
+    "vendor-pricing-page__portfolio-badge",
+    group.badgeVariant
+      ? `vendor-pricing-page__portfolio-badge--${group.badgeVariant}`
+      : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  const baseId = escapeHtml(group.basePlanId);
+
+  return `
+    <article class="${cardClasses}">
+      <div class="vendor-pricing-page__portfolio-top">
+        <h3>${escapeHtml(group.basePlanName)}</h3>
+        <span class="${badgeClass}">Portfolio</span>
+      </div>
+
+      <p class="vendor-pricing-page__portfolio-copy">
+        ${escapeHtml(group.summary)}
+      </p>
+
+      <div class="vendor-pricing-page__portfolio-field">
+        <label for="${baseId}-portfolio-select">Portfolio range</label>
+        <div class="vendor-pricing-page__portfolio-select-wrap">
+          <select
+            id="${baseId}-portfolio-select"
+            class="vendor-pricing-page__portfolio-select"
+            data-portfolio-select
+          >
+            ${group.portfolioPlans
+              .map(
+                (portfolioPlan, index) => `
+                  <option
+                    value="${escapeHtml(portfolioPlan.id)}"
+                    ${index === 0 ? "selected" : ""}
+                  >
+                    ${escapeHtml(
+                      getPortfolioRangeLabel(
+                        portfolioPlan.minProducts,
+                        portfolioPlan.maxProducts
+                      )
+                    )}
+                  </option>
+                `
+              )
+              .join("")}
+          </select>
+        </div>
+      </div>
+
+      <div class="vendor-pricing-page__portfolio-ranges">
+        ${group.portfolioPlans
+          .map((portfolioPlan, portfolioIndex) => {
+            const pricingBoxId = `${group.basePlanId}-portfolio-pricing-${portfolioIndex + 1}`;
+
+            return `
+              <section
+                class="vendor-pricing-page__portfolio-range ${
+                  portfolioIndex === 0 ? "is-active" : ""
+                }"
+                data-portfolio-range="${escapeHtml(portfolioPlan.id)}"
+              >
+                ${
+                  portfolioPlan.pricingOptions.length > 1
+                    ? `
+                      <div class="vendor-pricing-page__toggle" data-toggle-for="${escapeHtml(pricingBoxId)}">
+                        ${portfolioPlan.pricingOptions
+                          .map(
+                            (option, optionIndex) => `
+                              <button
+                                type="button"
+                                ${optionIndex === 0 ? 'class="is-active"' : ""}
+                                data-mode-btn="${escapeHtml(option.key)}"
+                              >
+                                ${escapeHtml(option.label)}
+                              </button>
+                            `
+                          )
+                          .join("")}
+                      </div>
+                    `
+                    : ""
+                }
+
+                <div
+                  class="vendor-pricing-page__portfolio-price-box"
+                  id="${escapeHtml(pricingBoxId)}"
+                >
+                  ${portfolioPlan.pricingOptions
+                    .map(
+                      (option, optionIndex) => `
+                        <div
+                          class="vendor-pricing-page__price-panel ${
+                            optionIndex === 0 ? "is-active" : ""
+                          }"
+                          data-price-mode="${escapeHtml(option.key)}"
+                        >
+                          <span class="vendor-pricing-page__price-label">Pricing details</span>
+                          <div class="vendor-pricing-page__price-row">
+                            <span class="vendor-pricing-page__main-price">${escapeHtml(
+                              formatPrice(option.price)
+                            )}</span>
+                          </div>
+                          <div class="vendor-pricing-page__portfolio-price-meta">
+                            ${escapeHtml(option.label)} • ${escapeHtml(
+                              getPortfolioRangeLabel(
+                                portfolioPlan.minProducts,
+                                portfolioPlan.maxProducts
+                              )
+                            )}
+                          </div>
+                        </div>
+                      `
+                    )
+                    .join("")}
+                </div>
+              </section>
+            `;
+          })
+          .join("")}
+      </div>
+
+      <div class="vendor-pricing-page__portfolio-includes">
+        <strong>Includes all ${escapeHtml(group.basePlanName)} Plan features</strong>
+        <span>Choose the product range and pricing term that best fits your current catalog size.</span>
+      </div>
+
+      <div class="vendor-pricing-page__cta">
+        <a
+          class="vendor-pricing-page__button ${
+            group.badgeVariant === "popular"
+              ? "vendor-pricing-page__button--primary"
+              : "vendor-pricing-page__button--secondary"
+          }"
+          href="${VENDOR_PORTAL_URL}"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Open Vendor Panel
+        </a>
+      </div>
+    </article>
+  `.trim();
+};
+
+const renderCustomPortfolioSection = () => `
+  <section class="vendor-pricing-page__custom-portfolio">
+    <div class="vendor-pricing-page__custom-grid">
+      <aside class="vendor-pricing-page__custom-intro">
+        <span class="vendor-pricing-page__custom-eyebrow">Custom Portfolio Pricing</span>
+        <h2>Need pricing for a larger or more tailored portfolio?</h2>
+        <p>
+          If your product catalog needs a custom mix of placement, visibility, and portfolio scale, send your details and our team will recommend a suitable package.
+        </p>
+
+        <div class="vendor-pricing-page__custom-points">
+          <div class="vendor-pricing-page__custom-point">
+            <strong>Flexible portfolio scope</strong>
+            <span>Suitable for larger catalogs, mixed categories, or specialized launch campaigns.</span>
+          </div>
+          <div class="vendor-pricing-page__custom-point">
+            <strong>Visibility planning help</strong>
+            <span>We can recommend a package based on impressions, placement goals, and promotion intent.</span>
+          </div>
+          <div class="vendor-pricing-page__custom-point">
+            <strong>Sales follow-up</strong>
+            <span>Your request goes directly to the ITMart24 team for review and next-step outreach.</span>
+          </div>
+        </div>
+      </aside>
+
+      <div class="vendor-pricing-page__custom-form-wrap">
+        <div class="vendor-pricing-page__section-head vendor-pricing-page__section-head--compact">
+          <div>
+            <h2>Request Custom Portfolio Pricing</h2>
+            <p>Share your company, catalog size, and promotion goals so we can prepare a tailored recommendation.</p>
+          </div>
+        </div>
+
+        <form class="vendor-pricing-page__custom-form" data-custom-portfolio-form novalidate>
+          <div class="vendor-pricing-page__custom-form-grid">
+            <label class="vendor-pricing-page__field">
+              <span>Company Name</span>
+              <input type="text" name="companyName" required />
+            </label>
+            <label class="vendor-pricing-page__field">
+              <span>Official Website</span>
+              <input type="text" name="website" placeholder="itmart24.com" required />
+            </label>
+            <label class="vendor-pricing-page__field">
+              <span>Business Email</span>
+              <input type="email" name="businessEmail" required />
+            </label>
+            <label class="vendor-pricing-page__field">
+              <span>Contact Person Name</span>
+              <input type="text" name="contactName" required />
+            </label>
+            <label class="vendor-pricing-page__field">
+              <span>Job Title</span>
+              <input type="text" name="jobTitle" />
+            </label>
+            <label class="vendor-pricing-page__field">
+              <span>Country</span>
+              <input type="text" name="country" />
+            </label>
+            <label class="vendor-pricing-page__field">
+              <span>Number of Products / Plans</span>
+              <select name="productCountRange" required>
+                <option value="">Select a range</option>
+                <option value="21-25 products">21-25 products</option>
+                <option value="26-35 products">26-35 products</option>
+                <option value="36-50 products">36-50 products</option>
+                <option value="50+ products">50+ products</option>
+              </select>
+            </label>
+            <label class="vendor-pricing-page__field">
+              <span>Preferred Visibility Level</span>
+              <select name="visibilityLevel" required>
+                <option value="">Select visibility level</option>
+                <option value="Basic portfolio listing">Basic portfolio listing</option>
+                <option value="Growth visibility package">Growth visibility package</option>
+                <option value="Enterprise visibility package">Enterprise visibility package</option>
+                <option value="Maximum category exposure">Maximum category exposure</option>
+                <option value="Not sure, please recommend">Not sure, please recommend</option>
+              </select>
+            </label>
+            <label class="vendor-pricing-page__field vendor-pricing-page__field--full">
+              <span>Primary Product Categories</span>
+              <div class="vendor-pricing-page__choice-grid">
+                <label><input type="checkbox" name="categories" value="Web Hosting" />Web Hosting</label>
+                <label><input type="checkbox" name="categories" value="WordPress Hosting" />WordPress Hosting</label>
+                <label><input type="checkbox" name="categories" value="VPS Hosting" />VPS Hosting</label>
+                <label><input type="checkbox" name="categories" value="Dedicated Servers" />Dedicated Servers</label>
+                <label><input type="checkbox" name="categories" value="Cloud Hosting" />Cloud Hosting</label>
+                <label><input type="checkbox" name="categories" value="SaaS Software" />SaaS Software</label>
+                <label><input type="checkbox" name="categories" value="AI Tools" />AI Tools</label>
+                <label><input type="checkbox" name="categories" value="Developer Tools" />Developer Tools</label>
+                <label><input type="checkbox" name="categories" value="Cybersecurity" />Cybersecurity</label>
+                <label><input type="checkbox" name="categories" value="Business Software" />Business Software</label>
+                <label><input type="checkbox" name="categories" value="Other" />Other</label>
+              </div>
+            </label>
+            <label class="vendor-pricing-page__field vendor-pricing-page__field--full">
+              <span>Promotion Goals</span>
+              <div class="vendor-pricing-page__choice-grid">
+                <label><input type="checkbox" name="promotionGoals" value="More product impressions" />More product impressions</label>
+                <label><input type="checkbox" name="promotionGoals" value="More website clicks" />More website clicks</label>
+                <label><input type="checkbox" name="promotionGoals" value="Better category visibility" />Better category visibility</label>
+                <label><input type="checkbox" name="promotionGoals" value="Featured placement" />Featured placement</label>
+                <label><input type="checkbox" name="promotionGoals" value="Comparison page inclusion" />Comparison page inclusion</label>
+                <label><input type="checkbox" name="promotionGoals" value="Vendor profile promotion" />Vendor profile promotion</label>
+                <label><input type="checkbox" name="promotionGoals" value="Lead generation" />Lead generation</label>
+                <label><input type="checkbox" name="promotionGoals" value="Brand awareness" />Brand awareness</label>
+                <label><input type="checkbox" name="promotionGoals" value="Launch campaign" />Launch campaign</label>
+                <label><input type="checkbox" name="promotionGoals" value="Long-term marketplace visibility" />Long-term marketplace visibility</label>
+              </div>
+            </label>
+            <label class="vendor-pricing-page__field vendor-pricing-page__field--full">
+              <span>Anything else we should know?</span>
+              <textarea name="message" rows="5" placeholder="Tell us about your product mix, launch timing, or special placement goals."></textarea>
+            </label>
+          </div>
+
+          <div class="vendor-pricing-page__custom-actions">
+            <button type="submit" class="vendor-pricing-page__button vendor-pricing-page__button--primary">
+              Submit Request
+            </button>
+            <p class="vendor-pricing-page__custom-status" data-custom-portfolio-status aria-live="polite"></p>
+          </div>
+        </form>
+      </div>
+    </div>
+  </section>
+`.trim();
+
+const getFounderPortfolioPricingOption = (portfolioPlan: VendorPortfolioPlan) =>
+  portfolioPlan.pricingOptions.find((option) =>
+    option.label.toLowerCase().includes("founder")
+  ) ??
+  portfolioPlan.pricingOptions[portfolioPlan.pricingOptions.length - 1] ??
+  null;
+
+const renderFounderPlanCard = (plan: VendorPagePlan) => `
+  <article class="founder-vendor-page__track-card">
+    <div class="founder-vendor-page__track-head">
+      <span class="founder-vendor-page__track-kicker">${escapeHtml(plan.kicker)}</span>
+      ${
+        plan.badge
+          ? `<span class="founder-vendor-page__track-badge">${escapeHtml(plan.badge)}</span>`
+          : ""
+      }
+    </div>
+    <h3>${escapeHtml(plan.name)} Plan</h3>
+    <p>${escapeHtml(plan.summary)}</p>
+    <ul class="founder-vendor-page__track-list">
+      ${plan.features.slice(0, 4).map((feature) => `<li>${escapeHtml(feature.title)}</li>`).join("")}
+    </ul>
+  </article>
+`.trim();
+
+const renderFounderPortfolioCard = (group: VendorPortfolioGroup) => `
+  <article class="founder-vendor-page__portfolio-card">
+    <div class="founder-vendor-page__portfolio-card-top">
+      <div>
+        <span class="founder-vendor-page__portfolio-label">Portfolio Track</span>
+        <h3>${escapeHtml(group.basePlanName)} Portfolio</h3>
+      </div>
+      <span class="founder-vendor-page__portfolio-pill">Founder Lock</span>
+    </div>
+    <p>${escapeHtml(group.summary)}</p>
+    <div class="founder-vendor-page__portfolio-ranges">
+      ${group.portfolioPlans
+        .map((portfolioPlan) => {
+          const founderOption = getFounderPortfolioPricingOption(portfolioPlan);
+
+          if (!founderOption) {
+            return "";
+          }
+
+          return `
+            <div class="founder-vendor-page__portfolio-row">
+              <strong>${escapeHtml(
+                getPortfolioRangeLabel(
+                  portfolioPlan.minProducts,
+                  portfolioPlan.maxProducts
+                )
+              )}</strong>
+              <span>${escapeHtml(founderOption.label)}</span>
+              <b>${escapeHtml(formatPrice(founderOption.price))}</b>
+            </div>
+          `;
+        })
+        .join("")}
+    </div>
+  </article>
+`.trim();
+
+const buildFounderVendorProgramHtml = (
+  plans: VendorPagePlan[],
+  portfolioGroups: VendorPortfolioGroup[]
+) => `
+  <style>
+    .main-page-title.page-title {
+      display: none !important;
+    }
+
+    .page-width.page-width--narrow.section-template--21833919725807__main-padding {
+      max-width: min(1320px, 100%) !important;
+      padding-left: 2rem !important;
+      padding-right: 2rem !important;
+    }
+
+    .page-width.page-width--narrow.section-template--21833919725807__main-padding > .rte {
+      max-width: none !important;
+      margin: 0 !important;
+    }
+
+    .founder-vendor-page {
+      --fvp-accent: #36c3ff;
+      --fvp-accent-strong: #246bff;
+      --fvp-accent-soft: rgba(54, 195, 255, 0.14);
+      --fvp-fg-rgb: var(--color-foreground);
+      --fvp-text: rgb(var(--fvp-fg-rgb));
+      --fvp-muted: rgba(var(--fvp-fg-rgb), 0.74);
+      --fvp-soft: rgba(var(--fvp-fg-rgb), 0.08);
+      --fvp-border: rgba(var(--fvp-fg-rgb), 0.1);
+      --fvp-surface: rgba(8, 16, 36, 0.82);
+      color: var(--fvp-text);
+      padding: 2.25rem 0 5rem;
+    }
+
+    .founder-vendor-page * {
+      box-sizing: border-box;
+    }
+
+    .founder-vendor-page a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    .founder-vendor-page__shell {
+      display: grid;
+      gap: 2.75rem;
+    }
+
+    .founder-vendor-page__hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1.08fr) minmax(320px, 0.92fr);
+      gap: 1.4rem;
+      align-items: stretch;
+    }
+
+    .founder-vendor-page__hero-main,
+    .founder-vendor-page__hero-side,
+    .founder-vendor-page__benefit-card,
+    .founder-vendor-page__track-card,
+    .founder-vendor-page__portfolio-card,
+    .founder-vendor-page__application-card,
+    .founder-vendor-page__application-copy,
+    .founder-vendor-page__proof {
+      border-radius: 1.45rem;
+      border: 1px solid var(--fvp-border);
+      background:
+        radial-gradient(circle at top right, rgba(54, 195, 255, 0.14), transparent 30%),
+        linear-gradient(180deg, rgba(9, 16, 35, 0.96), rgba(7, 12, 28, 0.94));
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.22);
+    }
+
+    .founder-vendor-page__hero-main {
+      padding: 2rem;
+    }
+
+    .founder-vendor-page__eyebrow,
+    .founder-vendor-page__portfolio-label,
+    .founder-vendor-page__proof-label,
+    .founder-vendor-page__track-kicker {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
+      width: fit-content;
+      padding: 0.45rem 0.82rem;
+      border-radius: 999px;
+      background: rgba(54, 195, 255, 0.12);
+      color: #a5ecff;
+      font-size: 0.8rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .founder-vendor-page__hero-main h1,
+    .founder-vendor-page__section-head h2,
+    .founder-vendor-page__hero-side h2,
+    .founder-vendor-page__application-copy h2 {
+      margin: 0;
+      color: #ffffff;
+    }
+
+    .founder-vendor-page__hero-main h1 {
+      margin-top: 1rem;
+      max-width: 12ch;
+      font-size: clamp(3rem, 5.4vw, 5.2rem);
+      line-height: 0.98;
+    }
+
+    .founder-vendor-page__hero-main p,
+    .founder-vendor-page__section-head p,
+    .founder-vendor-page__hero-side p,
+    .founder-vendor-page__track-card p,
+    .founder-vendor-page__portfolio-card p,
+    .founder-vendor-page__application-copy p,
+    .founder-vendor-page__field-hint,
+    .founder-vendor-page__field-group label,
+    .founder-vendor-page__status {
+      color: var(--fvp-muted);
+    }
+
+    .founder-vendor-page__hero-main p {
+      margin: 1rem 0 0;
+      max-width: 44rem;
+      font-size: 1.1rem;
+      line-height: 1.75;
+    }
+
+    .founder-vendor-page__hero-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.9rem;
+      margin-top: 1.6rem;
+    }
+
+    .founder-vendor-page__button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 3.2rem;
+      padding: 0 1.45rem;
+      border-radius: 0.95rem;
+      border: 1px solid transparent;
+      font-size: 1rem;
+      font-weight: 700;
+      transition: transform 0.18s ease, box-shadow 0.18s ease;
+      cursor: pointer;
+    }
+
+    .founder-vendor-page__button:hover {
+      transform: translateY(-1px);
+    }
+
+    .founder-vendor-page__button--primary {
+      color: #ffffff;
+      background: linear-gradient(135deg, var(--fvp-accent-strong), var(--fvp-accent));
+      box-shadow: 0 16px 34px rgba(36, 107, 255, 0.28);
+    }
+
+    .founder-vendor-page__button--secondary {
+      color: var(--fvp-text);
+      border-color: rgba(var(--fvp-fg-rgb), 0.14);
+      background: rgba(var(--fvp-fg-rgb), 0.05);
+    }
+
+    .founder-vendor-page__proofs {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 0.9rem;
+      margin-top: 1.6rem;
+    }
+
+    .founder-vendor-page__proof {
+      padding: 1rem 1.05rem;
+    }
+
+    .founder-vendor-page__proof-label {
+      margin-bottom: 0.75rem;
+    }
+
+    .founder-vendor-page__proof strong {
+      display: block;
+      margin-bottom: 0.35rem;
+      font-size: 1.04rem;
+      color: #ffffff;
+    }
+
+    .founder-vendor-page__proof span {
+      color: var(--fvp-muted);
+      font-size: 0.95rem;
+      line-height: 1.55;
+    }
+
+    .founder-vendor-page__hero-side {
+      padding: 1.8rem;
+      display: grid;
+      gap: 1.2rem;
+      align-content: start;
+    }
+
+    .founder-vendor-page__hero-side h2 {
+      font-size: clamp(2rem, 3vw, 2.6rem);
+      line-height: 1.08;
+    }
+
+    .founder-vendor-page__hero-side p {
+      margin: 0;
+      font-size: 1rem;
+      line-height: 1.7;
+    }
+
+    .founder-vendor-page__highlight-list {
+      display: grid;
+      gap: 0.8rem;
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+
+    .founder-vendor-page__highlight-list li {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 0.75rem;
+      align-items: start;
+      padding: 0.9rem 0.95rem;
+      border-radius: 1rem;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    .founder-vendor-page__highlight-list b {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 2rem;
+      height: 2rem;
+      border-radius: 999px;
+      background: linear-gradient(135deg, var(--fvp-accent-strong), var(--fvp-accent));
+      color: #ffffff;
+      font-size: 0.88rem;
+    }
+
+    .founder-vendor-page__highlight-list strong {
+      display: block;
+      margin-bottom: 0.2rem;
+      color: #ffffff;
+      font-size: 1rem;
+    }
+
+    .founder-vendor-page__highlight-list span {
+      color: var(--fvp-muted);
+      font-size: 0.94rem;
+      line-height: 1.55;
+    }
+
+    .founder-vendor-page__section {
+      display: grid;
+      gap: 1.35rem;
+    }
+
+    .founder-vendor-page__section-head {
+      display: grid;
+      gap: 0.5rem;
+      max-width: 54rem;
+    }
+
+    .founder-vendor-page__section-head h2 {
+      font-size: clamp(2rem, 3vw, 2.8rem);
+      line-height: 1.08;
+    }
+
+    .founder-vendor-page__section-head p {
+      margin: 0;
+      font-size: 1.06rem;
+      line-height: 1.75;
+    }
+
+    .founder-vendor-page__benefits {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 1rem;
+    }
+
+    .founder-vendor-page__benefit-card {
+      padding: 1.25rem;
+    }
+
+    .founder-vendor-page__benefit-card h3,
+    .founder-vendor-page__track-card h3,
+    .founder-vendor-page__portfolio-card h3 {
+      margin: 0 0 0.55rem;
+      color: #ffffff;
+      font-size: 1.35rem;
+      line-height: 1.18;
+    }
+
+    .founder-vendor-page__benefit-card p {
+      margin: 0;
+      color: var(--fvp-muted);
+      font-size: 0.98rem;
+      line-height: 1.65;
+    }
+
+    .founder-vendor-page__tracks {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 1rem;
+    }
+
+    .founder-vendor-page__track-card,
+    .founder-vendor-page__portfolio-card {
+      padding: 1.4rem;
+    }
+
+    .founder-vendor-page__track-head,
+    .founder-vendor-page__portfolio-card-top {
+      display: flex;
+      align-items: start;
+      justify-content: space-between;
+      gap: 0.75rem;
+      margin-bottom: 0.85rem;
+    }
+
+    .founder-vendor-page__track-badge,
+    .founder-vendor-page__portfolio-pill {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0.42rem 0.75rem;
+      border-radius: 999px;
+      background: rgba(54, 195, 255, 0.14);
+      color: #dff8ff;
+      font-size: 0.8rem;
+      font-weight: 700;
+    }
+
+    .founder-vendor-page__track-card p,
+    .founder-vendor-page__portfolio-card p {
+      margin: 0 0 1rem;
+      font-size: 0.98rem;
+      line-height: 1.65;
+    }
+
+    .founder-vendor-page__track-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+      display: grid;
+      gap: 0.65rem;
+    }
+
+    .founder-vendor-page__track-list li,
+    .founder-vendor-page__portfolio-row {
+      position: relative;
+      padding-left: 1.2rem;
+      color: var(--fvp-text);
+      font-size: 0.95rem;
+      line-height: 1.55;
+    }
+
+    .founder-vendor-page__track-list li::before,
+    .founder-vendor-page__portfolio-row::before {
+      content: "";
+      position: absolute;
+      top: 0.45rem;
+      left: 0;
+      width: 0.5rem;
+      height: 0.5rem;
+      border-radius: 999px;
+      background: linear-gradient(135deg, var(--fvp-accent-strong), var(--fvp-accent));
+    }
+
+    .founder-vendor-page__portfolio-ranges {
+      display: grid;
+      gap: 0.8rem;
+    }
+
+    .founder-vendor-page__portfolio-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr) auto;
+      gap: 0.6rem;
+      align-items: center;
+      padding-left: 1.25rem;
+    }
+
+    .founder-vendor-page__portfolio-row strong,
+    .founder-vendor-page__portfolio-row b {
+      color: #ffffff;
+    }
+
+    .founder-vendor-page__portfolio-row span {
+      color: var(--fvp-muted);
+      font-size: 0.9rem;
+    }
+
+    .founder-vendor-page__custom-note {
+      padding: 1.2rem 1.3rem;
+      border-radius: 1.2rem;
+      border: 1px solid rgba(54, 195, 255, 0.16);
+      background: rgba(54, 195, 255, 0.07);
+      color: var(--fvp-text);
+      font-size: 1rem;
+      line-height: 1.7;
+    }
+
+    .founder-vendor-page__application {
+      display: grid;
+      grid-template-columns: minmax(0, 0.82fr) minmax(0, 1.18fr);
+      gap: 1rem;
+      align-items: start;
+    }
+
+    .founder-vendor-page__application-copy,
+    .founder-vendor-page__application-card {
+      padding: 1.65rem;
+    }
+
+    .founder-vendor-page__application-copy h2 {
+      font-size: clamp(2rem, 3vw, 2.6rem);
+      line-height: 1.08;
+      margin-bottom: 0.8rem;
+    }
+
+    .founder-vendor-page__application-copy p {
+      margin: 0 0 1rem;
+      font-size: 1rem;
+      line-height: 1.72;
+    }
+
+    .founder-vendor-page__application-points {
+      display: grid;
+      gap: 0.8rem;
+      margin-top: 1.15rem;
+    }
+
+    .founder-vendor-page__application-points div {
+      padding: 0.9rem 0.95rem;
+      border-radius: 1rem;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    .founder-vendor-page__application-points strong {
+      display: block;
+      margin-bottom: 0.25rem;
+      color: #ffffff;
+      font-size: 0.98rem;
+    }
+
+    .founder-vendor-page__application-points span {
+      color: var(--fvp-muted);
+      font-size: 0.93rem;
+      line-height: 1.55;
+    }
+
+    .founder-vendor-page__form-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 1rem;
+    }
+
+    .founder-vendor-page__field,
+    .founder-vendor-page__field--full {
+      display: grid;
+      gap: 0.45rem;
+    }
+
+    .founder-vendor-page__field--full {
+      grid-column: 1 / -1;
+    }
+
+    .founder-vendor-page__field label,
+    .founder-vendor-page__field-group strong {
+      color: #ffffff;
+      font-size: 0.98rem;
+      font-weight: 700;
+    }
+
+    .founder-vendor-page__field input,
+    .founder-vendor-page__field textarea {
+      width: 100%;
+      min-height: 3rem;
+      padding: 0.85rem 1rem;
+      border-radius: 0.9rem;
+      border: 1px solid rgba(var(--fvp-fg-rgb), 0.12);
+      background: rgba(7, 14, 32, 0.62);
+      color: var(--fvp-text);
+      font: inherit;
+      font-size: 1rem;
+    }
+
+    .founder-vendor-page__field textarea {
+      min-height: 7.5rem;
+      resize: vertical;
+    }
+
+    .founder-vendor-page__field input:focus,
+    .founder-vendor-page__field textarea:focus {
+      outline: none;
+      border-color: rgba(54, 195, 255, 0.4);
+      box-shadow: 0 0 0 0.2rem rgba(54, 195, 255, 0.12);
+    }
+
+    .founder-vendor-page__field-group {
+      display: grid;
+      gap: 0.7rem;
+      padding: 1rem;
+      border-radius: 1rem;
+      border: 1px solid rgba(var(--fvp-fg-rgb), 0.12);
+      background: rgba(7, 14, 32, 0.5);
+    }
+
+    .founder-vendor-page__category-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.7rem;
+    }
+
+    .founder-vendor-page__category-grid label {
+      display: flex;
+      align-items: start;
+      gap: 0.55rem;
+      color: var(--fvp-muted);
+      font-size: 0.96rem;
+      line-height: 1.5;
+    }
+
+    .founder-vendor-page__category-grid input {
+      width: 1rem;
+      min-width: 1rem;
+      height: 1rem;
+      margin-top: 0.15rem;
+    }
+
+    .founder-vendor-page__form-actions {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 1rem;
+      margin-top: 1.2rem;
+    }
+
+    .founder-vendor-page__status {
+      margin: 0;
+      font-size: 0.96rem;
+      line-height: 1.5;
+    }
+
+    .founder-vendor-page__status.is-success {
+      color: #86efac;
+    }
+
+    .founder-vendor-page__status.is-error {
+      color: #fca5a5;
+    }
+
+    @media screen and (max-width: 1100px) {
+      .founder-vendor-page__hero,
+      .founder-vendor-page__application,
+      .founder-vendor-page__benefits,
+      .founder-vendor-page__tracks {
+        grid-template-columns: 1fr 1fr;
+      }
+
+      .founder-vendor-page__application {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media screen and (max-width: 749px) {
+      .page-width.page-width--narrow.section-template--21833919725807__main-padding {
+        padding-left: 1.25rem !important;
+        padding-right: 1.25rem !important;
+      }
+
+      .founder-vendor-page {
+        padding: 1rem 0 3rem;
+      }
+
+      .founder-vendor-page__hero,
+      .founder-vendor-page__proofs,
+      .founder-vendor-page__benefits,
+      .founder-vendor-page__tracks,
+      .founder-vendor-page__form-grid,
+      .founder-vendor-page__category-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .founder-vendor-page__hero-main h1 {
+        font-size: clamp(2.45rem, 11vw, 3.8rem);
+      }
+
+      .founder-vendor-page__hero-actions,
+      .founder-vendor-page__form-actions {
+        flex-direction: column;
+      }
+
+      .founder-vendor-page__button {
+        width: 100%;
+      }
+
+      .founder-vendor-page__portfolio-row {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+
+  <div class="founder-vendor-page" data-page-id="${FOUNDER_VENDOR_PROGRAM_PAGE_ID}">
+    <div class="founder-vendor-page__shell">
+      <section class="founder-vendor-page__hero">
+        <div class="founder-vendor-page__hero-main">
+          <span class="founder-vendor-page__eyebrow">Founder Vendor Program</span>
+          <h1>Secure early vendor pricing before the marketplace gets crowded.</h1>
+          <p>
+            Join ITMart24 early to lock in founder positioning, protect your launch economics, and build category visibility while the vendor ecosystem is still opening up.
+          </p>
+
+          <div class="founder-vendor-page__hero-actions">
+            <a
+              class="founder-vendor-page__button founder-vendor-page__button--primary"
+              href="#founder-vendor-application"
+            >
+              Apply For Founder Access
+            </a>
+            <a
+              class="founder-vendor-page__button founder-vendor-page__button--secondary"
+              href="${VENDOR_PORTAL_URL}"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Open Vendor Portal
+            </a>
+          </div>
+
+          <div class="founder-vendor-page__proofs">
+            <div class="founder-vendor-page__proof">
+              <span class="founder-vendor-page__proof-label">3-Year Price Protection</span>
+              <strong>Founder pricing stays commercially predictable</strong>
+              <span>Reduce launch uncertainty with longer-term pricing protection while your marketplace presence grows.</span>
+            </div>
+            <div class="founder-vendor-page__proof">
+              <span class="founder-vendor-page__proof-label">Portfolio Aware</span>
+              <strong>Built for single products and multi-product catalogs</strong>
+              <span>Start with the right vendor tier now and expand into portfolio bundles as your listing count increases.</span>
+            </div>
+            <div class="founder-vendor-page__proof">
+              <span class="founder-vendor-page__proof-label">Early Visibility</span>
+              <strong>Compete earlier, not later</strong>
+              <span>Establish trust, discovery signals, and category presence before later vendors compete for the same attention.</span>
+            </div>
+          </div>
+        </div>
+
+        <aside class="founder-vendor-page__hero-side">
+          <div>
+            <h2>What founder access is designed to do</h2>
+            <p>
+              The Founder Vendor Program is for vendors that want to launch into ITMart24 with stronger economics, better early positioning, and a clearer path from one listing to a broader portfolio footprint.
+            </p>
+          </div>
+
+          <ul class="founder-vendor-page__highlight-list">
+            <li>
+              <b>01</b>
+              <div>
+                <strong>Lock your pricing window early</strong>
+                <span>Secure founder terms before pricing and category competition mature over time.</span>
+              </div>
+            </li>
+            <li>
+              <b>02</b>
+              <div>
+                <strong>Launch with a stronger trust story</strong>
+                <span>Build your vendor presence around verification, cleaner presentation, and more persuasive buyer proof points.</span>
+              </div>
+            </li>
+            <li>
+              <b>03</b>
+              <div>
+                <strong>Grow into portfolio pricing logically</strong>
+                <span>Move from individual plan visibility into portfolio subscriptions and custom portfolio support as your catalog expands.</span>
+              </div>
+            </li>
+          </ul>
+        </aside>
+      </section>
+
+      <section class="founder-vendor-page__section">
+        <div class="founder-vendor-page__section-head">
+          <h2>Why serious vendors apply early</h2>
+          <p>
+            Industry-standard vendor programs work best when they combine pricing leverage with commercial clarity. Founder access gives you a cleaner launch path, stronger long-term cost control, and a more deliberate visibility strategy.
+          </p>
+        </div>
+
+        <div class="founder-vendor-page__benefits">
+          <article class="founder-vendor-page__benefit-card">
+            <h3>Better launch economics</h3>
+            <p>Protect your acquisition costs early by securing pricing before future marketplace rate changes and additional competition affect your planning.</p>
+          </article>
+          <article class="founder-vendor-page__benefit-card">
+            <h3>Category head start</h3>
+            <p>Establish your product footprint while buyers are still forming vendor awareness patterns in software, hosting, AI, and digital solution categories.</p>
+          </article>
+          <article class="founder-vendor-page__benefit-card">
+            <h3>Scalable visibility path</h3>
+            <p>Begin with a founder-friendly vendor plan now and expand into portfolio subscriptions instead of forcing every listing into a disconnected upgrade path.</p>
+          </article>
+          <article class="founder-vendor-page__benefit-card">
+            <h3>Commercially persuasive positioning</h3>
+            <p>Support stronger conversion with trust signals, better placement, and a more complete vendor presentation as buyer evaluation gets more competitive.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="founder-vendor-page__section">
+        <div class="founder-vendor-page__section-head">
+          <h2>Founder-ready vendor tracks</h2>
+          <p>
+            These are the core visibility paths vendors typically use as they move from a first listing to a broader catalog strategy. Founder applications help us recommend the right entry point based on product count, category, and growth intent.
+          </p>
+        </div>
+
+        <div class="founder-vendor-page__tracks">
+          ${plans
+            .filter((plan) => plan.slug !== "free")
+            .map(renderFounderPlanCard)
+            .join("")}
+        </div>
+      </section>
+
+      <section class="founder-vendor-page__section">
+        <div class="founder-vendor-page__section-head">
+          <h2>Portfolio founder pricing paths</h2>
+          <p>
+            For vendors managing multiple products under one active subscription, portfolio plans provide a more scalable structure. Founder lock options are shown below using the current portfolio plan data.
+          </p>
+        </div>
+
+        <div class="founder-vendor-page__tracks">
+          ${portfolioGroups.map(renderFounderPortfolioCard).join("")}
+        </div>
+
+        <div class="founder-vendor-page__custom-note">
+          <strong>Need coverage beyond the listed portfolio ranges?</strong>
+          For larger catalogs or more specialized launch needs, we can recommend a custom portfolio package aligned to your category footprint, visibility goals, and product volume. If your catalog is already moving toward 21+ products, include that in your founder application so our team can guide the right next step.
+        </div>
+      </section>
+
+      <section class="founder-vendor-page__application" id="founder-vendor-application">
+        <div class="founder-vendor-page__application-copy">
+          <h2>Apply for Founder Vendor access</h2>
+          <p>
+            Share your company details, website, and product categories so our team can review fit, confirm founder eligibility, and recommend the most appropriate launch path.
+          </p>
+          <p>
+            This application is intentionally simple: enough information to understand your offering, without making early-stage vendors fill out a heavy enterprise intake form.
+          </p>
+
+          <div class="founder-vendor-page__application-points">
+            <div>
+              <strong>Fast qualification</strong>
+              <span>We review your product positioning, category fit, and website readiness for marketplace onboarding.</span>
+            </div>
+            <div>
+              <strong>Portfolio-aware recommendations</strong>
+              <span>If your product set is broader than a single listing, we can point you toward portfolio subscription or custom portfolio options early.</span>
+            </div>
+            <div>
+              <strong>Clear next steps</strong>
+              <span>You’ll have a more direct route into vendor onboarding, visibility planning, and founder pricing discussion.</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="founder-vendor-page__application-card">
+          <form data-founder-vendor-form novalidate>
+            <div class="founder-vendor-page__form-grid">
+              <div class="founder-vendor-page__field">
+                <label for="founder-full-name">Full Name</label>
+                <input id="founder-full-name" type="text" name="fullName" required />
+              </div>
+              <div class="founder-vendor-page__field">
+                <label for="founder-business-email">Business Email</label>
+                <input id="founder-business-email" type="email" name="businessEmail" required />
+              </div>
+              <div class="founder-vendor-page__field">
+                <label for="founder-company-name">Company Name</label>
+                <input id="founder-company-name" type="text" name="companyName" required />
+              </div>
+              <div class="founder-vendor-page__field">
+                <label for="founder-website">Website URL</label>
+                  <input id="founder-website" type="text" name="website" placeholder="itmart24.com" required />
+              </div>
+              <div class="founder-vendor-page__field">
+                <label for="founder-phone">Phone / WhatsApp</label>
+                <input id="founder-phone" type="text" name="phone" />
+              </div>
+              <div class="founder-vendor-page__field founder-vendor-page__field--full">
+                <div class="founder-vendor-page__field-group">
+                  <strong>Primary Product Categories</strong>
+                  <span class="founder-vendor-page__field-hint">Select at least one category that best describes your offering.</span>
+                  <div class="founder-vendor-page__category-grid">
+                    <label><input type="checkbox" name="categories" value="Web Hosting" />Web Hosting</label>
+                    <label><input type="checkbox" name="categories" value="WordPress Hosting" />WordPress Hosting</label>
+                    <label><input type="checkbox" name="categories" value="VPS Hosting" />VPS Hosting</label>
+                    <label><input type="checkbox" name="categories" value="Dedicated Servers" />Dedicated Servers</label>
+                    <label><input type="checkbox" name="categories" value="Cloud Hosting" />Cloud Hosting</label>
+                    <label><input type="checkbox" name="categories" value="SaaS Software" />SaaS Software</label>
+                    <label><input type="checkbox" name="categories" value="AI Tools" />AI Tools</label>
+                    <label><input type="checkbox" name="categories" value="Developer Tools" />Developer Tools</label>
+                    <label><input type="checkbox" name="categories" value="Cybersecurity" />Cybersecurity</label>
+                    <label><input type="checkbox" name="categories" value="Business Software" />Business Software</label>
+                    <label><input type="checkbox" name="categories" value="Other" />Other</label>
+                  </div>
+                </div>
+              </div>
+              <div class="founder-vendor-page__field founder-vendor-page__field--full">
+                <label for="founder-message">Message</label>
+                <textarea
+                  id="founder-message"
+                  name="message"
+                  placeholder="Tell us what you sell, how many products you expect to launch with, and whether you are exploring founder access for a broader portfolio strategy."
+                ></textarea>
+              </div>
+            </div>
+
+            <div class="founder-vendor-page__form-actions">
+              <button type="submit" class="founder-vendor-page__button founder-vendor-page__button--primary">
+                Submit Founder Application
+              </button>
+              <p class="founder-vendor-page__status" data-founder-vendor-status aria-live="polite"></p>
+            </div>
+          </form>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      var root = document.querySelector('.founder-vendor-page[data-page-id="${FOUNDER_VENDOR_PROGRAM_PAGE_ID}"]');
+
+      if (!root) {
+        return;
+      }
+
+      var form = root.querySelector('[data-founder-vendor-form]');
+      var status = root.querySelector('[data-founder-vendor-status]');
+
+      if (!form || !status) {
+        return;
+      }
+
+      function setStatus(message, variant) {
+        status.textContent = message || '';
+        status.classList.remove('is-success', 'is-error');
+
+        if (variant) {
+          status.classList.add(variant);
+        }
+      }
+
+      form.addEventListener('submit', function (event) {
+        event.preventDefault();
+
+        var formData = new FormData(form);
+        var categories = formData.getAll('categories');
+
+        if (!categories.length) {
+          setStatus('Select at least one product category before submitting.', 'is-error');
+          return;
+        }
+
+        var payload = {
+          leadType: 'custom_portfolio_pricing',
+          companyName: String(formData.get('companyName') || '').trim(),
+          website: String(formData.get('website') || '').trim(),
+          businessEmail: String(formData.get('businessEmail') || '').trim(),
+          contactName: String(formData.get('fullName') || '').trim(),
+          jobTitle: '',
+          country: '',
+          productCountRange: '2-5 products',
+          categories: categories.map(function (item) { return String(item); }),
+          promotionGoals: ['Long-term marketplace visibility'],
+          visibilityLevel: 'Not sure, please recommend',
+          budgetRange: 'Not decided yet',
+          message: [
+            'Founder Vendor Program Application',
+            'Phone / WhatsApp: ' + (String(formData.get('phone') || '').trim() || 'Not provided'),
+            'Message: ' + (String(formData.get('message') || '').trim() || 'Not provided')
+          ].join('\n'),
+          sourcePage: 'founder_vendor_program_page',
+          shopifyPageId: '${FOUNDER_VENDOR_PROGRAM_PAGE_ID}'
+        };
+
+        var founderLeadContext = {
+          fullName: String(formData.get('fullName') || '').trim(),
+          businessEmail: String(formData.get('businessEmail') || '').trim(),
+          phone: String(formData.get('phone') || '').trim(),
+          categories: categories.map(function (item) { return String(item); })
+        };
+        setStatus('Submitting your founder application...', null);
+
+        fetch('${FOUNDER_VENDOR_PROGRAM_ENDPOINT}', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          },
+          body: JSON.stringify(payload)
+        })
+          .then(function (response) {
+            return response.json().catch(function () { return {}; }).then(function (data) {
+              if (!response.ok) {
+                throw new Error(data.message || 'Unable to submit your founder application right now.');
+              }
+
+              return data;
+            });
+          })
+          .then(function (data) {
+            form.reset();
+            setStatus(
+              data && data.message
+                ? data.message
+                : 'Your founder application has been submitted successfully.',
+              'is-success'
+            );
+          })
+          .catch(function (error) {
+            setStatus(
+              error && error.message
+                ? error.message
+                : 'Unable to submit your founder application right now.',
+              'is-error'
+            );
+          });
+      });
+    })();
+  </script>
+`.trim();
+
+const loadActiveVendorPricingData = async () => {
+  const snapshot = await firestore.collection("subscription_plans").get();
+
+  const normalizedPlansWithPortfolio = snapshot.docs
+    .map((doc, index) => {
+      const rawPlan = {
+        id: doc.id,
+        ...(doc.data() as RawSubscriptionPlan),
+      };
+      const plan = normalizeVendorPagePlan(rawPlan, index);
+
+      if (!plan) {
+        return null;
+      }
+
+      return {
+        plan,
+        portfolioGroup: normalizeVendorPortfolioGroup(rawPlan, plan),
+      };
+    })
+    .filter(
+      (
+        entry
+      ): entry is {
+        plan: VendorPagePlan;
+        portfolioGroup: VendorPortfolioGroup | null;
+      } => Boolean(entry)
+    )
+    .sort((left, right) => left.plan.sortOrder - right.plan.sortOrder);
+
+  const plans = normalizedPlansWithPortfolio.map((entry) => entry.plan);
+  const portfolioGroups = normalizedPlansWithPortfolio
+    .map((entry) => entry.portfolioGroup)
+    .filter(
+      (group): group is VendorPortfolioGroup =>
+        Boolean(group && group.basePlanId !== "free")
+    );
+
+  return {
+    plans,
+    portfolioGroups,
+  };
+};
+
+const buildVendorPageHtml = (
+  plans: VendorPagePlan[],
+  portfolioGroups: VendorPortfolioGroup[]
+) => `
   <style>
     .main-page-title.page-title {
       display: none !important;
@@ -954,6 +2442,8 @@ const buildVendorPageHtml = (plans: VendorPagePlan[]) => `
     }
 
     .vendor-pricing-page__plans,
+    .vendor-pricing-page__portfolio,
+    .vendor-pricing-page__custom-portfolio,
     .vendor-pricing-page__policy {
       padding-top: 3rem;
     }
@@ -985,12 +2475,361 @@ const buildVendorPageHtml = (plans: VendorPagePlan[]) => `
       gap: 1.25rem;
     }
 
+    .vendor-pricing-page__portfolio-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 1.25rem;
+    }
+
     .vendor-pricing-page__plan {
       display: flex;
       flex-direction: column;
       min-height: 100%;
       padding: 1.75rem;
       border-radius: 1.35rem;
+    }
+
+    .vendor-pricing-page__portfolio-card {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+      min-height: 100%;
+      padding: 1.5rem;
+      border-radius: 1.35rem;
+      border: 1px solid var(--vp-border);
+      background:
+        radial-gradient(circle at top right, rgba(91, 140, 255, 0.12), transparent 34%),
+        linear-gradient(180deg, rgba(7, 14, 32, 0.98), rgba(6, 12, 27, 0.95));
+      box-shadow: 0 22px 52px rgba(0, 0, 0, 0.22);
+    }
+
+    .vendor-pricing-page__portfolio-card--popular,
+    .vendor-pricing-page__portfolio-card--premium {
+      border-color: var(--vp-border-strong);
+    }
+
+    .vendor-pricing-page__portfolio-top {
+      display: flex;
+      align-items: start;
+      justify-content: space-between;
+      gap: 0.75rem;
+    }
+
+    .vendor-pricing-page__portfolio-top h3 {
+      margin: 0;
+      font-size: 2rem;
+      line-height: 1.1;
+      color: #ffffff;
+    }
+
+    .vendor-pricing-page__portfolio-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0.45rem 0.78rem;
+      border-radius: 999px;
+      font-size: 0.8rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #08101f;
+      background: linear-gradient(135deg, #38bdf8, #67e8f9);
+    }
+
+    .vendor-pricing-page__portfolio-badge--popular {
+      color: #ffffff;
+      background: linear-gradient(135deg, var(--vp-accent-strong), var(--vp-accent));
+    }
+
+    .vendor-pricing-page__portfolio-badge--premium {
+      color: #08101f;
+      background: linear-gradient(135deg, #7dd3fc, #93c5fd);
+    }
+
+    .vendor-pricing-page__portfolio-copy,
+    .vendor-pricing-page__portfolio-price-meta,
+    .vendor-pricing-page__portfolio-includes span {
+      margin: 0;
+      color: rgba(220, 230, 255, 0.74);
+    }
+
+    .vendor-pricing-page__portfolio-copy {
+      font-size: 0.98rem;
+      line-height: 1.65;
+      min-height: 4.8rem;
+    }
+
+    .vendor-pricing-page__portfolio-field {
+      display: grid;
+      gap: 0.55rem;
+    }
+
+    .vendor-pricing-page__portfolio-field label {
+      color: rgba(220, 230, 255, 0.9);
+      font-size: 0.92rem;
+      font-weight: 700;
+    }
+
+    .vendor-pricing-page__portfolio-select-wrap {
+      position: relative;
+    }
+
+    .vendor-pricing-page__portfolio-select-wrap::after {
+      content: "";
+      position: absolute;
+      top: 50%;
+      right: 1rem;
+      width: 0.6rem;
+      height: 0.6rem;
+      border-right: 2px solid rgba(220, 230, 255, 0.8);
+      border-bottom: 2px solid rgba(220, 230, 255, 0.8);
+      transform: translateY(-65%) rotate(45deg);
+      pointer-events: none;
+    }
+
+    .vendor-pricing-page__portfolio-select {
+      width: 100%;
+      min-height: 3rem;
+      padding: 0.8rem 2.75rem 0.8rem 1rem;
+      border-radius: 0.9rem;
+      border: 1px solid rgba(125, 211, 252, 0.22);
+      background: rgba(14, 23, 47, 0.96);
+      color: #f8fbff;
+      font: inherit;
+      appearance: none;
+    }
+
+    .vendor-pricing-page__portfolio-ranges {
+      display: grid;
+    }
+
+    .vendor-pricing-page__portfolio-range {
+      display: none;
+      gap: 0.95rem;
+    }
+
+    .vendor-pricing-page__portfolio-range.is-active {
+      display: grid;
+    }
+
+    .vendor-pricing-page__portfolio-price-box {
+      padding: 1rem 1.05rem;
+      border-radius: 1rem;
+      border: 1px solid rgba(125, 211, 252, 0.16);
+      background: rgba(17, 26, 50, 0.9);
+    }
+
+    .vendor-pricing-page__portfolio-price-box .vendor-pricing-page__price-row {
+      margin-bottom: 0.45rem;
+    }
+
+    .vendor-pricing-page__portfolio-price-box .vendor-pricing-page__main-price {
+      color: #38bdf8;
+    }
+
+    .vendor-pricing-page__portfolio-includes {
+      margin-top: auto;
+      padding-top: 0.1rem;
+      border-top: 1px solid rgba(125, 211, 252, 0.12);
+    }
+
+    .vendor-pricing-page__portfolio-includes strong {
+      display: block;
+      margin-bottom: 0.45rem;
+      color: #ffffff;
+      font-size: 1rem;
+    }
+
+    .vendor-pricing-page__portfolio-includes span {
+      display: block;
+      font-size: 0.92rem;
+      line-height: 1.6;
+    }
+
+    .vendor-pricing-page__custom-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+      gap: 1.25rem;
+      align-items: start;
+    }
+
+    .vendor-pricing-page__custom-intro,
+    .vendor-pricing-page__custom-form-wrap {
+      border: 1px solid var(--vp-border);
+      border-radius: 1.35rem;
+      background: linear-gradient(180deg, rgba(var(--vp-fg-rgb), 0.04), rgba(var(--vp-fg-rgb), 0.02));
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.18);
+      backdrop-filter: blur(14px);
+    }
+
+    .vendor-pricing-page__custom-intro {
+      padding: 1.6rem;
+    }
+
+    .vendor-pricing-page__custom-eyebrow {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.45rem 0.78rem;
+      margin-bottom: 1rem;
+      border-radius: 999px;
+      color: #08101f;
+      background: linear-gradient(135deg, #38bdf8, #67e8f9);
+      font-size: 0.8rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .vendor-pricing-page__custom-intro h2 {
+      margin: 0 0 0.75rem;
+      font-size: clamp(2rem, 3vw, 2.5rem);
+      line-height: 1.12;
+    }
+
+    .vendor-pricing-page__custom-intro p {
+      margin: 0;
+      color: var(--vp-muted);
+      font-size: 1.02rem;
+      line-height: 1.7;
+    }
+
+    .vendor-pricing-page__custom-points {
+      display: grid;
+      gap: 0.9rem;
+      margin-top: 1.35rem;
+    }
+
+    .vendor-pricing-page__custom-point {
+      padding: 1rem 1.05rem;
+      border-radius: 1rem;
+      border: 1px solid rgba(91, 140, 255, 0.16);
+      background: rgba(var(--vp-fg-rgb), 0.03);
+    }
+
+    .vendor-pricing-page__custom-point strong {
+      display: block;
+      margin-bottom: 0.3rem;
+      color: var(--vp-text);
+    }
+
+    .vendor-pricing-page__custom-point span {
+      color: var(--vp-muted);
+      font-size: 0.94rem;
+      line-height: 1.6;
+    }
+
+    .vendor-pricing-page__custom-form-wrap {
+      padding: 1.6rem;
+    }
+
+    .vendor-pricing-page__section-head--compact {
+      margin-bottom: 1.25rem;
+    }
+
+    .vendor-pricing-page__custom-form-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 1rem;
+    }
+
+    .vendor-pricing-page__field {
+      display: grid;
+      gap: 0.45rem;
+    }
+
+    .vendor-pricing-page__field--full {
+      grid-column: 1 / -1;
+    }
+
+    .vendor-pricing-page__field span {
+      color: var(--vp-text);
+      font-size: 1.02rem;
+      font-weight: 700;
+    }
+
+    .vendor-pricing-page__field input,
+    .vendor-pricing-page__field select,
+    .vendor-pricing-page__field textarea {
+      width: 100%;
+      min-height: 3rem;
+      padding: 0.82rem 1rem;
+      border-radius: 0.9rem;
+      border: 1px solid rgba(var(--vp-fg-rgb), 0.12);
+      background: rgba(7, 14, 32, 0.64);
+      color: var(--vp-text);
+      font: inherit;
+      font-size: 1rem;
+    }
+
+    .vendor-pricing-page__field textarea {
+      min-height: 7rem;
+      resize: vertical;
+    }
+
+    .vendor-pricing-page__field input:focus,
+    .vendor-pricing-page__field select:focus,
+    .vendor-pricing-page__field textarea:focus {
+      outline: none;
+      border-color: rgba(91, 140, 255, 0.44);
+      box-shadow: 0 0 0 0.2rem rgba(91, 140, 255, 0.12);
+    }
+
+    .vendor-pricing-page__choice-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.7rem;
+      padding: 0.95rem 1rem;
+      border-radius: 1rem;
+      border: 1px solid rgba(var(--vp-fg-rgb), 0.12);
+      background: rgba(7, 14, 32, 0.5);
+    }
+
+    .vendor-pricing-page__choice-grid label {
+      display: flex;
+      align-items: start;
+      gap: 0.55rem;
+      color: var(--vp-muted);
+      font-size: 1rem;
+      line-height: 1.5;
+    }
+
+    .vendor-pricing-page__choice-grid input {
+      width: 1rem;
+      min-height: 1rem;
+      height: 1rem;
+      margin-top: 0.15rem;
+      padding: 0;
+    }
+
+    .vendor-pricing-page__custom-actions {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 1rem;
+      margin-top: 1.2rem;
+    }
+
+    .vendor-pricing-page__custom-actions .vendor-pricing-page__button {
+      min-width: 13rem;
+    }
+
+    .vendor-pricing-page__custom-status {
+      margin: 0;
+      color: var(--vp-muted);
+      font-size: 1rem;
+      line-height: 1.5;
+    }
+
+    .vendor-pricing-page__custom-status.is-success {
+      color: #86efac;
+    }
+
+    .vendor-pricing-page__custom-status.is-error {
+      color: #fca5a5;
+    }
+
+    .vendor-pricing-page [data-custom-portfolio-pricing] {
+      display: none !important;
     }
 
     .vendor-pricing-page__plan--popular,
@@ -1207,7 +3046,9 @@ const buildVendorPageHtml = (plans: VendorPagePlan[]) => `
         grid-template-columns: 1fr 1fr;
       }
 
-      .vendor-pricing-page__grid {
+      .vendor-pricing-page__grid,
+      .vendor-pricing-page__portfolio-grid,
+      .vendor-pricing-page__custom-grid {
         grid-template-columns: 1fr;
       }
     }
@@ -1231,7 +3072,11 @@ const buildVendorPageHtml = (plans: VendorPagePlan[]) => `
         order: -1;
       }
 
-      .vendor-pricing-page__grid {
+      .vendor-pricing-page__grid,
+      .vendor-pricing-page__portfolio-grid,
+      .vendor-pricing-page__custom-grid,
+      .vendor-pricing-page__custom-form-grid,
+      .vendor-pricing-page__choice-grid {
         grid-template-columns: 1fr;
       }
 
@@ -1549,6 +3394,29 @@ const buildVendorPageHtml = (plans: VendorPagePlan[]) => `
         </div>
       </section>
 
+      ${
+        portfolioGroups.length > 0
+          ? `
+            <section class="vendor-pricing-page__portfolio">
+              <div class="vendor-pricing-page__section-head">
+                <div>
+                  <h2>Portfolio Subscription</h2>
+                  <p>
+                    Choose a portfolio plan to manage multiple products under one active subscription.
+                  </p>
+                </div>
+              </div>
+
+              <div class="vendor-pricing-page__portfolio-grid">
+                ${portfolioGroups.map(renderPortfolioCard).join("")}
+              </div>
+            </section>
+          `
+          : ""
+      }
+
+      ${renderCustomPortfolioSection()}
+
       <section class="vendor-pricing-page__policy">
         <div class="vendor-pricing-page__section-head">
           <div>
@@ -1582,6 +3450,26 @@ const buildVendorPageHtml = (plans: VendorPagePlan[]) => `
       if (!root) {
         return;
       }
+
+      (function removeLegacyCustomPortfolioSection() {
+        var plansSection = root.querySelector('.vendor-pricing-page__plans');
+        var legacySections = root.querySelectorAll('[data-custom-portfolio-pricing]');
+
+        if (!legacySections.length) {
+          return;
+        }
+
+        legacySections.forEach(function (section) {
+          if (plansSection && plansSection.nextElementSibling === section) {
+            section.remove();
+            return;
+          }
+
+          if (section.parentNode) {
+            section.parentNode.removeChild(section);
+          }
+        });
+      })();
 
       root.querySelectorAll('[data-collapsible-toggle]').forEach(function (button) {
         button.addEventListener('click', function () {
@@ -1623,6 +3511,113 @@ const buildVendorPageHtml = (plans: VendorPagePlan[]) => `
           });
         });
       });
+
+      root.querySelectorAll('[data-portfolio-select]').forEach(function (select) {
+        select.addEventListener('change', function () {
+          var card = select.closest('.vendor-pricing-page__portfolio-card');
+
+          if (!card) {
+            return;
+          }
+
+          var selectedRangeId = select.value;
+
+          card.querySelectorAll('[data-portfolio-range]').forEach(function (panel) {
+            panel.classList.toggle(
+              'is-active',
+              panel.getAttribute('data-portfolio-range') === selectedRangeId
+            );
+          });
+        });
+      });
+
+      (function initCustomPortfolioForm() {
+        var form = root.querySelector('[data-custom-portfolio-form]');
+        var status = root.querySelector('[data-custom-portfolio-status]');
+
+        if (!form || !status) {
+          return;
+        }
+
+        function setStatus(message, variant) {
+          status.textContent = message || '';
+          status.classList.remove('is-success', 'is-error');
+
+          if (variant) {
+            status.classList.add(variant);
+          }
+        }
+
+        form.addEventListener('submit', function (event) {
+          event.preventDefault();
+
+          var formData = new FormData(form);
+          var categories = formData.getAll('categories');
+          var promotionGoals = formData.getAll('promotionGoals');
+
+          if (!categories.length) {
+            setStatus('Select at least one primary product category.', 'is-error');
+            return;
+          }
+
+          if (!promotionGoals.length) {
+            setStatus('Select at least one promotion goal.', 'is-error');
+            return;
+          }
+
+          var payload = {
+            companyName: String(formData.get('companyName') || '').trim(),
+            website: String(formData.get('website') || '').trim(),
+            businessEmail: String(formData.get('businessEmail') || '').trim(),
+            contactName: String(formData.get('contactName') || '').trim(),
+            jobTitle: String(formData.get('jobTitle') || '').trim(),
+            country: String(formData.get('country') || '').trim(),
+            productCountRange: String(formData.get('productCountRange') || '').trim(),
+            categories: categories.map(function (item) { return String(item); }),
+            promotionGoals: promotionGoals.map(function (item) { return String(item); }),
+            visibilityLevel: String(formData.get('visibilityLevel') || '').trim(),
+            budgetRange: String(formData.get('budgetRange') || '').trim(),
+            message: String(formData.get('message') || '').trim()
+          };
+
+          setStatus('Submitting your request...', null);
+
+          fetch('${CUSTOM_PORTFOLIO_ENDPOINT}', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json'
+            },
+            body: JSON.stringify(payload)
+          })
+            .then(function (response) {
+              return response.json().catch(function () { return {}; }).then(function (data) {
+                if (!response.ok) {
+                  throw new Error(data.message || 'Unable to submit your request right now.');
+                }
+
+                return data;
+              });
+            })
+            .then(function (data) {
+              form.reset();
+              setStatus(
+                data && data.message
+                  ? data.message
+                  : 'Your custom portfolio request has been submitted successfully.',
+                'is-success'
+              );
+            })
+            .catch(function (error) {
+              setStatus(
+                error && error.message
+                  ? error.message
+                  : 'Unable to submit your request right now.',
+                'is-error'
+              );
+            });
+        });
+      })();
 
       (function initHeroCarousel() {
         var carousel = root.querySelector('[data-hero-carousel]');
@@ -1793,22 +3788,7 @@ const buildVendorPageHtml = (plans: VendorPagePlan[]) => `
 `.trim();
 
 const loadVendorPageSpec = async (): Promise<PageSpec> => {
-  const snapshot = await firestore
-    .collection("subscription_plans")
-    .get();
-
-  const plans = snapshot.docs
-    .map((doc, index) =>
-      normalizeVendorPagePlan(
-        {
-          id: doc.id,
-          ...(doc.data() as RawSubscriptionPlan),
-        },
-        index
-      )
-    )
-    .filter((plan): plan is VendorPagePlan => Boolean(plan))
-    .sort((left, right) => left.sortOrder - right.sortOrder);
+  const { plans, portfolioGroups } = await loadActiveVendorPricingData();
 
   if (plans.length === 0) {
     throw new Error("No active subscription plans found for vendor page.");
@@ -1818,13 +3798,29 @@ const loadVendorPageSpec = async (): Promise<PageSpec> => {
     legacyId: VENDOR_PAGE_ID,
     title: "Vendor",
     handle: "vendor",
-    bodyHtml: buildVendorPageHtml(plans),
+    bodyHtml: buildVendorPageHtml(plans, portfolioGroups),
+  };
+};
+
+const loadFounderVendorProgramPageSpec = async (): Promise<PageSpec> => {
+  const { plans, portfolioGroups } = await loadActiveVendorPricingData();
+
+  if (plans.length === 0) {
+    throw new Error("No active subscription plans found for founder vendor page.");
+  }
+
+  return {
+    legacyId: FOUNDER_VENDOR_PROGRAM_PAGE_ID,
+    title: "Founder Vendor Program",
+    handle: "founder-vendor-program",
+    bodyHtml: buildFounderVendorProgramHtml(plans, portfolioGroups),
   };
 };
 
 const loadPageSpecs = async () => [
   ...STATIC_PAGE_SPECS,
   await loadVendorPageSpec(),
+  await loadFounderVendorProgramPageSpec(),
 ];
 
 const MENU_ITEM_FIELDS = `

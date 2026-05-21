@@ -4,6 +4,7 @@ import PlanForm from "./PlanForm";
 import { SubscriptionPlan } from "./types";
 import axios from "axios";
 import PlanView from "./PlanView";
+import PortfolioPlansSection from "./PortfolioPlansSection";
 
 const ManagePlans = () => {
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
@@ -92,12 +93,20 @@ const ManagePlans = () => {
       )}
 
       {!loading && !error && (
-        <PlanTable
-          plans={plans}
-          onEdit={handleEdit}
-          onDelete={handleDelete}
-          onView={setViewPlan}
-        />
+        <>
+          <PlanTable
+            plans={plans}
+            onEdit={handleEdit}
+            onDelete={handleDelete}
+            onView={setViewPlan}
+          />
+
+          <PortfolioPlansSection
+            plans={plans}
+            setPlans={setPlans}
+            loading={loading}
+          />
+        </>
       )}
 
       {viewPlan && (

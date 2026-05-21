@@ -15,6 +15,7 @@ import adminAuthRoutes from "./routes/adminAuth.routes";
 import adminEmailRoutes from "./routes/adminEmail.routes";
 import crmRoutes from "./routes/crm.routes";
 import customPortfolioLeadsRoutes from "./routes/customPortfolioLeads.routes";
+import founderVendorLeadsRoutes from "./routes/founderVendorLeads.routes";
 
 
 
@@ -31,6 +32,8 @@ app.use("/api/admin/auth", adminAuthRoutes);
 app.use("/api/admin/email", adminEmailRoutes);
 app.use("/api/custom-portfolio-pricing", customPortfolioLeadsRoutes);
 app.use("/apps/custom-portfolio-pricing", customPortfolioLeadsRoutes);
+app.use("/api/founder-vendor-program", founderVendorLeadsRoutes);
+app.use("/apps/founder-vendor-program", founderVendorLeadsRoutes);
 app.use("/api/crm", crmRoutes);
 app.use("/api/subscription-plans", subscriptionPlansRoutes);
 app.use("/api/product-categories", productCategoriesRoutes);

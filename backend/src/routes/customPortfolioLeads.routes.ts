@@ -1,7 +1,21 @@
 import { Router } from "express";
 import { submitCustomPortfolioLead } from "../services/customPortfolioLeads.service";
+import { submitFounderVendorLead } from "../services/founderVendorLeads.service";
 
 const router = Router();
+const FOUNDER_VENDOR_PROGRAM_PAGE_ID = "132191748335";
+
+const isFounderVendorSubmission = (payload: Record<string, unknown>) => {
+  const leadType = String(payload.leadType ?? "").trim().toLowerCase();
+  const sourcePage = String(payload.sourcePage ?? "").trim().toLowerCase();
+  const shopifyPageId = String(payload.shopifyPageId ?? "").trim();
+
+  return (
+    leadType === "founder_vendor_program" ||
+    sourcePage === "founder_vendor_program_page" ||
+    shopifyPageId === FOUNDER_VENDOR_PROGRAM_PAGE_ID
+  );
+};
 
 const sendError = (res: any, error: unknown) => {
   const message =
@@ -24,7 +38,20 @@ const sendError = (res: any, error: unknown) => {
 
 router.post("/", async (req, res) => {
   try {
-    const result = await submitCustomPortfolioLead(req.body ?? {});
+    const payload = (req.body ?? {}) as Record<string, unknown>;
+
+    if (isFounderVendorSubmission(payload)) {
+      const result = await submitFounderVendorLead(payload);
+      res.status(201).json({
+        success: true,
+        data: result,
+        message:
+          "Thank you for applying to the ITMart24 Founder Vendor Program. Our team has received your details and will review your application shortly.",
+      });
+      return;
+    }
+
+    const result = await submitCustomPortfolioLead(payload);
     res.status(201).json({
       success: true,
       data: result,
