@@ -3,11 +3,21 @@ import axios from "axios";
 import Alert from "../../../components/ui/alert/Alert";
 import Badge from "../../../components/ui/badge/Badge";
 import Button from "../../../components/ui/button/Button";
+import CountryPricingEditor from "./CountryPricingEditor";
 import type {
+  CountryPricing,
   PortfolioPlan,
   PortfolioPlanPricingOption,
   SubscriptionPlan,
 } from "./types";
+import {
+  calculateDiscountedPrice,
+  createCountryPricingDraft,
+  createTempId,
+  formatMoney,
+  getCountryPricingKey,
+  normalizeDiscountPercentage,
+} from "./pricingConfig";
 
 type PortfolioPlansSectionProps = {
   plans: SubscriptionPlan[];
@@ -20,6 +30,8 @@ type PortfolioPlanPricingOptionFormState = {
   periodInMonths: number;
   price: number;
   durationUnitName: string;
+  discountPercentage?: number;
+  countryPricing?: CountryPricing[];
 };
 
 type PortfolioPlanFormState = {
@@ -41,8 +53,7 @@ type StatusMessage = {
 
 const PORTFOLIO_BASE_PLAN_ORDER = ["starter", "business", "enterprise"];
 
-const createPricingOptionTempId = () =>
-  `pricing_option_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+const createPricingOptionTempId = () => createTempId("pricing_option");
 
 const createDefaultPricingOption = (
   overrides?: Partial<PortfolioPlanPricingOptionFormState>
@@ -51,6 +62,8 @@ const createDefaultPricingOption = (
   periodInMonths: 12,
   price: 0,
   durationUnitName: "",
+  discountPercentage: 0,
+  countryPricing: [],
   ...overrides,
 });
 
@@ -74,13 +87,6 @@ const createDefaultFormState = (
 
 const formatRange = (portfolioPlan: Pick<PortfolioPlan, "minProducts" | "maxProducts">) =>
   `${portfolioPlan.minProducts}-${portfolioPlan.maxProducts}`;
-
-const formatCurrency = (amount: number) =>
-  new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 0,
-  }).format(amount);
 
 const sortPortfolioPlans = (portfolioPlans: PortfolioPlan[]) =>
   [...portfolioPlans].sort((left, right) => {
@@ -202,13 +208,37 @@ const PortfolioPlansSection = ({
 
   const updatePricingOption = (
     tempId: string,
-    field: "periodInMonths" | "price" | "durationUnitName",
+    field:
+      | "periodInMonths"
+      | "price"
+      | "durationUnitName"
+      | "discountPercentage",
     value: number | string
   ) => {
     setForm((previousForm) => ({
       ...previousForm,
       pricingOptions: previousForm.pricingOptions.map((option) =>
-        option.tempId === tempId ? { ...option, [field]: value } : option
+        option.tempId === tempId
+          ? {
+              ...option,
+              [field]:
+                field === "discountPercentage"
+                  ? normalizeDiscountPercentage(Number(value))
+                  : value,
+            }
+          : option
+      ),
+    }));
+  };
+
+  const updatePricingOptionCountryPricing = (
+    tempId: string,
+    countryPricing: CountryPricing[]
+  ) => {
+    setForm((previousForm) => ({
+      ...previousForm,
+      pricingOptions: previousForm.pricingOptions.map((option) =>
+        option.tempId === tempId ? { ...option, countryPricing } : option
       ),
     }));
   };
@@ -259,8 +289,40 @@ const PortfolioPlansSection = ({
         return "Each price value must be zero or positive";
       }
 
+      if (
+        !Number.isFinite(pricingOption.discountPercentage ?? 0) ||
+        normalizeDiscountPercentage(pricingOption.discountPercentage) !==
+          Number(pricingOption.discountPercentage ?? 0)
+      ) {
+        return "Each discount percentage must stay between 0 and 100";
+      }
+
       if (!pricingOption.durationUnitName.trim()) {
         return "Each duration unit name is required";
+      }
+
+      const seenCountries = new Set<string>();
+
+      for (const market of pricingOption.countryPricing ?? []) {
+        if (!market.countryName.trim()) {
+          return "Each country pricing row needs a country name";
+        }
+
+        if (!market.currencyCode.trim()) {
+          return `Currency code is required for ${market.countryName}`;
+        }
+
+        if (!Number.isFinite(market.price) || market.price < 0) {
+          return `Country price for ${market.countryName} must be zero or positive`;
+        }
+
+        const countryKey = getCountryPricingKey(market);
+
+        if (seenCountries.has(countryKey)) {
+          return `Duplicate country pricing found for ${market.countryName}`;
+        }
+
+        seenCountries.add(countryKey);
       }
 
       if (seenPeriods.has(pricingOption.periodInMonths)) {
@@ -334,6 +396,12 @@ const PortfolioPlansSection = ({
         periodInMonths: option.periodInMonths,
         price: option.price,
         durationUnitName: option.durationUnitName,
+        discountPercentage: normalizeDiscountPercentage(option.discountPercentage),
+        countryPricing: (option.countryPricing ?? []).map((market) => ({
+          ...market,
+          id: market.id || createCountryPricingDraft().id,
+          discountPercentage: normalizeDiscountPercentage(market.discountPercentage),
+        })),
       })),
       isActive: portfolioPlan.isActive,
       sortOrder: portfolioPlan.sortOrder ?? 1,
@@ -357,6 +425,19 @@ const PortfolioPlansSection = ({
         periodInMonths: option.periodInMonths,
         price: option.price,
         durationUnitName: option.durationUnitName.trim(),
+        discountPercentage: normalizeDiscountPercentage(option.discountPercentage),
+        countryPricing: (option.countryPricing ?? [])
+          .map((market) => ({
+            ...market,
+            countryCode: market.countryCode?.trim().toUpperCase() || "",
+            countryName: market.countryName.trim(),
+            currencyCode: market.currencyCode.trim().toUpperCase(),
+            price: Number(market.price),
+            discountPercentage: normalizeDiscountPercentage(
+              market.discountPercentage
+            ),
+          }))
+          .filter((market) => market.countryName && market.currencyCode),
       })),
       isActive: form.isActive,
       sortOrder: form.sortOrder,
@@ -684,11 +765,11 @@ const PortfolioPlansSection = ({
               </div>
 
               <div className="space-y-3">
-                {form.pricingOptions.map((pricingOption, index) => (
-                  <div
-                    key={pricingOption.tempId}
-                    className="rounded-xl border border-gray-200 p-3 dark:border-white/[0.05]"
-                  >
+                    {form.pricingOptions.map((pricingOption, index) => (
+                      <div
+                        key={pricingOption.tempId}
+                        className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-white/[0.05] dark:bg-gray-950/40"
+                      >
                     <div className="mb-3 flex items-center justify-between">
                       <p className="text-sm font-semibold text-gray-800 dark:text-white/90">
                         Option {index + 1}
@@ -704,7 +785,7 @@ const PortfolioPlansSection = ({
                       )}
                     </div>
 
-                    <div className="grid gap-3 sm:grid-cols-3">
+                    <div className="grid gap-3 sm:grid-cols-4">
                       <div>
                         <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
                           Period In Months
@@ -745,6 +826,26 @@ const PortfolioPlansSection = ({
 
                       <div>
                         <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                          Discount %
+                        </label>
+                        <input
+                          type="number"
+                          min={0}
+                          max={100}
+                          className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+                          value={pricingOption.discountPercentage ?? 0}
+                          onChange={(event) =>
+                            updatePricingOption(
+                              pricingOption.tempId,
+                              "discountPercentage",
+                              Number(event.target.value)
+                            )
+                          }
+                        />
+                      </div>
+
+                      <div>
+                        <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
                           Duration Unit Name
                         </label>
                         <input
@@ -760,6 +861,29 @@ const PortfolioPlansSection = ({
                           }
                         />
                       </div>
+                    </div>
+
+                    <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-200">
+                      <span className="font-semibold">Global preview:</span>{" "}
+                      {formatMoney(pricingOption.price, "USD")} with{" "}
+                      {pricingOption.discountPercentage ?? 0}% off becomes{" "}
+                      {formatMoney(
+                        calculateDiscountedPrice(
+                          pricingOption.price,
+                          pricingOption.discountPercentage
+                        ),
+                        "USD"
+                      )}
+                      .
+                    </div>
+
+                    <div className="mt-3">
+                      <CountryPricingEditor
+                        items={pricingOption.countryPricing ?? []}
+                        onChange={(items) =>
+                          updatePricingOptionCountryPricing(pricingOption.tempId, items)
+                        }
+                      />
                     </div>
                   </div>
                 ))}
@@ -811,11 +935,20 @@ const PortfolioPlansSection = ({
                     periodInMonths: option.periodInMonths,
                     price: option.price,
                     durationUnitName: option.durationUnitName.trim() || "Unnamed",
+                    discountPercentage: normalizeDiscountPercentage(
+                      option.discountPercentage
+                    ),
+                    countryPricing: option.countryPricing ?? [],
                   }))
                 ).map((option) => (
                   <p key={option.id}>
                     {option.periodInMonths} month{option.periodInMonths === 1 ? "" : "s"}:{" "}
-                    {formatCurrency(option.price)} ({option.durationUnitName})
+                    {formatMoney(
+                      calculateDiscountedPrice(option.price, option.discountPercentage),
+                      "USD"
+                    )}{" "}
+                    ({option.durationUnitName}) with {option.countryPricing?.length ?? 0} market
+                    {((option.countryPricing?.length ?? 0) === 1) ? "" : "s"}
                   </p>
                 ))}
               </div>
@@ -939,11 +1072,26 @@ const PortfolioPlansSection = ({
                                       {option.periodInMonths === 1 ? "" : "s"}
                                     </Badge>
                                     <Badge color="warning" size="sm">
-                                      {formatCurrency(option.price)}
+                                      {formatMoney(
+                                        calculateDiscountedPrice(
+                                          option.price,
+                                          option.discountPercentage
+                                        ),
+                                        "USD"
+                                      )}
                                     </Badge>
                                     <Badge color="dark" size="sm">
                                       {option.durationUnitName}
                                     </Badge>
+                                    <Badge color="success" size="sm">
+                                      {option.discountPercentage ?? 0}% off
+                                    </Badge>
+                                    {(option.countryPricing?.length ?? 0) > 0 && (
+                                      <Badge color="info" size="sm">
+                                        {option.countryPricing?.length} country override
+                                        {(option.countryPricing?.length ?? 0) === 1 ? "" : "s"}
+                                      </Badge>
+                                    )}
                                   </div>
                                 ))}
                               </div>

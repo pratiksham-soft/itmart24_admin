@@ -14,6 +14,24 @@ const ManagePlans = () => {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [viewPlan, setViewPlan] = useState<SubscriptionPlan | null>(null);
 
+  const pricingOverrideCount = plans.reduce(
+    (count, plan) =>
+      count +
+      (plan.periods ?? []).reduce(
+        (periodCount, period) => periodCount + (period.countryPricing?.length ?? 0),
+        0
+      ) +
+      (plan.portfolioPlans ?? []).reduce(
+        (portfolioCount, portfolioPlan) =>
+          portfolioCount +
+          portfolioPlan.pricingOptions.reduce(
+            (optionCount, option) => optionCount + (option.countryPricing?.length ?? 0),
+            0
+          ),
+        0
+      ),
+    0
+  );
 
   useEffect(() => {
     const fetchPlans = async () => {
@@ -71,17 +89,61 @@ const ManagePlans = () => {
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex justify-between items-center">
-        <h1  className="text-2xl font-semibold tracking-tight text-gray-800 dark:text-white/90">
-          Manage Subscription Plans
-        </h1>
+      <div className="rounded-3xl border border-gray-200 bg-gradient-to-r from-slate-50 via-white to-sky-50 p-6 shadow-sm dark:border-white/[0.05] dark:from-gray-900 dark:via-gray-900 dark:to-slate-900">
+        <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+          <div className="max-w-3xl">
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-brand-500">
+              Enterprise Billing Control
+            </p>
+            <h1 className="mt-2 text-3xl font-semibold tracking-tight text-gray-800 dark:text-white/90">
+              Manage Subscription Plans
+            </h1>
+            <p className="mt-3 text-sm text-gray-600 dark:text-gray-400">
+              Maintain standard plans and portfolio plans from one workspace, now with
+              country-specific pricing overrides and percentage-based discounts built
+              directly into each billing option.
+            </p>
+          </div>
 
-        <button
-          onClick={handleCreate}
-          className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-        >
-          + Create Plan
-        </button>
+          <div className="flex flex-wrap gap-3">
+            <button
+              onClick={handleCreate}
+              className="rounded-full bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700"
+            >
+              + Create Plan
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-5 grid gap-3 sm:grid-cols-3">
+          <div className="rounded-2xl border border-white bg-white/80 px-4 py-3 shadow-sm dark:border-white/[0.05] dark:bg-white/[0.03]">
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+              Standard plans
+            </p>
+            <p className="mt-2 text-2xl font-semibold text-gray-900 dark:text-white">
+              {plans.length}
+            </p>
+          </div>
+          <div className="rounded-2xl border border-white bg-white/80 px-4 py-3 shadow-sm dark:border-white/[0.05] dark:bg-white/[0.03]">
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+              Portfolio plans
+            </p>
+            <p className="mt-2 text-2xl font-semibold text-gray-900 dark:text-white">
+              {plans.reduce(
+                (count, plan) => count + (plan.portfolioPlans?.length ?? 0),
+                0
+              )}
+            </p>
+          </div>
+          <div className="rounded-2xl border border-white bg-white/80 px-4 py-3 shadow-sm dark:border-white/[0.05] dark:bg-white/[0.03]">
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+              Country overrides
+            </p>
+            <p className="mt-2 text-2xl font-semibold text-gray-900 dark:text-white">
+              {pricingOverrideCount}
+            </p>
+          </div>
+        </div>
       </div>
 
       {loading && (

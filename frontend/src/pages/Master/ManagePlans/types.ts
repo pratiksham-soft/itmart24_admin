@@ -1,8 +1,19 @@
+export type CountryPricing = {
+  id: string;
+  countryCode?: string;
+  countryName: string;
+  currencyCode: string;
+  price: number;
+  discountPercentage?: number;
+};
+
 export type PlanPeriod = {
   id: string;
   label: string;
   durationInMonths: number;
   price: number;
+  discountPercentage?: number;
+  countryPricing?: CountryPricing[];
 };
 
 export type PlanFeature = {
@@ -15,6 +26,8 @@ export type PortfolioPlanPricingOption = {
   periodInMonths: number;
   price: number;
   durationUnitName: string;
+  discountPercentage?: number;
+  countryPricing?: CountryPricing[];
 };
 
 export type PortfolioPlan = {

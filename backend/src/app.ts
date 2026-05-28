@@ -16,6 +16,7 @@ import adminEmailRoutes from "./routes/adminEmail.routes";
 import crmRoutes from "./routes/crm.routes";
 import customPortfolioLeadsRoutes from "./routes/customPortfolioLeads.routes";
 import founderVendorLeadsRoutes from "./routes/founderVendorLeads.routes";
+import userSettingsRoutes from "./routes/userSettings.routes";
 
 
 
@@ -41,6 +42,7 @@ app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/monthly-targets", monthlyTargetsRoutes);
 app.use("/api/blog-manager", blogManagerRoutes);
 app.use("/api/health", healthRoutes);
+app.use("/api/users/settings", userSettingsRoutes);
 
 
 

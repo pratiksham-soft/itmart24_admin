@@ -13,5 +13,6 @@ backend/firebase-service-account*.json
 !package-lock.json
 !tsconfig.json
 node_modules
+temp
 backend/exports
 app.environment.json

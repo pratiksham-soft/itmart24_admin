@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Request, Router } from "express";
 import {
   createPortfolioPlan,
   createSubscriptionPlan,
@@ -11,8 +11,22 @@ import {
   updatePortfolioPlan,
   updateSubscriptionPlan,
 } from "../services/subscriptionPlans.service";
+import {
+  detectVisitorCountryCode,
+  resolvePricingDetails,
+} from "../services/subscriptionPlanPricing";
 
 const router = Router();
+
+const resolveRequestedCountryCode = (req: Request) => {
+  const queryCountryCode =
+    typeof req.query.countryCode === "string" ? req.query.countryCode : null;
+
+  return (
+    (queryCountryCode ? queryCountryCode.trim().toUpperCase() : null) ??
+    detectVisitorCountryCode(req.headers)
+  );
+};
 
 router.get("/", async (_req, res) => {
   try {
@@ -21,6 +35,89 @@ router.get("/", async (_req, res) => {
   } catch (error) {
     console.error("Fetch plans error:", error);
     res.status(500).json({ error: "Failed to fetch subscription plans" });
+  }
+});
+
+router.get("/vendor-pricing", async (req, res) => {
+  try {
+    const requestedCountryCode = resolveRequestedCountryCode(req);
+    const pricingCountryCode = requestedCountryCode === "IN" ? "IN" : null;
+    const plans = await getAllSubscriptionPlans();
+
+    const activePlans = plans
+      .filter((plan) => plan.isActive !== false)
+      .sort(
+        (left, right) =>
+          Number(left.sortOrder ?? 0) - Number(right.sortOrder ?? 0)
+      );
+
+    const payload = activePlans.map((plan) => {
+      const monthlyPeriod =
+        plan.periods.find((period) =>
+          String(period.label ?? "").toLowerCase().includes("month")
+        ) ?? plan.periods[0];
+
+      return {
+        id: plan.id,
+        slug: plan.slug,
+        periods: plan.periods.map((period) => ({
+          id: period.id,
+          pricing: resolvePricingDetails(period, pricingCountryCode, monthlyPeriod),
+        })),
+        portfolioPlans: (plan.portfolioPlans ?? [])
+          .filter((portfolioPlan) => portfolioPlan.isActive !== false)
+          .map((portfolioPlan) => {
+            const monthlyOption =
+              portfolioPlan.pricingOptions.find(
+                (option) => Number(option.periodInMonths) === 1
+              ) ??
+              (monthlyPeriod
+                ? {
+                    periodInMonths: 1,
+                    price:
+                      Number(monthlyPeriod.price ?? 0) *
+                      Number(portfolioPlan.minProducts ?? 1),
+                    discountPercentage: 0,
+                    countryPricing: [],
+                  }
+                : null);
+
+            return {
+              id: portfolioPlan.id,
+              pricingOptions: portfolioPlan.pricingOptions.map((option) => ({
+                id: option.id,
+                pricing: resolvePricingDetails(
+                  {
+                    durationInMonths: option.periodInMonths,
+                    price: option.price,
+                    discountPercentage: option.discountPercentage,
+                    countryPricing: option.countryPricing,
+                  },
+                  pricingCountryCode,
+                  monthlyOption
+                    ? {
+                        durationInMonths: monthlyOption.periodInMonths,
+                        price: monthlyOption.price,
+                        discountPercentage: monthlyOption.discountPercentage,
+                        countryPricing: monthlyOption.countryPricing,
+                      }
+                    : null
+                ),
+              })),
+            };
+          }),
+      };
+    });
+
+    res.json({
+      detectedCountryCode: requestedCountryCode,
+      pricingCountryCode: pricingCountryCode ?? "GLOBAL",
+      currencyCode: pricingCountryCode === "IN" ? "INR" : "USD",
+      plans: payload,
+    });
+  } catch (error) {
+    console.error("Fetch vendor pricing error:", error);
+    res.status(500).json({ error: "Failed to fetch vendor pricing" });
   }
 });
 

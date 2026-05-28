@@ -1,6 +1,7 @@
 import "../config/env";
 import { firestore } from "../config/firebaseAdmin";
 import { shopifyGraphQL } from "../services/shopifyHttp";
+import { resolvePricingDetails } from "../services/subscriptionPlanPricing";
 
 type GraphQlError = {
   message?: string;
@@ -26,6 +27,17 @@ type RawPlanPeriod = {
   durationInMonths?: number;
   durationInDays?: number;
   price?: number;
+  discountPercentage?: number;
+  countryPricing?: RawCountryPricing[];
+};
+
+type RawCountryPricing = {
+  id?: string;
+  countryCode?: string;
+  countryName?: string;
+  currencyCode?: string;
+  price?: number;
+  discountPercentage?: number;
 };
 
 type RawPlanFeature =
@@ -53,6 +65,8 @@ type RawPortfolioPricingOption = {
   durationUnitName?: string;
   periodInMonths?: number;
   price?: number;
+  discountPercentage?: number;
+  countryPricing?: RawCountryPricing[];
 };
 
 type RawPortfolioPlan = {
@@ -73,6 +87,13 @@ type VendorPagePeriod = {
   label: string;
   price: number;
   termLabel: string;
+  countryCode: string | null;
+  currencyCode: string;
+  originalPrice: number;
+  discountPercentage: number;
+  discountedPrice: number;
+  saveAmount: number | null;
+  isDiscounted: boolean;
 };
 
 type VendorPageFeature = {
@@ -141,6 +162,8 @@ const FOUNDER_VENDOR_PROGRAM_PAGE_ID = "132191748335";
 const VENDOR_PORTAL_URL = "https://vendor.itmart24.com";
 const CUSTOM_PORTFOLIO_ENDPOINT = "https://shavi.itmart24.com/api/custom-portfolio-pricing";
 const FOUNDER_VENDOR_PROGRAM_ENDPOINT = CUSTOM_PORTFOLIO_ENDPOINT;
+const SUBSCRIPTION_VENDOR_PRICING_ENDPOINT =
+  "https://shavi.itmart24.com/api/subscription-plans/vendor-pricing";
 
 const PLAN_PRESENTATION: Record<
   string,
@@ -256,15 +279,35 @@ const getTermLabel = (label: string) => {
   return "/ term";
 };
 
-const formatPrice = (price: number) => {
+const formatPrice = (price: number, currencyCode = "USD") => {
   if (price === 0) {
     return "Free";
   }
 
-  return `$${price.toLocaleString("en-US", {
+  return new Intl.NumberFormat(currencyCode === "INR" ? "en-IN" : "en-US", {
+    style: "currency",
+    currency: currencyCode,
     minimumFractionDigits: Number.isInteger(price) ? 0 : 2,
     maximumFractionDigits: 2,
-  })}`;
+  }).format(price);
+};
+
+const renderDiscountBadge = (discountPercentage: number) =>
+  discountPercentage > 0 ? `${discountPercentage}% OFF` : "";
+
+const renderSaveLabel = (saveAmount: number | null, currencyCode: string) =>
+  saveAmount && saveAmount > 0
+    ? `Save ${formatPrice(saveAmount, currencyCode)}`
+    : "";
+
+const getDefaultPricingIndex = (
+  options: Array<Pick<VendorPagePeriod, "isDiscounted" | "discountPercentage">>
+) => {
+  const discountedIndex = options.findIndex(
+    (option) => option.isDiscounted || option.discountPercentage > 0
+  );
+
+  return discountedIndex >= 0 ? discountedIndex : 0;
 };
 
 const getPortfolioRangeLabel = (
@@ -288,7 +331,8 @@ const getPricingOptionSortRank = (
 
 const normalizeVendorPagePlan = (
   plan: RawSubscriptionPlan,
-  index: number
+  index: number,
+  targetCountryCode: string | null = null
 ): VendorPagePlan | null => {
   const name = plan.name?.trim() || "";
   const slug = plan.slug?.trim() || plan.id?.trim() || slugifyToken(name);
@@ -298,6 +342,10 @@ const normalizeVendorPagePlan = (
   }
 
   const rawPeriods = Array.isArray(plan.periods) ? plan.periods : [];
+  const monthlyReferencePeriod =
+    rawPeriods.find((period) =>
+      String(period.label ?? "").toLowerCase().includes("month")
+    ) ?? rawPeriods[0];
   const periods = rawPeriods
     .filter(
       (period): period is RawPlanPeriod =>
@@ -316,6 +364,7 @@ const normalizeVendorPagePlan = (
             : `option-${periodIndex + 1}`;
 
       return {
+        ...resolvePricingDetails(period, targetCountryCode, monthlyReferencePeriod),
         id: period.id?.trim() || `${slug}-period-${periodIndex + 1}`,
         key,
         label,
@@ -360,7 +409,8 @@ const normalizeVendorPagePlan = (
 
 const normalizeVendorPortfolioGroup = (
   plan: RawSubscriptionPlan,
-  vendorPlan: VendorPagePlan
+  vendorPlan: VendorPagePlan,
+  targetCountryCode: string | null = null
 ): VendorPortfolioGroup | null => {
   const rawPortfolioPlans = Array.isArray(plan.portfolioPlans)
     ? plan.portfolioPlans
@@ -384,6 +434,20 @@ const normalizeVendorPortfolioGroup = (
         (left.maxProducts ?? 0) - (right.maxProducts ?? 0)
     )
     .map((portfolioPlan, portfolioIndex) => {
+      const monthlyReferenceOption =
+        (portfolioPlan.pricingOptions ?? []).find(
+          (option) => Number(option.periodInMonths) === 1
+        ) ??
+        (vendorPlan.periods.find((period) => period.key === "monthly")
+          ? {
+              periodInMonths: 1,
+              price:
+                (vendorPlan.periods.find((period) => period.key === "monthly")
+                  ?.originalPrice ?? 0) * Number(portfolioPlan.minProducts ?? 1),
+              discountPercentage: 0,
+              countryPricing: [],
+            }
+          : null);
       const pricingOptions = (portfolioPlan.pricingOptions ?? [])
         .filter(
           (option): option is RawPortfolioPricingOption =>
@@ -403,6 +467,23 @@ const normalizeVendorPortfolioGroup = (
           const key = slugifyToken(label);
 
           return {
+            ...resolvePricingDetails(
+              {
+                durationInMonths: option.periodInMonths,
+                price: option.price,
+                discountPercentage: option.discountPercentage,
+                countryPricing: option.countryPricing,
+              },
+              targetCountryCode,
+              monthlyReferenceOption
+                ? {
+                    durationInMonths: monthlyReferenceOption.periodInMonths,
+                    price: monthlyReferenceOption.price,
+                    discountPercentage: monthlyReferenceOption.discountPercentage,
+                    countryPricing: monthlyReferenceOption.countryPricing,
+                  }
+                : null
+            ),
             id:
               option.id?.trim() ||
               `${vendorPlan.slug}-portfolio-${portfolioIndex + 1}-${optionIndex + 1}`,
@@ -462,6 +543,8 @@ const renderPlanPeriodSelector = (plan: VendorPagePlan) => {
     return "";
   }
 
+  const defaultIndex = getDefaultPricingIndex(plan.periods);
+
   return `
     <div class="vendor-pricing-page__toggle" data-toggle-for="${escapeHtml(plan.slug)}-pricing">
       ${plan.periods
@@ -469,7 +552,7 @@ const renderPlanPeriodSelector = (plan: VendorPagePlan) => {
           (period, index) => `
             <button
               type="button"
-              ${index === 0 ? 'class="is-active"' : ""}
+              ${index === defaultIndex ? 'class="is-active"' : ""}
               data-mode-btn="${escapeHtml(period.key)}"
             >
               ${escapeHtml(period.label)}
@@ -482,25 +565,41 @@ const renderPlanPeriodSelector = (plan: VendorPagePlan) => {
 };
 
 const renderPlanPricing = (plan: VendorPagePlan) => {
+  const defaultIndex = getDefaultPricingIndex(plan.periods);
+
   return `
     <div
       class="vendor-pricing-page__pricing"
       id="${escapeHtml(plan.slug)}-pricing"
+      data-plan-pricing="${escapeHtml(plan.id)}"
     >
       ${plan.periods
         .map(
           (period, index) => `
             <div
-              class="vendor-pricing-page__price-panel ${index === 0 ? "is-active" : ""}"
+              class="vendor-pricing-page__price-panel ${index === defaultIndex ? "is-active" : ""}"
               data-price-mode="${escapeHtml(period.key)}"
+              data-plan-id="${escapeHtml(plan.id)}"
+              data-period-id="${escapeHtml(period.id)}"
             >
               <span class="vendor-pricing-page__price-label">${escapeHtml(period.label)} billing</span>
+              <div class="vendor-pricing-page__price-meta-top">
+                <span class="vendor-pricing-page__original-price ${period.isDiscounted ? "" : "is-hidden"}" data-price-original>${escapeHtml(
+                  formatPrice(period.originalPrice, period.currencyCode)
+                )}</span>
+                <span class="vendor-pricing-page__discount-badge ${period.isDiscounted ? "" : "is-hidden"}" data-price-discount>${escapeHtml(
+                  renderDiscountBadge(period.discountPercentage)
+                )}</span>
+              </div>
               <div class="vendor-pricing-page__price-row">
-                <span class="vendor-pricing-page__main-price">${escapeHtml(
-                  formatPrice(period.price)
+                <span class="vendor-pricing-page__main-price" data-price-current>${escapeHtml(
+                  formatPrice(period.discountedPrice, period.currencyCode)
                 )}</span>
                 <span class="vendor-pricing-page__price-term">${escapeHtml(period.termLabel)}</span>
               </div>
+              <div class="vendor-pricing-page__save-row ${period.saveAmount ? "" : "is-hidden"}" data-price-save>${escapeHtml(
+                renderSaveLabel(period.saveAmount, period.currencyCode)
+              )}</div>
             </div>
           `
         )
@@ -650,6 +749,9 @@ const renderPortfolioCard = (group: VendorPortfolioGroup) => {
         ${group.portfolioPlans
           .map((portfolioPlan, portfolioIndex) => {
             const pricingBoxId = `${group.basePlanId}-portfolio-pricing-${portfolioIndex + 1}`;
+            const defaultPricingIndex = getDefaultPricingIndex(
+              portfolioPlan.pricingOptions
+            );
 
             return `
               <section
@@ -667,7 +769,7 @@ const renderPortfolioCard = (group: VendorPortfolioGroup) => {
                             (option, optionIndex) => `
                               <button
                                 type="button"
-                                ${optionIndex === 0 ? 'class="is-active"' : ""}
+                                ${optionIndex === defaultPricingIndex ? 'class="is-active"' : ""}
                                 data-mode-btn="${escapeHtml(option.key)}"
                               >
                                 ${escapeHtml(option.label)}
@@ -689,16 +791,23 @@ const renderPortfolioCard = (group: VendorPortfolioGroup) => {
                       (option, optionIndex) => `
                         <div
                           class="vendor-pricing-page__price-panel ${
-                            optionIndex === 0 ? "is-active" : ""
+                            optionIndex === defaultPricingIndex ? "is-active" : ""
                           }"
                           data-price-mode="${escapeHtml(option.key)}"
+                          data-portfolio-plan-id="${escapeHtml(portfolioPlan.id)}"
+                          data-pricing-option-id="${escapeHtml(option.id)}"
                         >
                           <span class="vendor-pricing-page__price-label">Pricing details</span>
+                          <div class="vendor-pricing-page__price-meta-top">
+                            <span class="vendor-pricing-page__original-price ${option.isDiscounted ? "" : "is-hidden"}" data-price-original>${escapeHtml(formatPrice(option.originalPrice, option.currencyCode))}</span>
+                            <span class="vendor-pricing-page__discount-badge ${option.isDiscounted ? "" : "is-hidden"}" data-price-discount>${escapeHtml(renderDiscountBadge(option.discountPercentage))}</span>
+                          </div>
                           <div class="vendor-pricing-page__price-row">
-                            <span class="vendor-pricing-page__main-price">${escapeHtml(
-                              formatPrice(option.price)
+                            <span class="vendor-pricing-page__main-price" data-price-current>${escapeHtml(
+                              formatPrice(option.discountedPrice, option.currencyCode)
                             )}</span>
                           </div>
+                          <div class="vendor-pricing-page__save-row ${option.saveAmount ? "" : "is-hidden"}" data-price-save>${escapeHtml(renderSaveLabel(option.saveAmount, option.currencyCode))}</div>
                           <div class="vendor-pricing-page__portfolio-price-meta">
                             ${escapeHtml(option.label)} • ${escapeHtml(
                               getPortfolioRangeLabel(
@@ -870,6 +979,86 @@ const renderCustomPortfolioSection = () => `
     </div>
   </section>
 `.trim();
+
+type ClientPricingDetails = Pick<
+  VendorPagePeriod,
+  | "currencyCode"
+  | "originalPrice"
+  | "discountPercentage"
+  | "discountedPrice"
+  | "saveAmount"
+  | "isDiscounted"
+>;
+
+type ClientPricingPayload = {
+  plans: Array<{
+    id: string;
+    periods: Array<{
+      id: string;
+      pricing: ClientPricingDetails;
+    }>;
+    portfolioPlans: Array<{
+      id: string;
+      pricingOptions: Array<{
+        id: string;
+        pricing: ClientPricingDetails;
+      }>;
+    }>;
+  }>;
+};
+
+const toClientPricingDetails = (
+  pricing: VendorPagePeriod | VendorPortfolioPricingOption
+): ClientPricingDetails => ({
+  currencyCode: pricing.currencyCode,
+  originalPrice: pricing.originalPrice,
+  discountPercentage: pricing.discountPercentage,
+  discountedPrice: pricing.discountedPrice,
+  saveAmount: pricing.saveAmount,
+  isDiscounted: pricing.isDiscounted,
+});
+
+const buildClientPricingPayload = (
+  rawPlans: RawSubscriptionPlan[],
+  targetCountryCode: string | null
+): ClientPricingPayload => ({
+  plans: rawPlans
+    .map((rawPlan, index) => {
+      const plan = normalizeVendorPagePlan(rawPlan, index, targetCountryCode);
+
+      if (!plan) {
+        return null;
+      }
+
+      const portfolioGroup = normalizeVendorPortfolioGroup(
+        rawPlan,
+        plan,
+        targetCountryCode
+      );
+
+      return {
+        id: plan.id,
+        periods: plan.periods.map((period) => ({
+          id: period.id,
+          pricing: toClientPricingDetails(period),
+        })),
+        portfolioPlans: (portfolioGroup?.portfolioPlans ?? []).map(
+          (portfolioPlan) => ({
+            id: portfolioPlan.id,
+            pricingOptions: portfolioPlan.pricingOptions.map((option) => ({
+              id: option.id,
+              pricing: toClientPricingDetails(option),
+            })),
+          })
+        ),
+      };
+    })
+    .filter(
+      (
+        entry
+      ): entry is ClientPricingPayload["plans"][number] => Boolean(entry)
+    ),
+});
 
 const getFounderPortfolioPricingOption = (portfolioPlan: VendorPortfolioPlan) =>
   portfolioPlan.pricingOptions.find((option) =>
@@ -1877,13 +2066,13 @@ const buildFounderVendorProgramHtml = (
 
 const loadActiveVendorPricingData = async () => {
   const snapshot = await firestore.collection("subscription_plans").get();
+  const rawPlans = snapshot.docs.map((doc) => ({
+    id: doc.id,
+    ...(doc.data() as RawSubscriptionPlan),
+  }));
 
-  const normalizedPlansWithPortfolio = snapshot.docs
-    .map((doc, index) => {
-      const rawPlan = {
-        id: doc.id,
-        ...(doc.data() as RawSubscriptionPlan),
-      };
+  const normalizedPlansWithPortfolio = rawPlans
+    .map((rawPlan, index) => {
       const plan = normalizeVendorPagePlan(rawPlan, index);
 
       if (!plan) {
@@ -1914,14 +2103,23 @@ const loadActiveVendorPricingData = async () => {
     );
 
   return {
+    rawPlans,
     plans,
     portfolioGroups,
+    clientPricingPayloads: {
+      global: buildClientPricingPayload(rawPlans, null),
+      india: buildClientPricingPayload(rawPlans, "IN"),
+    },
   };
 };
 
 const buildVendorPageHtml = (
   plans: VendorPagePlan[],
-  portfolioGroups: VendorPortfolioGroup[]
+  portfolioGroups: VendorPortfolioGroup[],
+  clientPricingPayloads: {
+    global: ClientPricingPayload;
+    india: ClientPricingPayload;
+  }
 ) => `
   <style>
     .main-page-title.page-title {
@@ -2934,11 +3132,51 @@ const buildVendorPageHtml = (
       display: block;
     }
 
+    .vendor-pricing-page__price-meta-top {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.7rem;
+      margin-bottom: 0.7rem;
+      min-height: 1.9rem;
+    }
+
+    .vendor-pricing-page__original-price {
+      color: var(--vp-muted);
+      font-size: 1.05rem;
+      font-weight: 700;
+      line-height: 1.2;
+    }
+
+    .vendor-pricing-page__original-price {
+      text-decoration: line-through;
+      text-decoration-thickness: 2px;
+      text-decoration-color: rgba(220, 230, 255, 0.72);
+      opacity: 0.92;
+    }
+
+    .vendor-pricing-page__discount-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 1.95rem;
+      padding: 0.3rem 0.85rem;
+      border-radius: 999px;
+      background: linear-gradient(135deg, rgba(56, 189, 248, 0.22), rgba(34, 211, 238, 0.14));
+      border: 1px solid rgba(125, 211, 252, 0.34);
+      color: #d8f4ff;
+      font-size: 0.88rem;
+      font-weight: 900;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      box-shadow: 0 10px 24px rgba(14, 165, 233, 0.16);
+    }
+
     .vendor-pricing-page__price-row {
       display: flex;
       align-items: baseline;
       gap: 0.4rem;
-      margin-bottom: 1rem;
+      margin-bottom: 0.45rem;
     }
 
     .vendor-pricing-page__main-price {
@@ -2951,6 +3189,29 @@ const buildVendorPageHtml = (
     .vendor-pricing-page__price-term {
       font-size: 1rem;
       color: var(--vp-muted);
+    }
+
+    .vendor-pricing-page__save-row {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      margin-top: 0.7rem;
+      padding: 0.42rem 0.9rem;
+      border-radius: 999px;
+      background: linear-gradient(135deg, rgba(34, 197, 94, 0.2), rgba(22, 163, 74, 0.12));
+      border: 1px solid rgba(134, 239, 172, 0.28);
+      color: #dcfce7;
+      font-size: 0.95rem;
+      font-weight: 800;
+      letter-spacing: 0.015em;
+      line-height: 1.1;
+      box-shadow: 0 10px 24px rgba(22, 163, 74, 0.14);
+    }
+
+    .vendor-pricing-page__save-row.is-hidden,
+    .vendor-pricing-page__original-price.is-hidden,
+    .vendor-pricing-page__discount-badge.is-hidden {
+      display: none;
     }
 
     .vendor-pricing-page__features {
@@ -3397,7 +3658,10 @@ const buildVendorPageHtml = (
       ${
         portfolioGroups.length > 0
           ? `
-            <section class="vendor-pricing-page__portfolio">
+            <section
+              class="vendor-pricing-page__portfolio"
+              id="portfolio-subscription"
+            >
               <div class="vendor-pricing-page__section-head">
                 <div>
                   <h2>Portfolio Subscription</h2>
@@ -3530,6 +3794,133 @@ const buildVendorPageHtml = (
           });
         });
       });
+
+      (function hydrateCountryPricing() {
+        var embeddedRegionalPricing = ${JSON.stringify(clientPricingPayloads)};
+
+        function formatMoney(value, currencyCode) {
+          if (typeof value !== 'number' || !isFinite(value)) {
+            return '';
+          }
+
+          if (value === 0) {
+            return 'Free';
+          }
+
+          return new Intl.NumberFormat(currencyCode === 'INR' ? 'en-IN' : 'en-US', {
+            style: 'currency',
+            currency: currencyCode || 'USD',
+            minimumFractionDigits: Number.isInteger(value) ? 0 : 2,
+            maximumFractionDigits: 2
+          }).format(value);
+        }
+
+        function updatePanel(panel, pricing) {
+          if (!panel || !pricing) {
+            return;
+          }
+
+          var originalNode = panel.querySelector('[data-price-original]');
+          var discountNode = panel.querySelector('[data-price-discount]');
+          var currentNode = panel.querySelector('[data-price-current]');
+          var saveNode = panel.querySelector('[data-price-save]');
+          var isDiscounted = Boolean(pricing.isDiscounted);
+          var currencyCode = pricing.currencyCode || 'USD';
+
+          if (originalNode) {
+            originalNode.textContent = formatMoney(Number(pricing.originalPrice || 0), currencyCode);
+            originalNode.classList.toggle('is-hidden', !isDiscounted);
+          }
+
+          if (discountNode) {
+            discountNode.textContent = isDiscounted ? String(pricing.discountPercentage || 0) + '% OFF' : '';
+            discountNode.classList.toggle('is-hidden', !isDiscounted);
+          }
+
+          if (currentNode) {
+            currentNode.textContent = formatMoney(Number(pricing.discountedPrice || 0), currencyCode);
+          }
+
+          if (saveNode) {
+            var saveAmount = Number(pricing.saveAmount || 0);
+            var hasSavings = saveAmount > 0;
+            saveNode.textContent = hasSavings
+              ? 'Save ' + formatMoney(saveAmount, currencyCode)
+              : '';
+            saveNode.classList.toggle('is-hidden', !hasSavings);
+          }
+        }
+
+        function applyPricingPayload(data) {
+          if (!data || !Array.isArray(data.plans)) {
+            return;
+          }
+
+          data.plans.forEach(function (plan) {
+            if (Array.isArray(plan.periods)) {
+              plan.periods.forEach(function (period) {
+                var selector =
+                  '[data-plan-id="' + String(plan.id || '') + '"][data-period-id="' + String(period.id || '') + '"]';
+                updatePanel(root.querySelector(selector), period.pricing);
+              });
+            }
+
+            if (Array.isArray(plan.portfolioPlans)) {
+              plan.portfolioPlans.forEach(function (portfolioPlan) {
+                if (!Array.isArray(portfolioPlan.pricingOptions)) {
+                  return;
+                }
+
+                portfolioPlan.pricingOptions.forEach(function (option) {
+                  var selector =
+                    '[data-portfolio-plan-id="' +
+                    String(portfolioPlan.id || '') +
+                    '"][data-pricing-option-id="' +
+                    String(option.id || '') +
+                    '"]';
+                  updatePanel(root.querySelector(selector), option.pricing);
+                });
+              });
+            }
+          });
+        }
+
+        function getStorefrontCountryCode() {
+          if (window.Shopify && typeof window.Shopify.country === 'string') {
+            return window.Shopify.country.trim().toUpperCase();
+          }
+
+          return '';
+        }
+
+        applyPricingPayload(
+          getStorefrontCountryCode() === 'IN'
+            ? embeddedRegionalPricing.india
+            : embeddedRegionalPricing.global
+        );
+
+        fetch('${SUBSCRIPTION_VENDOR_PRICING_ENDPOINT}', {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json'
+          }
+        })
+          .then(function (response) {
+            return response.json().catch(function () { return {}; }).then(function (data) {
+              if (!response.ok) {
+                throw new Error(data.error || 'Unable to load regional pricing.');
+              }
+
+              return data;
+            });
+          })
+          .then(function (data) {
+            applyPricingPayload(data);
+          })
+          .catch(function () {
+            return null;
+          });
+      })();
 
       (function initCustomPortfolioForm() {
         var form = root.querySelector('[data-custom-portfolio-form]');
@@ -3788,7 +4179,8 @@ const buildVendorPageHtml = (
 `.trim();
 
 const loadVendorPageSpec = async (): Promise<PageSpec> => {
-  const { plans, portfolioGroups } = await loadActiveVendorPricingData();
+  const { plans, portfolioGroups, clientPricingPayloads } =
+    await loadActiveVendorPricingData();
 
   if (plans.length === 0) {
     throw new Error("No active subscription plans found for vendor page.");
@@ -3798,7 +4190,11 @@ const loadVendorPageSpec = async (): Promise<PageSpec> => {
     legacyId: VENDOR_PAGE_ID,
     title: "Vendor",
     handle: "vendor",
-    bodyHtml: buildVendorPageHtml(plans, portfolioGroups),
+    bodyHtml: buildVendorPageHtml(
+      plans,
+      portfolioGroups,
+      clientPricingPayloads
+    ),
   };
 };
 

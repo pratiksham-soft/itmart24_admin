@@ -238,13 +238,13 @@ const navItems: NavItem[] = [
   },
   {
     icon: <UserCircleIcon />,
-    name: "Vendors",
-    path: "/vendors",
+    name: "Users",
+    subItems: [{ name: "Settings", path: "/users/settings" }],
   },
   {
     icon: <UserCircleIcon />,
-    name: "User Profile",
-    path: "/profile",
+    name: "Vendors",
+    path: "/vendors",
   },
   {
     icon: <BoxCubeIcon />,
@@ -262,6 +262,7 @@ const navItems: NavItem[] = [
       { name: "Manage Plans", path: "/master/manage-plans" },
       { name: "Monthly Target", path: "/master/monthly-target" },
       { name: "Product Category Master", path: "/master/product-category-master" },
+      { name: "Admin Users", path: "/profile" },
     ],
   },
 ];

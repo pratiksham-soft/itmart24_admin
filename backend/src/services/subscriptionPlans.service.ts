@@ -9,6 +9,8 @@ type SubscriptionPlanPeriod = {
   durationInMonths: number;
   durationInDays?: number;
   price: number;
+  discountPercentage?: number;
+  countryPricing?: SubscriptionCountryPricing[];
 };
 
 type SubscriptionPlanFeature = {
@@ -20,6 +22,20 @@ export type PortfolioPlanPricingOptionPayload = {
   periodInMonths: number;
   price: number;
   durationUnitName: string;
+  discountPercentage?: number;
+  countryPricing?: CountryPricingPayload[];
+};
+
+export type CountryPricingPayload = {
+  countryCode?: string;
+  countryName: string;
+  currencyCode: string;
+  price: number;
+  discountPercentage?: number;
+};
+
+export type SubscriptionCountryPricing = CountryPricingPayload & {
+  id: string;
 };
 
 export type PortfolioPlanPayload = {
@@ -226,7 +242,7 @@ const assertNonEmptyString = (value: unknown, message: string) => {
 const assertNumber = (
   value: unknown,
   message: string,
-  options?: { min?: number }
+  options?: { min?: number; max?: number }
 ) => {
   const numericValue = Number(value);
 
@@ -235,6 +251,10 @@ const assertNumber = (
   }
 
   if (options?.min !== undefined && numericValue < options.min) {
+    throw new Error(message);
+  }
+
+  if (options?.max !== undefined && numericValue > options.max) {
     throw new Error(message);
   }
 
@@ -260,6 +280,9 @@ const buildPricingOptionId = (
   periodInMonths: number
 ) => `${slugify(durationUnitName)}-${periodInMonths}`;
 
+const buildCountryPricingId = (countryName: string, currencyCode: string) =>
+  `${slugify(countryName)}-${slugify(currencyCode)}`;
+
 const timestampNow = () => admin.firestore.Timestamp.now();
 
 const inferMonthsFromText = (value: unknown) => {
@@ -283,46 +306,123 @@ const inferMonthsFromText = (value: unknown) => {
   return null;
 };
 
+const normalizeDiscountPercentage = (value: unknown) => {
+  const parsedValue = Number(value ?? 0);
+
+  if (!Number.isFinite(parsedValue)) {
+    return 0;
+  }
+
+  return Math.min(100, Math.max(0, parsedValue));
+};
+
+const removeUndefinedDeep = <T>(value: T): T => {
+  if (Array.isArray(value)) {
+    return value.map((entry) => removeUndefinedDeep(entry)) as T;
+  }
+
+  if (value && typeof value === "object") {
+    const cleanedEntries = Object.entries(value as Record<string, unknown>)
+      .filter(([, entryValue]) => entryValue !== undefined)
+      .map(([entryKey, entryValue]) => [entryKey, removeUndefinedDeep(entryValue)]);
+
+    return Object.fromEntries(cleanedEntries) as T;
+  }
+
+  return value;
+};
+
+const normalizeCountryPricing = (
+  countryPricing: unknown
+): SubscriptionCountryPricing[] => {
+  if (!Array.isArray(countryPricing)) {
+    return [];
+  }
+
+  const normalizedEntries: SubscriptionCountryPricing[] = [];
+
+  for (const entry of countryPricing) {
+    if (!entry || typeof entry !== "object") {
+      continue;
+    }
+
+    const candidate = entry as Record<string, unknown>;
+    const countryName = String(candidate.countryName ?? "").trim();
+    const currencyCode = String(candidate.currencyCode ?? "")
+      .trim()
+      .toUpperCase();
+    const price = Number(candidate.price);
+
+    if (
+      countryName === "" ||
+      currencyCode === "" ||
+      !Number.isFinite(price) ||
+      price < 0
+    ) {
+      continue;
+    }
+
+    normalizedEntries.push({
+      id:
+        typeof candidate.id === "string" && candidate.id.trim() !== ""
+          ? candidate.id
+          : buildCountryPricingId(countryName, currencyCode),
+      countryCode: String(candidate.countryCode ?? "")
+        .trim()
+        .toUpperCase(),
+      countryName,
+      currencyCode,
+      price,
+      discountPercentage: normalizeDiscountPercentage(candidate.discountPercentage),
+    });
+  }
+
+  return normalizedEntries;
+};
+
 const normalizePricingOptions = (
   pricingOptions: unknown,
   legacyPlan?: Record<string, unknown>
 ): SubscriptionPortfolioPlanPricingOption[] => {
   if (Array.isArray(pricingOptions)) {
-    return pricingOptions
-      .map((option, index) => {
-        if (!option || typeof option !== "object") {
-          return null;
-        }
+    const normalizedOptions: SubscriptionPortfolioPlanPricingOption[] = [];
 
-        const candidate = option as Record<string, unknown>;
-        const periodInMonths = Number(candidate.periodInMonths);
-        const price = Number(candidate.price);
-        const durationUnitName = String(candidate.durationUnitName ?? "").trim();
+    pricingOptions.forEach((option, index) => {
+      if (!option || typeof option !== "object") {
+        return;
+      }
 
-        if (
-          !Number.isFinite(periodInMonths) ||
-          periodInMonths <= 0 ||
-          !Number.isFinite(price) ||
-          price < 0 ||
-          durationUnitName === ""
-        ) {
-          return null;
-        }
+      const candidate = option as Record<string, unknown>;
+      const periodInMonths = Number(candidate.periodInMonths);
+      const price = Number(candidate.price);
+      const durationUnitName = String(candidate.durationUnitName ?? "").trim();
 
-        return {
-          id:
-            typeof candidate.id === "string" && candidate.id.trim() !== ""
-              ? candidate.id
-              : buildPricingOptionId(durationUnitName, periodInMonths + index),
-          periodInMonths,
-          price,
-          durationUnitName,
-        };
-      })
-      .filter(
-        (option): option is SubscriptionPortfolioPlanPricingOption =>
-          option !== null
-      );
+      if (
+        !Number.isFinite(periodInMonths) ||
+        periodInMonths <= 0 ||
+        !Number.isFinite(price) ||
+        price < 0 ||
+        durationUnitName === ""
+      ) {
+        return;
+      }
+
+      normalizedOptions.push({
+        id:
+          typeof candidate.id === "string" && candidate.id.trim() !== ""
+            ? candidate.id
+            : buildPricingOptionId(durationUnitName, periodInMonths + index),
+        periodInMonths,
+        price,
+        durationUnitName,
+        discountPercentage: normalizeDiscountPercentage(
+          candidate.discountPercentage
+        ),
+        countryPricing: normalizeCountryPricing(candidate.countryPricing),
+      });
+    });
+
+    return normalizedOptions;
   }
 
   if (!legacyPlan) {
@@ -344,6 +444,8 @@ const normalizePricingOptions = (
       periodInMonths: regularPeriodInMonths,
       price: regularPrice,
       durationUnitName: "Price",
+      discountPercentage: 0,
+      countryPricing: [],
     });
   }
 
@@ -359,6 +461,8 @@ const normalizePricingOptions = (
       periodInMonths: founderLockPeriod,
       price: founderLockPrice,
       durationUnitName: "Founder Lock",
+      discountPercentage: 0,
+      countryPricing: [],
     });
   }
 
@@ -410,6 +514,101 @@ const normalizePortfolioPlans = (
   );
 };
 
+const normalizePlanPeriods = (periods: unknown): SubscriptionPlanPeriod[] => {
+  if (!Array.isArray(periods)) {
+    return [];
+  }
+
+  const normalizedPeriods: SubscriptionPlanPeriod[] = [];
+
+  periods.forEach((period, index) => {
+    if (!period || typeof period !== "object") {
+      return;
+    }
+
+    const candidate = period as Record<string, unknown>;
+    const label = String(candidate.label ?? "").trim();
+    const durationInMonths = Number(candidate.durationInMonths);
+    const price = Number(candidate.price);
+
+    if (
+      label === "" ||
+      !Number.isFinite(durationInMonths) ||
+      durationInMonths <= 0 ||
+      !Number.isFinite(price) ||
+      price < 0
+    ) {
+      return;
+    }
+
+    normalizedPeriods.push({
+      id:
+        typeof candidate.id === "string" && candidate.id.trim() !== ""
+          ? candidate.id
+          : `period-${index + 1}`,
+      label,
+      durationInMonths,
+      durationInDays: Number.isFinite(Number(candidate.durationInDays))
+        ? Number(candidate.durationInDays)
+        : undefined,
+      price,
+      discountPercentage: normalizeDiscountPercentage(candidate.discountPercentage),
+      countryPricing: normalizeCountryPricing(candidate.countryPricing),
+    });
+  });
+
+  return normalizedPeriods;
+};
+
+const validateCountryPricing = (countryPricing: CountryPricingPayload[] | undefined) => {
+  if (!Array.isArray(countryPricing) || countryPricing.length === 0) {
+    return [];
+  }
+
+  const seenCountries = new Set<string>();
+
+  return countryPricing.map((entry) => {
+    const countryName = assertNonEmptyString(
+      entry.countryName,
+      "Each country pricing row needs a country name"
+    );
+    const currencyCode = assertNonEmptyString(
+      entry.currencyCode,
+      "Each country pricing row needs a currency code"
+    ).toUpperCase();
+    const price = assertNumber(
+      entry.price,
+      "Each country price value must be zero or positive",
+      { min: 0 }
+    );
+    const discountPercentage = assertNumber(
+      entry.discountPercentage ?? 0,
+      "Each country discount percentage must stay between 0 and 100",
+      { min: 0, max: 100 }
+    );
+    const countryKey = `${String(entry.countryCode ?? "")
+      .trim()
+      .toLowerCase()}-${countryName.toLowerCase()}`;
+
+    if (seenCountries.has(countryKey)) {
+      throw new Error(`Duplicate country pricing found for ${countryName}`);
+    }
+
+    seenCountries.add(countryKey);
+
+    return {
+      id: buildCountryPricingId(countryName, currencyCode),
+      countryCode: String(entry.countryCode ?? "")
+        .trim()
+        .toUpperCase(),
+      countryName,
+      currencyCode,
+      price,
+      discountPercentage,
+    };
+  });
+};
+
 const validatePricingOptions = (
   pricingOptions: PortfolioPlanPricingOptionPayload[]
 ) => {
@@ -434,6 +633,12 @@ const validatePricingOptions = (
       option.durationUnitName,
       "Each duration unit name is required"
     );
+    const discountPercentage = assertNumber(
+      option.discountPercentage ?? 0,
+      "Each discount percentage must stay between 0 and 100",
+      { min: 0, max: 100 }
+    );
+    const countryPricing = validateCountryPricing(option.countryPricing);
 
     if (seenPeriods.has(periodInMonths)) {
       throw new Error(
@@ -448,7 +653,58 @@ const validatePricingOptions = (
       periodInMonths,
       price,
       durationUnitName,
+      discountPercentage,
+      countryPricing,
     };
+  });
+};
+
+const validatePlanPeriods = (periods: SubscriptionPlanPeriod[]) => {
+  if (!Array.isArray(periods) || periods.length === 0) {
+    throw new Error("At least one period is required");
+  }
+
+  const seenPeriods = new Set<number>();
+
+  return periods.map((period, index) => {
+    const label = assertNonEmptyString(period.label, "Each period label is required");
+    const durationInMonths = assertNumber(
+      period.durationInMonths,
+      "Each duration in months value must be a positive number",
+      { min: 1 }
+    );
+    const price = assertNumber(
+      period.price,
+      "Each price value must be zero or positive",
+      { min: 0 }
+    );
+    const discountPercentage = assertNumber(
+      period.discountPercentage ?? 0,
+      "Each discount percentage must stay between 0 and 100",
+      { min: 0, max: 100 }
+    );
+    const countryPricing = validateCountryPricing(period.countryPricing);
+
+    if (seenPeriods.has(durationInMonths)) {
+      throw new Error(`Duplicate duration found: ${durationInMonths} months`);
+    }
+
+    seenPeriods.add(durationInMonths);
+
+    return removeUndefinedDeep({
+      id:
+        typeof period.id === "string" && period.id.trim() !== ""
+          ? period.id
+          : `period-${index + 1}`,
+      label,
+      durationInMonths,
+      durationInDays: Number.isFinite(Number(period.durationInDays))
+        ? Number(period.durationInDays)
+        : undefined,
+      price,
+      discountPercentage,
+      countryPricing,
+    });
   });
 };
 
@@ -564,6 +820,7 @@ export const getAllSubscriptionPlans = async () => {
     return {
       id: doc.id,
       ...data,
+      periods: normalizePlanPeriods(data.periods),
       portfolioPlans: normalizePortfolioPlans(data.portfolioPlans),
     };
   });
@@ -581,6 +838,7 @@ export const getSubscriptionPlanById = async (planId: string) => {
   return {
     id: doc.id,
     ...data,
+    periods: normalizePlanPeriods(data.periods),
     portfolioPlans: normalizePortfolioPlans(data.portfolioPlans),
   };
 };
@@ -588,9 +846,7 @@ export const getSubscriptionPlanById = async (planId: string) => {
 export const createSubscriptionPlan = async (
   payload: SubscriptionPlanPayload
 ) => {
-  if (!payload.periods || payload.periods.length === 0) {
-    throw new Error("At least one period is required");
-  }
+  const validatedPeriods = validatePlanPeriods(payload.periods);
 
   const ref = db.collection(COLLECTION).doc(payload.slug);
   const nextSortOrder = Number.isFinite(Number(payload.sortOrder))
@@ -601,7 +857,7 @@ export const createSubscriptionPlan = async (
     name: payload.name,
     slug: payload.slug,
     sortOrder: nextSortOrder,
-    periods: payload.periods,
+    periods: validatedPeriods,
     features: payload.features,
     isActive: payload.isActive,
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -620,9 +876,13 @@ export const updateSubscriptionPlan = async (
   }
 
   const ref = db.collection(COLLECTION).doc(planId);
+  const nextPayload = removeUndefinedDeep({
+    ...payload,
+    periods: payload.periods ? validatePlanPeriods(payload.periods) : undefined,
+  });
 
   await ref.update({
-    ...payload,
+    ...nextPayload,
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
   });
 };

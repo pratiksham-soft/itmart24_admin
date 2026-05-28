@@ -8,6 +8,7 @@ import {
   TableRow,
 } from "../../../components/ui/table";
 import Badge from "../../../components/ui/badge/Badge";
+import { calculateDiscountedPrice, formatMoney } from "./pricingConfig";
 
 type PlanTableProps = {
   plans: SubscriptionPlan[];
@@ -76,17 +77,36 @@ const PlanTable = ({ plans, onEdit, onDelete, onView }: PlanTableProps) => {
 
                 {/* Periods */}
                 <TableCell className="px-4 py-3 text-start text-theme-sm text-gray-500 dark:text-gray-400">
-                  <div className="space-y-1 max-w-[260px]">
+                  <div className="max-w-[340px] space-y-2">
                     {Array.isArray(plan.periods) && plan.periods.length > 0 ? (
                       plan.periods.map((period) => (
                         <div
                           key={period.id}
-                          className="flex justify-between"
+                          className="rounded-xl border border-gray-100 px-3 py-2 dark:border-white/[0.05]"
                         >
-                          <span>{period.label}</span>
-                          <span className="font-medium text-gray-800 dark:text-white/90">
-                            ${period.price}
-                          </span>
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="font-medium text-gray-700 dark:text-gray-200">
+                              {period.label}
+                            </span>
+                            <span className="font-medium text-gray-800 dark:text-white/90">
+                              {formatMoney(
+                                calculateDiscountedPrice(
+                                  period.price,
+                                  period.discountPercentage
+                                )
+                              )}
+                            </span>
+                          </div>
+                          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                            <span>{period.durationInMonths} months</span>
+                            <span>•</span>
+                            <span>{period.discountPercentage ?? 0}% off</span>
+                            <span>•</span>
+                            <span>
+                              {period.countryPricing?.length ?? 0} country override
+                              {(period.countryPricing?.length ?? 0) === 1 ? "" : "s"}
+                            </span>
+                          </div>
                         </div>
                       ))
                     ) : (
