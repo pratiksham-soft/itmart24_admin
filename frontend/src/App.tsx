@@ -50,6 +50,7 @@ import EmailCampaignsPage from "./pages/Marketing/CRM/EmailCampaignsPage";
 import SegmentsPage from "./pages/Marketing/CRM/SegmentsPage";
 import ReportsPage from "./pages/Marketing/CRM/ReportsPage";
 import CRMSettingsPage from "./pages/Marketing/CRM/CRMSettingsPage";
+import Users from "./pages/Users/Users";
 import UserSettings from "./pages/Users/UserSettings";
 
 
@@ -109,6 +110,7 @@ export default function App() {
             <Route path="/marketing/crm/reports" element={<ReportsPage />} />
             <Route path="/marketing/crm/settings" element={<CRMSettingsPage />} />
             <Route path="/marketing/settings" element={<Settings />} />
+            <Route path="/users" element={<Users />} />
             <Route path="/users/settings" element={<UserSettings />} />
 
             {/* Shopify */}
