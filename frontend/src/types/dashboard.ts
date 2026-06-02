@@ -77,6 +77,35 @@ export interface DashboardGrowth {
   revenueGrowthPct: number;
 }
 
+export interface DashboardUserBusinessSummary {
+  totalUsers: number;
+  activeUsers: number;
+  verifiedUsers: number;
+  totalBusinesses: number;
+  subscribedBusinesses: number;
+  totalSubscriptions: number;
+  activeSubscriptions: number;
+  inactiveSubscriptions: number;
+  totalRevenue: number;
+  currentMonthRevenue: number;
+  previousMonthRevenue: number;
+  todayRevenue: number;
+  paidOrders: number;
+  currentMonthNewUsers: number;
+  previousMonthNewUsers: number;
+}
+
+export interface DashboardUserBusinessGrowth {
+  userGrowthPct: number;
+  subscriptionGrowthPct: number;
+  revenueGrowthPct: number;
+}
+
+export interface DashboardUserBusiness {
+  summary: DashboardUserBusinessSummary;
+  growth: DashboardUserBusinessGrowth;
+}
+
 export interface DashboardOverview {
   generatedAt: string;
   summary: DashboardSummary;
@@ -86,4 +115,5 @@ export interface DashboardOverview {
   recentActivity: DashboardRecentActivity[];
   monthlyTarget: DashboardMonthlyTarget;
   growth: DashboardGrowth;
+  userBusiness: DashboardUserBusiness;
 }

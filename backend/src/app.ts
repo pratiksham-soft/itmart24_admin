@@ -18,6 +18,7 @@ import customPortfolioLeadsRoutes from "./routes/customPortfolioLeads.routes";
 import founderVendorLeadsRoutes from "./routes/founderVendorLeads.routes";
 import userSettingsRoutes from "./routes/userSettings.routes";
 import usersRoutes from "./routes/users.routes";
+import userPortalPlansRoutes from "./routes/userPortalPlans.routes";
 
 
 
@@ -45,6 +46,7 @@ app.use("/api/blog-manager", blogManagerRoutes);
 app.use("/api/health", healthRoutes);
 app.use("/api/users", usersRoutes);
 app.use("/api/users/settings", userSettingsRoutes);
+app.use("/api/user-plans", userPortalPlansRoutes);
 
 
 

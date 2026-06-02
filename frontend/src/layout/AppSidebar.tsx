@@ -263,6 +263,7 @@ const navItems: NavItem[] = [
     subItems: [
       { name: "Sync", path: "/master/sync" },
       { name: "Manage Plans", path: "/master/manage-plans" },
+      { name: "User Plans", path: "/master/user-plans" },
       { name: "Monthly Target", path: "/master/monthly-target" },
       { name: "Product Category Master", path: "/master/product-category-master" },
       { name: "Admin Users", path: "/profile" },

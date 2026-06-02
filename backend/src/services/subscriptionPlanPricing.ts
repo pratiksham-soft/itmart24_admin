@@ -57,10 +57,19 @@ const resolveCountryEntry = (
   );
 };
 
-const floorMoney = (value: number) => Math.floor(value);
+const roundMoney = (value: number, currencyCode: string) => {
+  if (currencyCode === "INR") {
+    return Math.round(value);
+  }
 
-const resolveEffectivePrice = (price: number, discountPercentage: number) =>
-  floorMoney(price * (1 - discountPercentage / 100));
+  return Number(value.toFixed(2));
+};
+
+const resolveEffectivePrice = (
+  price: number,
+  discountPercentage: number,
+  currencyCode: string
+) => roundMoney(price * (1 - discountPercentage / 100), currencyCode);
 
 export type ResolvedPricingDetails = {
   countryCode: string | null;
@@ -97,7 +106,11 @@ export const resolvePricingDetails = (
     marketEntry?.discountPercentage ?? pricing.discountPercentage ?? 0
   );
   const currencyCode = String(marketEntry?.currencyCode ?? "USD").trim() || "USD";
-  const discountedPrice = resolveEffectivePrice(originalPrice, discountPercentage);
+  const discountedPrice = resolveEffectivePrice(
+    originalPrice,
+    discountPercentage,
+    currencyCode
+  );
 
   const durationInMonths =
     typeof pricing.durationInMonths === "number" && pricing.durationInMonths > 0
@@ -119,14 +132,19 @@ export const resolvePricingDetails = (
         monthlyReferencePricing.discountPercentage ??
         0
     );
+    const monthlyCurrencyCode =
+      String(monthlyReferenceEntry?.currencyCode ?? currencyCode).trim() ||
+      currencyCode;
     const monthlyEffectivePrice = resolveEffectivePrice(
       monthlyBasePrice,
-      monthlyDiscountPercentage
+      monthlyDiscountPercentage,
+      monthlyCurrencyCode
     );
     const comparisonTotal = monthlyEffectivePrice * durationInMonths;
     const savings = comparisonTotal - discountedPrice;
 
-    saveAmount = savings > 0 ? savings : null;
+    saveAmount =
+      savings > 0 ? roundMoney(savings, currencyCode) : null;
   }
 
   return {

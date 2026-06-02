@@ -27,6 +27,7 @@ import ClaimedProducts from "./pages/Products/ClaimedProducts";
 import DeleteProducts from "./pages/Products/DeleteProducts";
 import Sync from "./pages/Master/Sync";
 import ManagePlans from "./pages/Master/ManagePlans/ManagePlans";
+import UserPlans from "./pages/Master/UserPlans/ManagePlans";
 import ProductCategoryMaster from "./pages/Master/ProductMaster/ProductCategoryMaster";
 import MonthlyTargetMaster from "./pages/Master/MonthlyTarget/MonthlyTargetMaster";
 import Vendors from "./pages/Vendors/Vendors";
@@ -123,6 +124,7 @@ export default function App() {
             {/* Master */}
             <Route path="master/sync" element={<Sync />} />
             <Route path="master/manage-plans" element={<ManagePlans />} />
+            <Route path="master/user-plans" element={<UserPlans />} />
             <Route
               path="/master/monthly-target"
               element={<MonthlyTargetMaster />}

@@ -5,7 +5,9 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getGrowthInsights = exports.getDashboardOverview = exports.buildSuggestedMonthlyTarget = exports.computeMonthlyAchievement = exports.fetchDashboardCollections = exports.getMonthRange = exports.parseMonthKey = exports.formatMonthLabel = exports.toIsoString = void 0;
 const firebase_admin_1 = __importDefault(require("firebase-admin"));
+const pg_1 = __importDefault(require("pg"));
 const firebase_1 = require("../config/firebase");
+const { Pool } = pg_1.default;
 const MONTHLY_TARGETS_COLLECTION = "monthly_targets";
 const DASHBOARD_COLLECTIONS_CACHE_TTL_MS = 30 * 1000;
 const ACTIVE_VENDOR_STATUSES = new Set(["approved", "active", "verified"]);
@@ -34,7 +36,87 @@ const COUNTRY_NAME_ALIASES = {
 const roundToTwo = (value) => Math.round(value * 100) / 100;
 let dashboardCollectionsCache = null;
 let dashboardCollectionsPromise = null;
+let userPortalPool = null;
 const normalizeText = (value) => String(value ?? "").trim();
+const parseBooleanEnv = (value, fallback = false) => {
+    if (value == null || value === "") {
+        return fallback;
+    }
+    return ["1", "true", "yes", "on", "require"].includes(value.trim().toLowerCase());
+};
+const parseIntegerEnv = (value, fallback) => {
+    const parsed = Number.parseInt(value ?? "", 10);
+    return Number.isFinite(parsed) ? parsed : fallback;
+};
+const getUserPortalPoolConfig = () => {
+    const connectionString = process.env.USER_PORTAL_DATABASE_URL ??
+        process.env.USER_PORTAL_DB_URL ??
+        process.env.USER_PORTAL_DATABASE_URI;
+    const sslEnabled = parseBooleanEnv(process.env.USER_PORTAL_DB_SSL ??
+        process.env.USER_PORTAL_SSL ??
+        process.env.PGSSLMODE, false);
+    if (connectionString) {
+        return {
+            connectionString,
+            max: parseIntegerEnv(process.env.USER_PORTAL_DB_POOL_MAX, 4),
+            idleTimeoutMillis: parseIntegerEnv(process.env.USER_PORTAL_DB_IDLE_TIMEOUT_MS, 30000),
+            connectionTimeoutMillis: parseIntegerEnv(process.env.USER_PORTAL_DB_CONNECT_TIMEOUT_MS, 15000),
+            query_timeout: parseIntegerEnv(process.env.USER_PORTAL_DB_QUERY_TIMEOUT_MS, 30000),
+            statement_timeout: parseIntegerEnv(process.env.USER_PORTAL_DB_STATEMENT_TIMEOUT_MS, 30000),
+            keepAlive: true,
+            ssl: sslEnabled
+                ? {
+                    rejectUnauthorized: false,
+                }
+                : undefined,
+        };
+    }
+    const host = process.env.USER_PORTAL_DB_HOST ??
+        process.env.USER_PORTAL_HOST ??
+        process.env.ANALYTICS_PG_HOST ??
+        process.env.PGHOST;
+    const user = process.env.USER_PORTAL_DB_USER ??
+        process.env.USER_PORTAL_USER ??
+        process.env.ANALYTICS_PG_USER ??
+        process.env.PGUSER;
+    const password = process.env.USER_PORTAL_DB_PASSWORD ??
+        process.env.USER_PORTAL_PASSWORD ??
+        process.env.ANALYTICS_PG_PASSWORD ??
+        process.env.PGPASSWORD;
+    if (!host || !user || !password) {
+        throw new Error("Missing user portal PostgreSQL configuration. Set USER_PORTAL_DATABASE_URL or USER_PORTAL_DB_HOST, USER_PORTAL_DB_USER, and USER_PORTAL_DB_PASSWORD.");
+    }
+    return {
+        host,
+        port: parseIntegerEnv(process.env.USER_PORTAL_DB_PORT ??
+            process.env.USER_PORTAL_PORT ??
+            process.env.ANALYTICS_PG_PORT ??
+            process.env.PGPORT, 5432),
+        user,
+        password,
+        database: process.env.USER_PORTAL_DB_NAME ?? process.env.USER_PORTAL_DATABASE ?? "user_portal",
+        max: parseIntegerEnv(process.env.USER_PORTAL_DB_POOL_MAX, 4),
+        idleTimeoutMillis: parseIntegerEnv(process.env.USER_PORTAL_DB_IDLE_TIMEOUT_MS, 30000),
+        connectionTimeoutMillis: parseIntegerEnv(process.env.USER_PORTAL_DB_CONNECT_TIMEOUT_MS, 15000),
+        query_timeout: parseIntegerEnv(process.env.USER_PORTAL_DB_QUERY_TIMEOUT_MS, 30000),
+        statement_timeout: parseIntegerEnv(process.env.USER_PORTAL_DB_STATEMENT_TIMEOUT_MS, 30000),
+        keepAlive: true,
+        ssl: sslEnabled
+            ? {
+                rejectUnauthorized: false,
+            }
+            : undefined,
+    };
+};
+const getUserPortalPool = () => {
+    if (!userPortalPool) {
+        userPortalPool = new Pool(getUserPortalPoolConfig());
+        userPortalPool.on("error", (error) => {
+            console.error("User portal PostgreSQL pool error:", error instanceof Error ? error.message : String(error));
+        });
+    }
+    return userPortalPool;
+};
 const normalizeCountry = (value) => {
     const normalized = normalizeText(value);
     if (!normalized) {
@@ -119,6 +201,115 @@ const calculatePercentChange = (current, previous) => {
         return current > 0 ? 100 : 0;
     }
     return roundToTwo(((current - previous) / previous) * 100);
+};
+const getEmptyUserBusinessOverview = () => ({
+    summary: {
+        totalUsers: 0,
+        activeUsers: 0,
+        verifiedUsers: 0,
+        totalBusinesses: 0,
+        subscribedBusinesses: 0,
+        totalSubscriptions: 0,
+        activeSubscriptions: 0,
+        inactiveSubscriptions: 0,
+        totalRevenue: 0,
+        currentMonthRevenue: 0,
+        previousMonthRevenue: 0,
+        todayRevenue: 0,
+        paidOrders: 0,
+        currentMonthNewUsers: 0,
+        previousMonthNewUsers: 0,
+    },
+    growth: {
+        userGrowthPct: 0,
+        subscriptionGrowthPct: 0,
+        revenueGrowthPct: 0,
+    },
+});
+const getUserBusinessOverview = async (now) => {
+    try {
+        const pool = getUserPortalPool();
+        const currentMonthStart = startOfMonth(now);
+        const nextMonthStart = addMonths(currentMonthStart, 1);
+        const previousMonthStart = addMonths(currentMonthStart, -1);
+        const todayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+        const tomorrowStart = new Date(todayStart.getTime() + 24 * 60 * 60 * 1000);
+        const [userSummaryResult, businessSummaryResult, subscriptionSummaryResult, revenueSummaryResult,] = await Promise.all([
+            pool.query(`
+          SELECT
+            COUNT(*)::int AS total_users,
+            COUNT(*) FILTER (WHERE LOWER(COALESCE(status, 'active')) = 'active')::int AS active_users,
+            COUNT(*) FILTER (WHERE email_verified = TRUE)::int AS verified_users,
+            COUNT(DISTINCT NULLIF(BTRIM(company_name), ''))::int AS total_businesses,
+            COUNT(*) FILTER (WHERE created_at >= $1 AND created_at < $2)::int AS current_month_new_users,
+            COUNT(*) FILTER (WHERE created_at >= $3 AND created_at < $1)::int AS previous_month_new_users
+          FROM users
+        `, [currentMonthStart, nextMonthStart, previousMonthStart]),
+            pool.query(`
+          SELECT
+            COUNT(DISTINCT NULLIF(BTRIM(u.company_name), ''))::int AS subscribed_businesses
+          FROM user_plan_subscriptions s
+          INNER JOIN users u ON u.id = s.user_id
+          WHERE LOWER(COALESCE(s.status, 'active')) = 'active'
+            AND s.expires_at >= $1
+            AND NULLIF(BTRIM(u.company_name), '') IS NOT NULL
+        `, [now]),
+            pool.query(`
+          SELECT
+            COUNT(*)::int AS total_subscriptions,
+            COUNT(*) FILTER (
+              WHERE LOWER(COALESCE(status, 'active')) = 'active' AND expires_at >= $1
+            )::int AS active_subscriptions,
+            COUNT(*) FILTER (
+              WHERE LOWER(COALESCE(status, 'active')) <> 'active' OR expires_at < $1
+            )::int AS inactive_subscriptions
+          FROM user_plan_subscriptions
+        `, [now]),
+            pool.query(`
+          SELECT
+            COALESCE(SUM(amount_paid), 0)::numeric AS total_revenue,
+            COALESCE(SUM(amount_paid) FILTER (WHERE paid_at >= $1 AND paid_at < $2), 0)::numeric AS current_month_revenue,
+            COALESCE(SUM(amount_paid) FILTER (WHERE paid_at >= $3 AND paid_at < $1), 0)::numeric AS previous_month_revenue,
+            COALESCE(SUM(amount_paid) FILTER (WHERE paid_at >= $4 AND paid_at < $5), 0)::numeric AS today_revenue,
+            COUNT(*) FILTER (WHERE LOWER(COALESCE(status, 'created')) = 'paid')::int AS paid_orders
+          FROM user_plan_orders
+          WHERE LOWER(COALESCE(status, 'created')) = 'paid'
+        `, [currentMonthStart, nextMonthStart, previousMonthStart, todayStart, tomorrowStart]),
+        ]);
+        const userRow = (userSummaryResult.rows[0] ?? {});
+        const businessRow = (businessSummaryResult.rows[0] ?? {});
+        const subscriptionRow = (subscriptionSummaryResult.rows[0] ?? {});
+        const revenueRow = (revenueSummaryResult.rows[0] ?? {});
+        const summary = {
+            totalUsers: Number(userRow.total_users ?? 0),
+            activeUsers: Number(userRow.active_users ?? 0),
+            verifiedUsers: Number(userRow.verified_users ?? 0),
+            totalBusinesses: Number(userRow.total_businesses ?? 0),
+            subscribedBusinesses: Number(businessRow.subscribed_businesses ?? 0),
+            totalSubscriptions: Number(subscriptionRow.total_subscriptions ?? 0),
+            activeSubscriptions: Number(subscriptionRow.active_subscriptions ?? 0),
+            inactiveSubscriptions: Number(subscriptionRow.inactive_subscriptions ?? 0),
+            totalRevenue: roundToTwo(Number(revenueRow.total_revenue ?? 0)),
+            currentMonthRevenue: roundToTwo(Number(revenueRow.current_month_revenue ?? 0)),
+            previousMonthRevenue: roundToTwo(Number(revenueRow.previous_month_revenue ?? 0)),
+            todayRevenue: roundToTwo(Number(revenueRow.today_revenue ?? 0)),
+            paidOrders: Number(revenueRow.paid_orders ?? 0),
+            currentMonthNewUsers: Number(userRow.current_month_new_users ?? 0),
+            previousMonthNewUsers: Number(userRow.previous_month_new_users ?? 0),
+        };
+        return {
+            summary,
+            growth: {
+                userGrowthPct: calculatePercentChange(summary.currentMonthNewUsers, summary.previousMonthNewUsers),
+                subscriptionGrowthPct: calculatePercentChange(summary.activeSubscriptions, Math.max(0, summary.totalSubscriptions - summary.activeSubscriptions)),
+                revenueGrowthPct: calculatePercentChange(summary.currentMonthRevenue, summary.previousMonthRevenue),
+            },
+        };
+    }
+    catch (error) {
+        console.error("User portal dashboard metrics unavailable:", error instanceof Error ? error.message : String(error));
+        return getEmptyUserBusinessOverview();
+    }
 };
 const getInvoiceAmount = (invoice) => {
     const total = Number(invoice.amounts?.total ?? invoice.amounts?.baseAfterAdjustment ?? 0);
@@ -342,6 +533,7 @@ const resolveCurrentMonthlyTarget = async (now, collections) => {
 const getDashboardOverview = async () => {
     const now = new Date();
     const collections = await (0, exports.fetchDashboardCollections)();
+    const userBusiness = await getUserBusinessOverview(now);
     const latestSubscriptions = pickLatestSubscriptions(collections.subscriptions);
     const vendorById = new Map(collections.vendors.map((vendor) => [vendor.id, vendor]));
     const subscriptionById = new Map(collections.subscriptions.map((subscription) => [subscription.id, subscription]));
@@ -552,6 +744,7 @@ const getDashboardOverview = async () => {
         countryDistribution,
         recentActivity,
         monthlyTarget,
+        userBusiness,
     };
 };
 exports.getDashboardOverview = getDashboardOverview;
