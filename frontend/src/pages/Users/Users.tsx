@@ -2,6 +2,7 @@ import { type FormEvent, useEffect, useMemo, useState } from "react";
 import PageMeta from "../../components/common/PageMeta";
 import ComponentCard from "../../components/common/ComponentCard";
 import { Modal } from "../../components/ui/modal";
+import Switch from "../../components/form/switch/Switch";
 import {
   Table,
   TableBody,
@@ -34,6 +35,40 @@ type PortalUser = {
   supportTicketsCount: number;
 };
 
+type UserAccessFeatureItem = {
+  key: string;
+  label: string;
+  description: string;
+  kind: "limit" | "capability";
+  editable: boolean;
+  unit: string;
+  enabled: boolean;
+  limit: number | null;
+  used: number | null;
+  remaining: number | null;
+  dueDate: string | null;
+};
+
+type UserAccessDetails = {
+  activeSubscription: {
+    id: string;
+    planName: string;
+    planSlug: string;
+    periodLabel: string;
+    currencyCode: string;
+    amountPaid: number;
+    status: string;
+    startsAt: string | null;
+    expiresAt: string | null;
+    createdAt: string | null;
+    updatedAt: string | null;
+  } | null;
+  unlimitedAccess: boolean;
+  overrideUpdatedAt: string | null;
+  editableLimits: Record<string, number>;
+  usage: UserAccessFeatureItem[];
+};
+
 const PAGE_SIZE = 25;
 const inputClassName =
   "w-full rounded-2xl border border-gray-300 bg-white px-4 py-3 text-sm text-gray-800 outline-none transition focus:border-brand-300 focus:ring-4 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90";
@@ -55,6 +90,43 @@ const formatDateTime = (value: string | null) => {
     hour: "2-digit",
     minute: "2-digit",
   });
+};
+
+const formatCurrencyAmount = (value: number, currencyCode: string) => {
+  try {
+    return new Intl.NumberFormat("en-IN", {
+      style: "currency",
+      currency: currencyCode || "INR",
+      maximumFractionDigits: 2,
+    }).format(value);
+  } catch {
+    return `${currencyCode || "INR"} ${value.toFixed(2)}`;
+  }
+};
+
+const toDateTimeLocalValue = (value: string | null) => {
+  if (!value) {
+    return "";
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return "";
+  }
+
+  const pad = (segment: number) => String(segment).padStart(2, "0");
+
+  return `${parsed.getFullYear()}-${pad(parsed.getMonth() + 1)}-${pad(
+    parsed.getDate()
+  )}T${pad(parsed.getHours())}:${pad(parsed.getMinutes())}`;
+};
+
+const formatLimitValue = (value: number | null, unit: string) => {
+  if (value == null) {
+    return "Unlimited";
+  }
+
+  return `${value} ${unit}`;
 };
 
 const getInitials = (user: PortalUser) => {
@@ -228,6 +300,96 @@ const UserDetailsModal = ({
   user: PortalUser | null;
   onClose: () => void;
 }) => {
+  const [activeTab, setActiveTab] = useState<"overview" | "plan-usage">(
+    "overview"
+  );
+  const [accessDetails, setAccessDetails] = useState<UserAccessDetails | null>(
+    null
+  );
+  const [accessLoading, setAccessLoading] = useState(false);
+  const [accessError, setAccessError] = useState<string | null>(null);
+  const [accessSaveError, setAccessSaveError] = useState<string | null>(null);
+  const [accessSaveSuccess, setAccessSaveSuccess] = useState<string | null>(
+    null
+  );
+  const [accessSaving, setAccessSaving] = useState(false);
+  const [unlimitedAccess, setUnlimitedAccess] = useState(false);
+  const [expiryDateInput, setExpiryDateInput] = useState("");
+  const [featureLimitInputs, setFeatureLimitInputs] = useState<
+    Record<string, string>
+  >({});
+
+  useEffect(() => {
+    if (!user) {
+      setActiveTab("overview");
+      setAccessDetails(null);
+      setAccessError(null);
+      setAccessSaveError(null);
+      setAccessSaveSuccess(null);
+      setUnlimitedAccess(false);
+      setExpiryDateInput("");
+      setFeatureLimitInputs({});
+      return;
+    }
+
+    let isMounted = true;
+
+    const loadAccessDetails = async () => {
+      setAccessLoading(true);
+      setAccessError(null);
+      setAccessSaveError(null);
+      setAccessSaveSuccess(null);
+
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/users/${user.id}/access`);
+        const result = await response.json();
+
+        if (!response.ok || !result.success) {
+          throw new Error(result.message || "Failed to load user access details");
+        }
+
+        if (!isMounted) {
+          return;
+        }
+
+        const nextDetails = result.data as UserAccessDetails;
+        setAccessDetails(nextDetails);
+        setUnlimitedAccess(Boolean(nextDetails.unlimitedAccess));
+        setExpiryDateInput(
+          toDateTimeLocalValue(nextDetails.activeSubscription?.expiresAt ?? null)
+        );
+        setFeatureLimitInputs(
+          Object.entries(nextDetails.editableLimits ?? {}).reduce<
+            Record<string, string>
+          >((accumulator, [key, value]) => {
+            accumulator[key] = String(value ?? "");
+            return accumulator;
+          }, {})
+        );
+      } catch (loadError) {
+        console.error("Failed to load user access details", loadError);
+        if (isMounted) {
+          setAccessError(
+            loadError instanceof Error
+              ? loadError.message
+              : "Failed to load user access details"
+          );
+          setAccessDetails(null);
+        }
+      } finally {
+        if (isMounted) {
+          setAccessLoading(false);
+        }
+      }
+    };
+
+    void loadAccessDetails();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [user]);
+
   if (!user) {
     return null;
   }
@@ -240,11 +402,97 @@ const UserDetailsModal = ({
     { label: "Support Tickets", value: user.supportTicketsCount },
   ];
 
+  const limitItems =
+    accessDetails?.usage.filter((item) => item.kind === "limit") ?? [];
+  const capabilityItems =
+    accessDetails?.usage.filter((item) => item.kind === "capability") ?? [];
+  const activeSubscription = accessDetails?.activeSubscription ?? null;
+  const accessHealthLabel = unlimitedAccess
+    ? "Unlimited access granted"
+    : activeSubscription
+      ? activeSubscription.planName
+      : "No active plan";
+
+  const handleFeatureLimitChange = (key: string, value: string) => {
+    if (/^\d*$/.test(value)) {
+      setFeatureLimitInputs((current) => ({
+        ...current,
+        [key]: value,
+      }));
+    }
+  };
+
+  const handleSaveAccess = async () => {
+    if (!user) {
+      return;
+    }
+
+    const nextFeatureLimits = Object.entries(featureLimitInputs).reduce<
+      Record<string, number>
+    >((accumulator, [key, value]) => {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed) && parsed >= 0) {
+        accumulator[key] = parsed;
+      }
+      return accumulator;
+    }, {});
+
+    setAccessSaving(true);
+    setAccessSaveError(null);
+    setAccessSaveSuccess(null);
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/users/${user.id}/access`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          unlimitedAccess,
+          expiresAt: expiryDateInput ? new Date(expiryDateInput).toISOString() : null,
+          featureLimits: nextFeatureLimits,
+        }),
+      });
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.message || "Failed to update user access settings");
+      }
+
+      const nextDetails = result.data as UserAccessDetails;
+      setAccessDetails(nextDetails);
+      setUnlimitedAccess(Boolean(nextDetails.unlimitedAccess));
+      setExpiryDateInput(
+        toDateTimeLocalValue(nextDetails.activeSubscription?.expiresAt ?? null)
+      );
+      setFeatureLimitInputs(
+        Object.entries(nextDetails.editableLimits ?? {}).reduce<
+          Record<string, string>
+        >((accumulator, [key, value]) => {
+          accumulator[key] = String(value ?? "");
+          return accumulator;
+        }, {})
+      );
+      setAccessSaveSuccess(
+        result.message || "User access settings updated successfully."
+      );
+    } catch (saveError) {
+      console.error("Failed to update user access settings", saveError);
+      setAccessSaveError(
+        saveError instanceof Error
+          ? saveError.message
+          : "Failed to update user access settings"
+      );
+    } finally {
+      setAccessSaving(false);
+    }
+  };
+
   return (
     <Modal
       isOpen={Boolean(user)}
       onClose={onClose}
-      className="mx-4 w-full max-w-4xl overflow-hidden rounded-3xl"
+      className="mx-4 w-full max-w-5xl overflow-hidden rounded-3xl"
     >
       <div className="border-b border-sky-100 bg-gradient-to-r from-sky-50 via-cyan-50 to-white px-6 py-6 dark:border-sky-500/10 dark:from-sky-500/10 dark:via-cyan-500/5 dark:to-gray-900 sm:px-8">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -294,99 +542,436 @@ const UserDetailsModal = ({
       </div>
 
       <div className="space-y-6 px-6 py-6 sm:px-8">
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-          {activityItems.map((item) => (
-            <div
-              key={item.label}
-              className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-4 dark:border-gray-800 dark:bg-gray-900/50"
-            >
-              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-gray-500 dark:text-gray-400">
-                {item.label}
-              </p>
-              <p className="mt-2 text-2xl font-semibold text-gray-900 dark:text-white">
-                {item.value}
-              </p>
-            </div>
-          ))}
+        <div className="flex flex-wrap gap-3 border-b border-gray-200 pb-4 dark:border-gray-800">
+          <button
+            type="button"
+            onClick={() => setActiveTab("overview")}
+            className={`rounded-2xl px-4 py-2 text-sm font-medium transition ${
+              activeTab === "overview"
+                ? "bg-sky-600 text-white shadow-sm"
+                : "border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900/40 dark:text-gray-300 dark:hover:bg-gray-800"
+            }`}
+          >
+            Overview
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("plan-usage")}
+            className={`rounded-2xl px-4 py-2 text-sm font-medium transition ${
+              activeTab === "plan-usage"
+                ? "bg-sky-600 text-white shadow-sm"
+                : "border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900/40 dark:text-gray-300 dark:hover:bg-gray-800"
+            }`}
+          >
+            Plan Usage & Access
+          </button>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2">
-          <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-gray-900/30">
-            <h4 className="text-sm font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">
-              Profile
-            </h4>
-            <div className="mt-4 space-y-3 text-sm text-gray-600 dark:text-gray-300">
-              <div>
-                <span className="font-medium text-gray-900 dark:text-white">
-                  Full name:
-                </span>{" "}
-                {user.fullName || "-"}
-              </div>
-              <div>
-                <span className="font-medium text-gray-900 dark:text-white">
-                  Role:
-                </span>{" "}
-                {user.role || "-"}
-              </div>
-              <div>
-                <span className="font-medium text-gray-900 dark:text-white">
-                  Public review name:
-                </span>{" "}
-                {user.publicReviewDisplayName || "-"}
-              </div>
-              <div>
-                <span className="font-medium text-gray-900 dark:text-white">
-                  Phone:
-                </span>{" "}
-                {user.phone || "-"}
-              </div>
-              <div>
-                <span className="font-medium text-gray-900 dark:text-white">
-                  Country:
-                </span>{" "}
-                {user.country || "-"}
-              </div>
+        {activeTab === "overview" ? (
+          <>
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+              {activityItems.map((item) => (
+                <div
+                  key={item.label}
+                  className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-4 dark:border-gray-800 dark:bg-gray-900/50"
+                >
+                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-gray-500 dark:text-gray-400">
+                    {item.label}
+                  </p>
+                  <p className="mt-2 text-2xl font-semibold text-gray-900 dark:text-white">
+                    {item.value}
+                  </p>
+                </div>
+              ))}
             </div>
-          </div>
 
-          <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-gray-900/30">
-            <h4 className="text-sm font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">
-              Work Context
-            </h4>
-            <div className="mt-4 space-y-3 text-sm text-gray-600 dark:text-gray-300">
-              <div>
-                <span className="font-medium text-gray-900 dark:text-white">
-                  Company:
-                </span>{" "}
-                {user.companyName || "-"}
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-gray-900/30">
+                <h4 className="text-sm font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">
+                  Profile
+                </h4>
+                <div className="mt-4 space-y-3 text-sm text-gray-600 dark:text-gray-300">
+                  <div>
+                    <span className="font-medium text-gray-900 dark:text-white">
+                      Full name:
+                    </span>{" "}
+                    {user.fullName || "-"}
+                  </div>
+                  <div>
+                    <span className="font-medium text-gray-900 dark:text-white">
+                      Role:
+                    </span>{" "}
+                    {user.role || "-"}
+                  </div>
+                  <div>
+                    <span className="font-medium text-gray-900 dark:text-white">
+                      Public review name:
+                    </span>{" "}
+                    {user.publicReviewDisplayName || "-"}
+                  </div>
+                  <div>
+                    <span className="font-medium text-gray-900 dark:text-white">
+                      Phone:
+                    </span>{" "}
+                    {user.phone || "-"}
+                  </div>
+                  <div>
+                    <span className="font-medium text-gray-900 dark:text-white">
+                      Country:
+                    </span>{" "}
+                    {user.country || "-"}
+                  </div>
+                </div>
               </div>
-              <div>
-                <span className="font-medium text-gray-900 dark:text-white">
-                  Job role:
-                </span>{" "}
-                {user.jobRole || "-"}
-              </div>
-              <div>
-                <span className="font-medium text-gray-900 dark:text-white">
-                  Joined:
-                </span>{" "}
-                {formatDateTime(user.createdAt)}
-              </div>
-              <div>
-                <span className="font-medium text-gray-900 dark:text-white">
-                  Last updated:
-                </span>{" "}
-                {formatDateTime(user.updatedAt)}
-              </div>
-              <div>
-                <span className="font-medium text-gray-900 dark:text-white">
-                  User ID:
-                </span>{" "}
-                {user.id}
+
+              <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-gray-900/30">
+                <h4 className="text-sm font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">
+                  Work Context
+                </h4>
+                <div className="mt-4 space-y-3 text-sm text-gray-600 dark:text-gray-300">
+                  <div>
+                    <span className="font-medium text-gray-900 dark:text-white">
+                      Company:
+                    </span>{" "}
+                    {user.companyName || "-"}
+                  </div>
+                  <div>
+                    <span className="font-medium text-gray-900 dark:text-white">
+                      Job role:
+                    </span>{" "}
+                    {user.jobRole || "-"}
+                  </div>
+                  <div>
+                    <span className="font-medium text-gray-900 dark:text-white">
+                      Joined:
+                    </span>{" "}
+                    {formatDateTime(user.createdAt)}
+                  </div>
+                  <div>
+                    <span className="font-medium text-gray-900 dark:text-white">
+                      Last updated:
+                    </span>{" "}
+                    {formatDateTime(user.updatedAt)}
+                  </div>
+                  <div>
+                    <span className="font-medium text-gray-900 dark:text-white">
+                      User ID:
+                    </span>{" "}
+                    {user.id}
+                  </div>
+                </div>
               </div>
             </div>
+          </>
+        ) : (
+          <div className="space-y-6">
+            <div className="grid gap-4 xl:grid-cols-[1.4fr_1fr]">
+              <div className="rounded-3xl border border-sky-100 bg-gradient-to-br from-sky-50 via-white to-cyan-50 p-5 dark:border-sky-500/20 dark:from-sky-500/10 dark:via-gray-900 dark:to-cyan-500/10">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-sky-700 dark:text-sky-300">
+                      Active Access
+                    </p>
+                    <h4 className="mt-2 text-xl font-semibold text-gray-900 dark:text-white">
+                      {accessHealthLabel}
+                    </h4>
+                    <p className="mt-2 max-w-2xl text-sm text-gray-600 dark:text-gray-300">
+                      Review real plan usage, adjust numeric limits for this member,
+                      and extend the active plan due date when needed.
+                    </p>
+                  </div>
+                  <span
+                    className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${
+                      unlimitedAccess
+                        ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300"
+                        : "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-500/20 dark:bg-sky-500/10 dark:text-sky-300"
+                    }`}
+                  >
+                    {unlimitedAccess ? "Unlimited Mode On" : "Plan Rules Active"}
+                  </span>
+                </div>
+
+                <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                  <div className="rounded-2xl border border-white/80 bg-white/80 px-4 py-4 backdrop-blur dark:border-white/10 dark:bg-white/5">
+                    <p className="text-xs font-semibold uppercase tracking-[0.12em] text-gray-500 dark:text-gray-400">
+                      Plan
+                    </p>
+                    <p className="mt-2 text-lg font-semibold text-gray-900 dark:text-white">
+                      {activeSubscription?.planName || "No active plan"}
+                    </p>
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                      {activeSubscription?.periodLabel || "No billing cycle available"}
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-white/80 bg-white/80 px-4 py-4 backdrop-blur dark:border-white/10 dark:bg-white/5">
+                    <p className="text-xs font-semibold uppercase tracking-[0.12em] text-gray-500 dark:text-gray-400">
+                      Due Date
+                    </p>
+                    <p className="mt-2 text-lg font-semibold text-gray-900 dark:text-white">
+                      {formatDateTime(activeSubscription?.expiresAt ?? null)}
+                    </p>
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                      Expiry of the current active plan
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-white/80 bg-white/80 px-4 py-4 backdrop-blur dark:border-white/10 dark:bg-white/5">
+                    <p className="text-xs font-semibold uppercase tracking-[0.12em] text-gray-500 dark:text-gray-400">
+                      Amount Paid
+                    </p>
+                    <p className="mt-2 text-lg font-semibold text-gray-900 dark:text-white">
+                      {activeSubscription
+                        ? formatCurrencyAmount(
+                            activeSubscription.amountPaid,
+                            activeSubscription.currencyCode
+                          )
+                        : "-"}
+                    </p>
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                      Latest active subscription payment
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-white/80 bg-white/80 px-4 py-4 backdrop-blur dark:border-white/10 dark:bg-white/5">
+                    <p className="text-xs font-semibold uppercase tracking-[0.12em] text-gray-500 dark:text-gray-400">
+                      Override Updated
+                    </p>
+                    <p className="mt-2 text-lg font-semibold text-gray-900 dark:text-white">
+                      {formatDateTime(accessDetails?.overrideUpdatedAt ?? null)}
+                    </p>
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                      Last admin-level access adjustment
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-3xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-gray-900/40">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">
+                      Unlimited Access
+                    </p>
+                    <h4 className="mt-2 text-lg font-semibold text-gray-900 dark:text-white">
+                      Grant unrestricted feature usage
+                    </h4>
+                    <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                      Keep this off by default. Turning it on marks every feature as
+                      unlimited for this member in the admin access profile.
+                    </p>
+                  </div>
+                  <Switch
+                    key={unlimitedAccess ? "unlimited-on" : "unlimited-off"}
+                    label={unlimitedAccess ? "On" : "Off"}
+                    defaultChecked={unlimitedAccess}
+                    onChange={(checked) => setUnlimitedAccess(checked)}
+                  />
+                </div>
+
+                <div className="mt-5 rounded-2xl border border-gray-200 bg-gray-50 px-4 py-4 dark:border-gray-800 dark:bg-gray-900/60">
+                  <label
+                    htmlFor="user-plan-expiry"
+                    className="block text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >
+                    Active Plan Due Date
+                  </label>
+                  <input
+                    id="user-plan-expiry"
+                    type="datetime-local"
+                    value={expiryDateInput}
+                    onChange={(event) => setExpiryDateInput(event.target.value)}
+                    className={`${inputClassName} mt-3`}
+                  />
+                  <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                    This updates the expiry date of the member&apos;s current active
+                    plan when one exists.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {accessError ? (
+              <div className="rounded-2xl border border-error-200 bg-error-50 px-4 py-3 text-sm text-error-700 dark:border-error-500/20 dark:bg-error-500/10 dark:text-error-300">
+                {accessError}
+              </div>
+            ) : null}
+
+            {accessSaveError ? (
+              <div className="rounded-2xl border border-error-200 bg-error-50 px-4 py-3 text-sm text-error-700 dark:border-error-500/20 dark:bg-error-500/10 dark:text-error-300">
+                {accessSaveError}
+              </div>
+            ) : null}
+
+            {accessSaveSuccess ? (
+              <div className="rounded-2xl border border-success-200 bg-success-50 px-4 py-3 text-sm text-success-700 dark:border-success-500/20 dark:bg-success-500/10 dark:text-success-300">
+                {accessSaveSuccess}
+              </div>
+            ) : null}
+
+            {accessLoading ? (
+              <div className="rounded-2xl border border-gray-200 bg-white px-4 py-5 text-sm text-gray-500 dark:border-gray-800 dark:bg-gray-900/30 dark:text-gray-400">
+                Loading user plan usage and access details...
+              </div>
+            ) : (
+              <>
+                <div className="rounded-3xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-gray-900/30">
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <h4 className="text-lg font-semibold text-gray-900 dark:text-white">
+                        Feature Usage Limits
+                      </h4>
+                      <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                        Adjust per-user limits while keeping the current plan context visible.
+                      </p>
+                    </div>
+                    <div className="text-xs font-medium text-gray-500 dark:text-gray-400">
+                      {unlimitedAccess
+                        ? "Unlimited mode overrides all numeric limits"
+                        : "Custom values are saved per user"}
+                    </div>
+                  </div>
+
+                  <div className="mt-5 overflow-hidden rounded-2xl border border-gray-200 dark:border-gray-800">
+                    <div className="max-w-full overflow-x-auto">
+                      <Table>
+                        <TableHeader className="border-b border-gray-100 dark:border-white/[0.05]">
+                          <TableRow>
+                            <TableCell
+                              isHeader
+                              className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400"
+                            >
+                              Feature
+                            </TableCell>
+                            <TableCell
+                              isHeader
+                              className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400"
+                            >
+                              Used
+                            </TableCell>
+                            <TableCell
+                              isHeader
+                              className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400"
+                            >
+                              Remaining
+                            </TableCell>
+                            <TableCell
+                              isHeader
+                              className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400"
+                            >
+                              Limit
+                            </TableCell>
+                            <TableCell
+                              isHeader
+                              className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400"
+                            >
+                              Due Date
+                            </TableCell>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody className="divide-y divide-gray-100 dark:divide-white/[0.05]">
+                          {limitItems.map((item) => (
+                            <TableRow key={item.key}>
+                              <TableCell className="px-5 py-4 text-start">
+                                <div>
+                                  <p className="text-sm font-medium text-gray-900 dark:text-white">
+                                    {item.label}
+                                  </p>
+                                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                    {item.description}
+                                  </p>
+                                </div>
+                              </TableCell>
+                              <TableCell className="px-5 py-4 text-sm text-gray-600 dark:text-gray-300">
+                                {item.used == null ? "-" : `${item.used} ${item.unit}`}
+                              </TableCell>
+                              <TableCell className="px-5 py-4 text-sm text-gray-600 dark:text-gray-300">
+                                {item.remaining == null
+                                  ? "Unlimited"
+                                  : `${item.remaining} ${item.unit}`}
+                              </TableCell>
+                              <TableCell className="px-5 py-4 text-sm text-gray-600 dark:text-gray-300">
+                                {item.editable ? (
+                                  <input
+                                    type="text"
+                                    inputMode="numeric"
+                                    value={featureLimitInputs[item.key] ?? ""}
+                                    onChange={(event) =>
+                                      handleFeatureLimitChange(
+                                        item.key,
+                                        event.target.value
+                                      )
+                                    }
+                                    disabled={unlimitedAccess}
+                                    className={`${inputClassName} min-w-[150px] ${
+                                      unlimitedAccess
+                                        ? "cursor-not-allowed opacity-60"
+                                        : ""
+                                    }`}
+                                  />
+                                ) : (
+                                  formatLimitValue(item.limit, item.unit)
+                                )}
+                              </TableCell>
+                              <TableCell className="px-5 py-4 text-sm text-gray-600 dark:text-gray-300">
+                                {formatDateTime(item.dueDate)}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-3xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-gray-900/30">
+                  <h4 className="text-lg font-semibold text-gray-900 dark:text-white">
+                    Capability Access
+                  </h4>
+                  <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                    These feature permissions reflect the active plan, or unlimited
+                    mode when enabled.
+                  </p>
+
+                  <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                    {capabilityItems.map((item) => (
+                      <div
+                        key={item.key}
+                        className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-4 dark:border-gray-800 dark:bg-gray-900/50"
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                            {item.label}
+                          </p>
+                          <span
+                            className={`rounded-full border px-3 py-1 text-[11px] font-semibold ${
+                              item.enabled
+                                ? "border-success-200 bg-success-50 text-success-700 dark:border-success-500/20 dark:bg-success-500/10 dark:text-success-300"
+                                : "border-gray-200 bg-gray-100 text-gray-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300"
+                            }`}
+                          >
+                            {item.enabled ? "Enabled" : "Locked"}
+                          </span>
+                        </div>
+                        <p className="mt-3 text-sm text-gray-500 dark:text-gray-400">
+                          {item.description}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => void handleSaveAccess()}
+                    disabled={accessSaving}
+                    className="rounded-2xl bg-sky-600 px-5 py-3 text-sm font-medium text-white transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {accessSaving ? "Saving Access..." : "Save Access Settings"}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
-        </div>
+        )}
 
         <div className="flex justify-end border-t border-gray-200 pt-5 dark:border-gray-800">
           <button

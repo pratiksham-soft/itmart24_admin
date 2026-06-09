@@ -2,7 +2,7 @@ import pg from "pg";
 
 const { Pool } = pg as any;
 
-type UserPortalPool = InstanceType<typeof Pool>;
+export type UserPortalPool = InstanceType<typeof Pool>;
 
 type UserPortalUserRow = {
   id: string;
@@ -77,7 +77,7 @@ const parseIntegerEnv = (
   return Number.isFinite(parsed) ? parsed : fallback;
 };
 
-const normalizeDate = (value: Date | string | null) => {
+export const normalizeDate = (value: Date | string | null) => {
   if (!value) {
     return null;
   }
@@ -200,7 +200,7 @@ const getUserPortalPoolConfig = () => {
   };
 };
 
-const getUserPortalPool = () => {
+export const getUserPortalPool = () => {
   if (!userPortalPool) {
     userPortalPool = new Pool(getUserPortalPoolConfig());
     userPortalPool.on("error", (error: Error) => {
