@@ -1,0 +1,1678 @@
+Work only in:
+D:\IT MART24\System_Programs\itmart24_admin
+
+Task:
+Create or update Shopify Storefront products using the existing ITMart24 admin project scripts/helpers.
+
+Use existing project scripts/helpers wherever possible & applicable:
+
+* Shopify product helpers
+* Shopify metafield helpers
+* Shopify file upload helpers
+* CSV/category mapping helpers
+* filter definition helpers
+* existing product import/update conventions
+
+Make minimum code changes only.
+Do not refactor unrelated files.
+Do not modify unrelated workflows.
+The workflow must be safe to rerun.
+
+For writing, follow:
+D:\IT MART24\System_Programs\itmart24_admin\backend\doc\WRITING & HUMANIZATION RULES.txt
+
+Important:
+
+* This task is for creating new product pages.
+* Product IDs are not provided for these tools.
+* First search existing products by normalized handle.
+* Fallback match by normalized title + official URL.
+* Fallback match by normalized title only if clearly safe.
+* If no safe match exists, create a new product.
+* Never create duplicate products.
+* Never create duplicate Shopify files.
+* Never duplicate metafield values.
+* Never attach logo as product media unless explicitly required.
+* Download logo for each product preferably from official website and resize to 120x120 for custom.logo_image only.
+* Do not upload logo as product media.
+* Do not store literal \n in metafields or HTML.
+* Use proper HTML lists, paragraphs, headings, or real line breaks.
+* Preserve existing valid product data unless this task explicitly updates it.
+* Use only factual information from Section C.
+* Do not invent unsupported pricing, specs, awards, performance claims, or features.
+* Make all updates idempotent.
+* Final customer-facing copy must read like natural human-written professional content, not AI-generated filler.
+* Do not mention internal workflow terms such as "Shopify", "marketplace", "Section B", "Section C", "source text", "we found", or "according to" inside customer-facing copy.
+* Prices and plans may change, so include a pricing disclaimer in pricing metafields where useful:
+  "Pricing, taxes, plan availability, AI credits, storage limits, and included features may vary by country, billing cycle, user type, and the provider’s latest policy. Please verify current details on the official website before purchasing."
+
+Required Shopify product fields:
+
+Title:
+
+* Keep title from Section B.
+* If creating missing product, create exactly the Section B title unless there is an existing safer official product naming convention.
+
+Handle:
+
+* Keep existing handle if valid.
+* If creating product, generate clean lowercase hyphenated handle from title.
+* Handle must be deterministic and must not cause duplicate “-1” suffixes.
+
+Vendor:
+
+* Fill using brand/company name from Section C.
+* If brand is unclear, infer from product title only when obvious.
+
+Product Category:
+
+* Use closest valid Shopify/product category based on product type.
+* Read existing project category mappings if available:
+  backend\imports\categories.csv
+  backend\imports\category-collections.csv
+
+Product Type / Collections / custom.type_multiple:
+
+* Read:
+  backend\imports\category-collections.csv
+* Fill product type/collection data using only valid allowed collection/category names.
+* custom.type_multiple must be a list of single-line text values.
+* Preserve existing valid relevant values.
+* Add missing relevant values only.
+* Do not duplicate values.
+* Use strongest relevant categories only.
+* Avoid vague or unsupported matches.
+* For these products, likely relevant category groups may include:
+  Graphic Design Software
+  AI Design Tools
+  Photo Editing Software
+  Vector Graphics Software
+  Presentation Software
+  Marketing Design Tools
+  Social Media Design Tools
+  Brand Management Tools
+  Team Collaboration Tools
+  Visual Communication Tools
+  Mockup Design Tools
+  Infographic Software
+  Content Creation Tools
+  Creative Software
+  Desktop Publishing Software
+  UI UX Design Tools
+  Education Technology
+* Use only categories that exist in the project mapping files.
+
+Body HTML:
+
+* Create/update Shopify body_html.
+* Minimum 300 words per product.
+* Must be unique per product, not copy-pasted generic text.
+* Professional, natural, customer-facing tone.
+* The writing must sound like it was written by a skilled human content writer, not a generic AI template.
+* Avoid robotic structure, repetitive sentence patterns, obvious filler, and vague generic claims.
+* Customer-facing and neutral.
+* Mention:
+
+  * what the product/service is
+  * who it is best for
+  * important features
+  * pricing model or starting price if available
+  * renewal/billing notes if available
+  * practical use cases
+  * support/security/performance details if available
+  * limitations or buyer considerations where relevant
+* Use clean HTML:
+
+  <h2>, <h3>, <p>, <ul>, <li>
+* Do not include meta commentary such as:
+  “official site says”
+  “we found”
+  “reviewed source”
+  “according to Section C”
+* Avoid unnecessary use of the words "Shopify" or "marketplace".
+* Do not plagiarize source text directly; rewrite professionally.
+
+Variant / Price:
+
+* Use lowest visible non-zero starting/base price from Section C.
+* Numeric only.
+* No currency symbol.
+* If multiple plans exist, use the lowest paid public plan as product price unless product title clearly maps to a higher plan.
+* If no public pricing exists, allow price = 0.
+* Do not write misleading text like “Shopify price is set to 0”.
+* If pricing is unavailable, use this customer-facing text in pricing metafield:
+  To visit product official website click "Get Now"
+
+Variant settings:
+
+* Charge tax: false
+* Requires shipping: false
+* Inventory tracking: disabled
+* Digital/non-physical product setup
+* Product status: active
+* Publish to Online Store: true
+
+SEO Title:
+
+* Fill Shopify SEO title.
+* Format:
+  [Product Name] + [Brand] + [Main Keyword]
+* Keep concise, readable, and natural.
+* Avoid keyword stuffing.
+
+SEO Description:
+
+* Fill Shopify SEO description.
+* 140–160 characters preferred.
+* Natural customer-facing summary.
+* Mention main benefit/use case.
+* Avoid keyword stuffing.
+
+Metafields to update/fill:
+
+product.metafields.custom.custom:
+
+* Store clean official product/company URL from Section C.
+* Use full https URL.
+* If multiple URLs exist, use the most relevant official product page.
+* Do not store tracking URLs.
+
+product.metafields.custom.plans_pricing:
+
+* Fill with precise pricing and plan information from Section C.
+* Include:
+
+  * starting price
+  * billing term
+  * renewal price if available
+  * plan differences if available
+  * important pricing limitations if available
+* This metafield must be plain text only.
+* Do not use HTML tags.
+* Use readable multiline text with short headings and bullet-style lines if helpful.
+* Never store literal \n.
+* If pricing is unavailable, use exactly:
+  To visit product official website click "Get Now"
+
+product.metafields.custom.product_features:
+
+* Fill with improved customer-facing feature bullets.
+* Use only supported features from Section C.
+* Group features logically where useful:
+  Core Features
+  AI Tools
+  Design Tools
+  Brand Tools
+  Collaboration
+  Presentations
+  Photo Editing
+  Vector Editing
+  Mockups
+  Integrations
+  Export Options
+  Security
+  Support
+* This metafield must be plain text only.
+* Do not use HTML tags.
+* Use readable multiline text with grouped headings and bullet-style lines.
+* Never store literal \n.
+
+product.metafields.custom.pros_cons:
+
+* Fill with factual pros and cons.
+* Pros should highlight clear strengths from Section C.
+* Cons should mention factual limitations only, such as:
+
+  * paid plan required for premium features
+  * free plan limitations
+  * AI credits or usage limits
+  * desktop-only limitation
+  * subscription cost
+  * advanced learning curve
+  * plan price varies by country
+  * feature only available on higher plan
+* Do not add unsupported opinions.
+* This metafield must be plain text only.
+* Do not use HTML tags.
+* Use readable multiline text with "Pros" and "Cons" headings and bullet-style lines.
+* Never store literal \n.
+
+product.metafields.custom.logo_image:
+
+* Download logo for each product preferably from the official website and resize to 120x120.
+* Do not duplicate Shopify files.
+* Reuse existing logo file if already uploaded.
+* Store logo as metafield value using existing project convention.
+
+Ignored metafields/columns:
+Do not update these unless existing project logic strictly requires it:
+
+* product.metafields.custom.target_use_case
+* product.metafields.custom.pricing_billing
+* product.metafields.custom.deployment_compatibility
+* product.metafields.custom.features_functionality
+* product.metafields.custom.security_backups
+* product.metafields.custom.performance_specs
+* product.metafields.custom.support
+* product.metafields.custom.team_collaboration
+* product.metafields.custom.developer_features
+
+Filters:
+
+* Read:
+  backend\doc\shopify-filter-definitions.csv
+* Fill only supported filter metafields.
+* Use exact allowed values/formats from filter definitions.
+* Do not guess unsupported values.
+* Leave unknown filters blank.
+
+Images / Media:
+
+* Do not upload logo as product media.
+* Do not duplicate existing product media.
+* If product media already exists, preserve it.
+* Only update media if existing project convention requires a non-logo product image and a valid non-logo image is available.
+* Otherwise leave product media untouched.
+
+Deduplication logic:
+Before creating any missing product, check:
+
+1. Product ID from Section B if available
+2. Existing Shopify products by normalized handle
+3. Existing Shopify products by normalized title + official URL
+4. Existing Shopify products by normalized title if clearly safe
+5. Current job in-memory processed map
+
+Current job deduplication:
+
+* Maintain in-memory sets/maps for:
+
+  * processed product IDs
+  * normalized handles
+  * normalized title + official URL
+  * uploaded logo/file keys
+* If duplicate appears in Section B, update once and log duplicate row as skipped_existing_current_job.
+
+Required logging statuses:
+
+* updated_existing_product
+* created_missing_product
+* skipped_existing_current_job
+* skipped_missing_required_data
+* skipped_pricing_unavailable
+* updated_type_multiple
+* skipped_logo_existing
+* logo_uploaded
+* failed
+
+Per-product logging must include:
+
+* product title
+* product ID if available
+* matched by: product_id / handle / title_url / title / created
+* price used
+* SEO updated yes/no
+* metafields updated list
+* logo action
+* final status
+
+Missing required data:
+Skip only if product cannot safely be created or updated because required data is missing:
+
+* title missing
+* no safe brand/vendor
+* no safe official URL when required by existing project convention
+* insufficient product details for meaningful body HTML
+
+For existing products:
+
+* Update all specified fields and metafields.
+* Preserve valid existing data not covered by this task.
+* Do not create duplicate product.
+* If custom.type_multiple is missing relevant allowed values, add them.
+* Do not remove existing valid custom.type_multiple values.
+
+For missing products:
+Create with:
+
+* Title
+* Handle
+* Vendor
+* Product category
+* Body HTML minimum 300 words
+* Price
+* Charge tax false
+* Requires shipping false
+* Inventory tracking disabled
+* Status active
+* Published to Online Store true
+* SEO title
+* SEO description
+* custom.custom official URL
+* custom.plans_pricing
+* custom.product_features
+* custom.pros_cons
+* custom.type_multiple
+* custom.logo_image if available
+* supported filter metafields
+
+Section B: Target Shopify product titles and optional Shopify Product IDs
+
+1. Adobe Express
+2. VistaCreate
+3. Visme
+4. Piktochart
+5. Figma
+6. Microsoft Designer
+7. Snappa
+8. Pixlr
+9. PicMonkey
+10. Affinity
+11. Inkscape
+12. CorelDRAW
+13. Adobe Photoshop
+14. Adobe Illustrator
+15. Desygner
+16. PosterMyWall
+17. Stencil
+18. Kittl
+19. Placeit
+20. Prezi
+21. Beautiful.ai
+
+Section C: Product/company/pricing/features/details
+
+1. Adobe Express
+
+Official URL:
+https://www.adobe.com/express/
+
+Pricing URL:
+https://www.adobe.com/express/pricing
+
+Vendor:
+Adobe
+
+Product type:
+Online graphic design, AI design, social media design, quick video and marketing content creation tool.
+
+Description guidance:
+Adobe Express is an online design and content creation app for creating social graphics, flyers, logos, short videos, reels, resumes, posters, banners, brand content, and marketing assets. It is designed for individuals, creators, students, marketers, small businesses, and teams that want Adobe-powered creative tools without the complexity of full professional desktop software.
+
+Supported features:
+
+* Online and mobile design editor
+* Templates for social posts, flyers, logos, videos, resumes, and marketing assets
+* Adobe Firefly-powered generative AI features
+* Text effects and AI image generation where available
+* Quick video and social content creation
+* Background removal and resize tools on eligible plans
+* Brand assets and template workflows
+* Adobe Stock-style creative assets where included
+* Adobe Express Premium on paid plans
+* Integration with Adobe ecosystem
+
+Pricing:
+
+* Free plan available.
+* Adobe Express Premium / Adobe Firefly-related paid plans vary by country.
+* In India-facing pages, Adobe Firefly Pro is shown at ₹1,596.54/month including GST and includes Adobe Express Premium plus 4,000 creative AI credits, where available.
+* Use lowest public paid plan shown by official pricing page at runtime.
+* If exact local price cannot be safely confirmed, use price 0 and pricing metafield:
+  To visit product official website click "Get Now"
+
+Pros:
+
+* Strong Adobe ecosystem connection
+* Good for fast social graphics and marketing visuals
+* Useful AI-powered design features
+* Beginner-friendly compared with professional Adobe apps
+* Works well for creators, students, and small businesses
+
+Cons:
+
+* Some premium features require paid plan
+* AI credits and included tools vary by plan
+* Not a full replacement for Photoshop, Illustrator, or Premiere Pro for advanced professional workflows
+* Pricing may vary by country and billing option
+
+SEO keyword:
+AI graphic design tool
+
+2. VistaCreate
+
+Official URL:
+https://create.vista.com/
+
+Features URL:
+https://create.vista.com/features/
+
+Pricing/support URL:
+https://support.create.vista.com/hc/en-us/articles/6347917526940-VistaCreate-Plans
+
+Vendor:
+VistaCreate / Vista
+
+Product type:
+Template-based online graphic design and social media creative tool.
+
+Description guidance:
+VistaCreate is a web-based design platform for making social media posts, ads, posters, banners, flyers, covers, videos, and simple branded visuals. It is suitable for creators, small businesses, marketers, entrepreneurs, and non-designers who need fast template-driven design.
+
+Supported features:
+
+* 100K+ free templates
+* 85+ design formats for social media, ads, marketing, and business designs
+* AI image generator
+* Background remover
+* Object eraser
+* Resize tools
+* Premium creative assets on Pro plan
+* Brand Kit-style support where available
+* Team features on Pro plan
+* 14-day Pro trial where available
+
+Pricing:
+
+* Free plan available.
+* Pro plan: $10/month according to official support article.
+* Up to 10 team seats on Pro plan where available.
+* 14-day free trial available for Pro plan where available.
+* Use price 10.
+
+Pros:
+
+* Large template library
+* Simple Canva-like workflow
+* Useful for quick social and marketing visuals
+* AI and background editing tools available
+* Free plan available
+
+Cons:
+
+* Advanced brand and team features require Pro plan
+* Less suitable for professional vector or detailed photo editing
+* Pricing and plan limits can change
+* Asset availability may vary by plan
+
+SEO keyword:
+social media graphic design tool
+
+3. Visme
+
+Official URL:
+https://www.visme.co/
+
+Pricing URL:
+https://www.visme.co/pricing/
+
+Vendor:
+Visme
+
+Product type:
+Visual communication platform for presentations, infographics, reports, documents, charts, and branded content.
+
+Description guidance:
+Visme is an all-in-one visual communication platform for creating presentations, infographics, reports, documents, videos, data visualizations, forms, and branded marketing content. It is best for businesses, educators, marketers, sales teams, trainers, and content teams that need more structured visual communication than basic social post design.
+
+Supported features:
+
+* Presentation maker
+* Infographic maker
+* Report and document design
+* Data visualization and charts
+* Brand asset management
+* Templates for business and marketing content
+* Interactive content creation
+* Videos and animated visual content
+* Team collaboration features on paid plans
+* Business and enterprise plan options
+
+Pricing:
+
+* Free plan available.
+* Paid plans are available from the official pricing page.
+* Use lowest visible non-zero paid price from official pricing page at runtime.
+* If exact price cannot be safely extracted, use price 0 and pricing metafield:
+  To visit product official website click "Get Now"
+
+Pros:
+
+* Strong for presentations, reports, infographics, and business content
+* Good fit for teams that need visual communication assets
+* More data and document-oriented than many simple design tools
+* Free plan available
+
+Cons:
+
+* Some advanced features require paid plans
+* May feel heavier than simple social media design tools
+* Exact pricing and limits should be verified on official page
+* Advanced team and brand features may require higher plans
+
+SEO keyword:
+visual communication software
+
+4. Piktochart
+
+Official URL:
+https://piktochart.com/
+
+Pricing URL:
+https://piktochart.com/pricing/
+
+Pro URL:
+https://piktochart.com/pro/
+
+Enterprise URL:
+https://piktochart.com/enterprise/
+
+Vendor:
+Piktochart
+
+Product type:
+Infographic, report, presentation, and visual communication tool.
+
+Description guidance:
+Piktochart is a visual communication tool for creating infographics, presentations, reports, posters, social graphics, and visual documents. It is especially useful for users who need to turn information, data, documents, or business messages into clear visual stories.
+
+Supported features:
+
+* Infographic maker
+* AI infographic generator
+* Presentation maker
+* Report design
+* Poster and social graphic templates
+* Brand customization
+* Team workspace support
+* Video and visual content workflows where available
+* 2FA and password protection on paid plans where available
+* Enterprise security options such as SAML-based SSO on enterprise plan
+
+Pricing:
+
+* Free plan available.
+* Piktochart Pro: $10 per member/month when billed annually.
+* Piktochart Pro: $15 per member/month when billed monthly.
+* Enterprise plan available; contact sales or custom pricing.
+* Use price 10.
+
+Pros:
+
+* Strong for infographics, reports, and information design
+* Free plan available
+* AI tools help start visual drafts quickly
+* Useful for educators, marketers, analysts, and business teams
+* Enterprise security options available on higher plans
+
+Cons:
+
+* Pro and enterprise features require paid plans
+* Best suited for information-heavy content rather than advanced photo or vector editing
+* Pricing is per member on paid plans
+* Enterprise pricing requires confirmation
+
+SEO keyword:
+infographic maker software
+
+5. Figma
+
+Official URL:
+https://www.figma.com/
+
+Pricing URL:
+https://www.figma.com/pricing/
+
+Professional URL:
+https://www.figma.com/professional/
+
+Vendor:
+Figma
+
+Product type:
+Collaborative interface design, UI/UX design, prototyping, design system, and product design platform.
+
+Description guidance:
+Figma is a collaborative design platform for UI design, UX design, website layouts, app mockups, prototypes, design systems, developer handoff, and team-based product design workflows. It is best for designers, product teams, developers, startups, agencies, and enterprises working on digital products.
+
+Supported features:
+
+* Browser-based design editor
+* UI and UX design tools
+* Components
+* Auto layout
+* Advanced drawing tools
+* Team libraries
+* Prototyping
+* Advanced prototyping with variables and logic on paid plans
+* Shared libraries and fonts on organization plans
+* Centralized admin tools on higher plans
+* SCIM seat management on enterprise plans
+* REST API and Dev Mode support where available
+* AI credits add-on available
+
+Pricing:
+
+* Free Starter plan available.
+* Professional/paid plans available from official pricing page.
+* Use lowest visible non-zero paid plan from official pricing page at runtime.
+* If exact price cannot be safely extracted, use price 0 and pricing metafield:
+  To visit product official website click "Get Now"
+
+Pros:
+
+* Excellent for collaborative UI/UX and product design
+* Strong design system and component workflows
+* Browser-based collaboration
+* Useful for designers and developers together
+* Enterprise administration and security options available
+
+Cons:
+
+* Not primarily a template-based social media design tool
+* Advanced organization and enterprise features require higher plans
+* Requires design workflow knowledge for best results
+* AI credits may require add-on or paid usage
+
+SEO keyword:
+UI UX design tool
+
+6. Microsoft Designer
+
+Official URL:
+https://designer.microsoft.com/
+
+Microsoft 365 URL:
+https://www.microsoft.com/en-us/microsoft-365/microsoft-designer
+
+FAQ URL:
+https://support.microsoft.com/en-us/designer/frequently-asked-questions-about-microsoft-designer
+
+Vendor:
+Microsoft
+
+Product type:
+AI-powered graphic design app for social posts, invitations, digital graphics, banners, and creative content.
+
+Description guidance:
+Microsoft Designer is an AI-powered graphic design app that helps users create social media posts, invitations, digital postcards, banners, graphics, and other visual content. It is suitable for Microsoft account users, creators, students, small businesses, and everyday users who want AI-assisted design generation.
+
+Supported features:
+
+* AI-powered design creation
+* Social media posts
+* Invitations
+* Digital postcards
+* Banners and graphics
+* Image and design editing
+* Microsoft account access
+* Microsoft 365 integration benefits where available
+* More credits available with Microsoft 365 Personal, Family, or Premium plans where available
+* Designer access through Copilot in Microsoft apps where supported
+
+Pricing:
+
+* Free to use with Microsoft account.
+* Subscription may be required for users who want to create more frequently.
+* Microsoft 365 Personal, Family, or Premium plans may provide more credits and connected benefits.
+* Public standalone Designer pricing is not clearly defined.
+* Use price 0.
+* Pricing metafield:
+  To visit product official website click "Get Now"
+
+Pros:
+
+* Free access available with Microsoft account
+* AI-assisted design workflow
+* Useful for quick social and personal graphics
+* Connects with Microsoft 365 and Copilot experiences where supported
+
+Cons:
+
+* Premium usage may depend on Microsoft 365 subscription
+* AI credits and access can vary by account and plan
+* Less advanced than professional design tools
+* Feature availability may vary by region and Microsoft account type
+
+SEO keyword:
+AI design app
+
+7. Snappa
+
+Official URL:
+https://snappa.com/
+
+Pricing URL:
+https://snappa.com/pricing
+
+Vendor:
+Snappa
+
+Product type:
+Quick online graphic design tool for social media graphics, blog images, ads, and web visuals.
+
+Description guidance:
+Snappa is a simple online graphic design tool for non-designers who need to create social media graphics, blog images, ads, headers, and quick marketing visuals. It focuses on speed, templates, stock assets, and easy editing rather than complex professional design workflows.
+
+Supported features:
+
+* Pre-made templates
+* Free stock photos and graphics
+* Royalty-free commercial-use assets
+* Simple image editor
+* Text, graphics, and effects
+* Social media graphics
+* Blog images
+* Ads and online visuals
+* Background removal and resizing features where available
+* Free plan available
+
+Pricing:
+
+* Free Starter plan available.
+* Pro and Team paid plans available.
+* Public third-party listings commonly show Pro around $10/month and Team around $20/month, but verify official pricing page during implementation.
+* Use lowest visible official paid price from pricing page at runtime.
+* If exact official paid price cannot be safely extracted, use price 0 and pricing metafield:
+  To visit product official website click "Get Now"
+
+Pros:
+
+* Easy for non-designers
+* Fast social media and blog image creation
+* Royalty-free photos and graphics included
+* Free plan available
+* Simple and lightweight compared with complex design suites
+
+Cons:
+
+* Less suitable for advanced design, illustration, or photo editing
+* Paid plan needed for higher usage and premium features
+* Smaller ecosystem than Canva or Adobe
+* Pricing should be verified on official page
+
+SEO keyword:
+quick graphic design software
+
+8. Pixlr
+
+Official URL:
+https://pixlr.com/
+
+Pricing URL:
+https://pixlr.com/pricing/
+
+Pixlr E URL:
+https://pixlr.com/tools/pixlr-e/
+
+Vendor:
+Pixlr
+
+Product type:
+Online AI photo editor, image editor, and design tool.
+
+Description guidance:
+Pixlr is an online photo editing and design platform that provides browser-based image editing tools, AI-powered creative features, image generation, background editing, templates, and visual content tools. It is useful for creators, marketers, students, small businesses, and users who need quick image editing without installing full desktop software.
+
+Supported features:
+
+* Pixlr X and Pixlr E editing tools
+* Online photo editor
+* AI image generation
+* AI-powered editing tools
+* Templates and creative assets
+* Background and object editing where available
+* Image, video, and audio AI models on higher plans where available
+* High-resolution export options on higher plans
+* Free version available
+* Premium and Plus options available
+
+Pricing:
+
+* Free version available.
+* Pricing page shows paid plans and AI credit-based plans.
+* Some pricing may be shown in EUR depending on region.
+* Use lowest visible non-zero paid price from official pricing page at runtime.
+* If exact price cannot be safely extracted, use price 0 and pricing metafield:
+  To visit product official website click "Get Now"
+
+Pros:
+
+* Browser-based photo editing
+* Free version available
+* AI-powered image tools
+* Useful for quick edits, social graphics, and creative content
+* No heavy desktop setup required for basic work
+
+Cons:
+
+* Advanced AI and ad-free features require paid plans
+* AI credits and generation limits vary by plan
+* Professional users may still prefer desktop-grade editors
+* Pricing may vary by region and currency
+
+SEO keyword:
+online photo editor
+
+9. PicMonkey
+
+Official URL:
+https://www.picmonkey.com/
+
+Features URL:
+https://www.picmonkey.com/features
+
+Pricing URL:
+https://www.picmonkey.com/pricing
+
+Vendor:
+PicMonkey
+
+Product type:
+Photo editing and graphic design tool for branded content, social media graphics, logos, and business visuals.
+
+Description guidance:
+PicMonkey is a photo editing and graphic design tool for creating social media graphics, logos, watermarks, business cards, branded images, ads, covers, and marketing visuals. It is useful for creators, small businesses, online sellers, and brand-focused users who need accessible editing and design tools.
+
+Supported features:
+
+* Photo editing
+* Graphic design maker
+* Social media graphics
+* Logos and watermarks
+* Business cards
+* Brand Kit-style workflows
+* Templates
+* Cloud storage on paid plans
+* Video support on eligible plans
+* Animations, branding, co-editing, fonts, and premium effects on higher plans where available
+* 7-day free trial where available
+
+Pricing:
+
+* Basic: starts at $72/year or $7.99/month.
+* Pro and Business plans available at higher prices.
+* 7-day free trial available where offered.
+* Use price 7.99.
+
+Pros:
+
+* Good balance of photo editing and simple design
+* Useful for small business branding
+* Logo, watermark, and social design tools
+* Paid plans include more storage and creative features
+* Free trial available
+
+Cons:
+
+* No full free plan is emphasized like some competitors
+* Advanced features require Pro or Business plan
+* Less suitable for professional vector design or UI/UX work
+* Subscription required after trial for ongoing use
+
+SEO keyword:
+photo editing and design software
+
+10. Affinity
+
+Official URL:
+https://www.affinity.studio/
+
+Vendor:
+Canva / Affinity
+
+Product type:
+Professional creative software for vector design, photo editing, and page layout.
+
+Description guidance:
+Affinity is a professional creative software platform from Canva that combines workflows for vector design, pixel/photo editing, and layout-style design. It is suitable for designers, illustrators, photographers, publishers, freelancers, and creative professionals who want more control than template-based design tools.
+
+Supported features:
+
+* Vector design tools
+* Pixel/photo editing tools
+* Layout design tools
+* Unified creative workspace
+* Professional creative editing
+* AI tools available with Canva premium plan where supported
+* Generative fill and background removal with eligible Canva premium access where available
+* Works as a stronger professional design alternative to simple online template tools
+* Official Affinity platform by Canva
+
+Pricing:
+
+* Core Affinity platform is presented as free to use.
+* Some AI-powered tools may require Canva premium plan access.
+* Use price 0.
+* Pricing metafield should mention:
+  Free core creative software access is available. Some AI-powered tools may require a Canva premium plan where supported. Pricing and eligibility should be verified on the official Affinity website.
+
+Pros:
+
+* Professional creative tools for vector, photo, and layout work
+* Free core access
+* Strong option for users who need more control than template-based tools
+* Connects with Canva premium AI features where supported
+
+Cons:
+
+* AI features may require Canva premium access
+* More advanced learning curve than Canva-style template tools
+* Not primarily a browser-based social media template platform
+* Feature availability may change as Canva evolves Affinity
+
+SEO keyword:
+professional creative design software
+
+11. Inkscape
+
+Official URL:
+https://inkscape.org/
+
+GitHub URL:
+https://github.com/inkscape/inkscape
+
+Vendor:
+Inkscape Project
+
+Product type:
+Free and open-source vector graphics editor.
+
+Description guidance:
+Inkscape is a free and open-source vector graphics editor used to create and edit illustrations, icons, logos, diagrams, maps, typography, technical drawings, and web graphics. It uses SVG as its native format and is suitable for designers, hobbyists, students, educators, developers, and anyone who needs vector design without subscription costs.
+
+Supported features:
+
+* Free and open-source vector graphics software
+* SVG native format
+* Illustration tools
+* Logo design
+* Icon design
+* Diagram and map creation
+* Typography and web graphics
+* Cross-platform desktop support
+* Extension support
+* Suitable for artistic and technical vector work
+
+Pricing:
+
+* Free.
+* Open-source software.
+* Use price 0.
+* Pricing metafield:
+  Free and open-source software.
+
+Pros:
+
+* Completely free and open source
+* Strong SVG/vector editing capabilities
+* Good for logos, illustrations, icons, diagrams, and web graphics
+* Cross-platform desktop software
+* No subscription required
+
+Cons:
+
+* Interface may require learning for beginners
+* Not a template-first Canva-style design platform
+* Collaboration and cloud workflows are not its main focus
+* Professional print and brand workflows may require additional tools
+
+SEO keyword:
+free vector graphics editor
+
+12. CorelDRAW
+
+Official URL:
+https://www.coreldraw.com/
+
+Vendor:
+Corel
+
+Product type:
+Professional graphic design, vector illustration, layout, photo editing, typography, and technical design software.
+
+Description guidance:
+CorelDRAW is a professional graphic design software suite used for vector illustration, page layout, photo editing, typography, logos, posters, signage, print design, and production graphics. It is best for designers, print shops, sign makers, illustrators, branding professionals, and businesses that need advanced creative and production design tools.
+
+Supported features:
+
+* Vector illustration
+* Page layout
+* Photo editing
+* Typography tools
+* Logo design
+* Poster design
+* Print design
+* Signage and production graphics
+* Windows and Mac support where available
+* Collaboration features where available
+* Professional creative workflow
+
+Pricing:
+
+* Paid plans and trial options available from official CorelDRAW website.
+* Use lowest visible non-zero paid price from official pricing/product page at runtime.
+* If exact public pricing cannot be safely extracted, use price 0 and pricing metafield:
+  To visit product official website click "Get Now"
+
+Pros:
+
+* Professional vector and layout toolset
+* Useful for print, signage, logos, and production graphics
+* Desktop-grade creative workflow
+* Strong option for advanced designers and print businesses
+
+Cons:
+
+* Paid software
+* More advanced learning curve than template-based tools
+* May be more than casual users need
+* Exact pricing and licensing options should be verified on official website
+
+SEO keyword:
+professional vector design software
+
+13. Adobe Photoshop
+
+Official URL:
+https://www.adobe.com/products/photoshop.html
+
+Pricing URL:
+https://www.adobe.com/products/photoshop/plans.html
+
+India URL:
+https://www.adobe.com/in/products/photoshop.html
+
+Vendor:
+Adobe
+
+Product type:
+Professional photo editing, raster graphics editing, image compositing, digital art, and creative design software.
+
+Description guidance:
+Adobe Photoshop is a professional image editing and raster graphics application used for photo editing, retouching, image manipulation, digital art, compositing, marketing creatives, web graphics, and advanced visual design. It is best for photographers, designers, marketers, agencies, content creators, and creative professionals who need deeper control than basic online design editors.
+
+Supported features:
+
+* Desktop, web, and mobile Photoshop access depending on plan
+* Photo retouching
+* Image compositing
+* Raster graphics editing
+* Digital art workflows
+* Background editing
+* Generative AI features where included
+* Adobe Express Premium included on some Photoshop plans
+* Cloud storage depending on plan
+* Creative Cloud integration
+
+Pricing:
+
+* US official Photoshop standalone plan commonly shows US$22.99/month annual billed monthly.
+* India pages may show Photoshop at ₹599/month including GST for first year and ₹733.96/month after that for new subscribers, where available.
+* Some plans include 100GB cloud storage and monthly generative credits.
+* Use lowest visible non-zero official paid price from official pricing page at runtime.
+* If India pricing is used, set variant price numeric to 599.
+* If US pricing is used, set variant price numeric to 22.99.
+
+Pros:
+
+* Industry-standard advanced photo editing and image manipulation
+* Strong AI and Creative Cloud ecosystem support
+* Suitable for professional creative workflows
+* Works across desktop, web, and mobile depending on plan
+
+Cons:
+
+* Subscription required
+* More complex than Canva-style design tools
+* Generative credits and storage vary by plan
+* Pricing varies by country and promotional terms
+
+SEO keyword:
+professional photo editing software
+
+14. Adobe Illustrator
+
+Official URL:
+https://www.adobe.com/products/illustrator.html
+
+Pricing URL:
+https://www.adobe.com/products/illustrator/plans.html
+
+India URL:
+https://www.adobe.com/in/products/illustrator.html
+
+Vendor:
+Adobe
+
+Product type:
+Professional vector graphics, illustration, logo design, icon design, typography, and print/web design software.
+
+Description guidance:
+Adobe Illustrator is a professional vector graphics application for creating logos, icons, illustrations, typography, packaging artwork, web graphics, brand assets, and scalable designs for print, web, video, and mobile. It is best for professional designers, illustrators, branding teams, agencies, and businesses that need precise vector design.
+
+Supported features:
+
+* Vector illustration
+* Logo design
+* Icon design
+* Typography
+* Drawing and shape tools
+* Desktop and iPad support where available
+* Generative AI features where available
+* Print, web, video, and mobile design output
+* Creative Cloud integration
+* Fonts and asset ecosystem depending on plan
+
+Pricing:
+
+* India pages may show Illustrator at ₹599/month including GST for the first year and ₹733.96/month after that for new subscribers, where available.
+* Annual prepaid option may be shown around ₹6,899/year including GST for promotional first-year pricing.
+* US pricing may vary by region.
+* Use lowest visible non-zero official paid price from official pricing page at runtime.
+* If India pricing is used, set variant price numeric to 599.
+
+Pros:
+
+* Professional vector design standard
+* Strong for logos, icons, illustrations, and typography
+* Scalable artwork for print and digital use
+* Creative Cloud ecosystem support
+
+Cons:
+
+* Subscription required
+* More complex than beginner design tools
+* Generative AI features may use credits
+* Pricing varies by region and promotional terms
+
+SEO keyword:
+vector illustration software
+
+15. Desygner
+
+Official URL:
+https://desygner.com/
+
+Pricing URL:
+https://desygner.com/pricing/
+
+Vendor:
+Desygner
+
+Product type:
+Business design and marketing content platform with brand control, templates, digital asset management, and AI-powered workflows.
+
+Description guidance:
+Desygner is a design and marketing platform for creating, editing, organizing, distributing, and managing business and marketing content. It is suitable for small businesses, franchises, marketing teams, sales teams, and organizations that need branded templates, campaign customization, digital asset management, and controlled design workflows.
+
+Supported features:
+
+* Business and marketing design tools
+* Templates for business cards, price lists, menus, certificates, flyers, posters, covers, and promotional materials
+* Brand portal workflows
+* Digital asset management
+* PDF editing
+* Localization support
+* Cross-platform design workflows
+* AI-powered campaign customization where available
+* Team and guest user support where available
+* Business plan for multiple users
+
+Pricing:
+
+* Desygner Business pricing is shown as starting from USD14.95/month on official site for up to 5 team members and unlimited guest users where available.
+* Pricing page also mentions business pricing structures for larger teams.
+* Use price 14.95.
+
+Pros:
+
+* Good for branded business and marketing materials
+* Supports team and guest workflows
+* Useful for businesses needing asset control and brand consistency
+* Handles a range of business documents and promotional designs
+
+Cons:
+
+* Advanced business features require paid plan
+* Pricing may vary by team size and billing term
+* Not primarily a professional photo or vector editing suite
+* Some capabilities may require setup for brand portal workflows
+
+SEO keyword:
+business design platform
+
+16. PosterMyWall
+
+Official URL:
+https://www.postermywall.com/
+
+Premium URL:
+https://www.postermywall.com/index.php/premium
+
+Support URL:
+https://support.postermywall.com/hc/en-us/articles/360021586572-What-do-I-get-from-the-PosterMyWall-Premium-Subscription
+
+Vendor:
+PosterMyWall
+
+Product type:
+Online design and marketing platform for posters, flyers, social media graphics, videos, emails, event pages, and promotions.
+
+Description guidance:
+PosterMyWall is an easy marketing design platform for creating posters, flyers, social media posts, videos, digital signage, email campaigns, event pages, and promotional graphics. It is useful for small businesses, restaurants, event organizers, schools, local stores, creators, and marketers who need quick promotional content.
+
+Supported features:
+
+* Poster and flyer templates
+* Social media designs
+* Video designs
+* Email templates and campaign tools
+* Event pages
+* AI image features on eligible plans
+* Background removal on eligible plans
+* Social publishing and scheduling on premium plans
+* High-resolution, watermark-free downloads on Premium
+* Free downloads for supported social media sizes on free plan
+* 1 million+ design templates mentioned on pricing page
+
+Pricing:
+
+* Free plan available.
+* Premium plan shown as $19/month or $149/year.
+* Premium support article mentions 100 free credits at the start of every month and unlimited high-resolution, watermark-free image and video downloads.
+* Use price 19.
+
+Pros:
+
+* Strong for posters, flyers, local promotions, events, and social content
+* Free plan available
+* Premium plan supports high-resolution and watermark-free downloads
+* Includes email and event promotion tools
+* Useful for small businesses and event marketers
+
+Cons:
+
+* Premium features require paid plan
+* More focused on marketing assets than professional design systems
+* AI, background removal, and scheduling features may require upgrade
+* Pricing and credits may change
+
+SEO keyword:
+poster and flyer design tool
+
+17. Stencil
+
+Official URL:
+https://getstencil.com/
+
+Pricing URL:
+https://getstencil.com/pricing
+
+Vendor:
+Stencil
+
+Product type:
+Simple graphic design tool for social media images, blog graphics, quote images, and marketing visuals.
+
+Description guidance:
+Stencil is a lightweight online graphic design tool for creating social media images, blog graphics, ad visuals, quote images, headers, and simple marketing designs. It is suitable for bloggers, social media managers, marketers, creators, and small businesses that want a fast image creation workflow.
+
+Supported features:
+
+* Social media image creation
+* Blog graphics
+* Quote images
+* Icons and photos
+* Templates and presets
+* Collections and favorites
+* Free, Pro, and Unlimited plan options
+* Monthly and yearly billing options
+* 7-day money-back guarantee on paid plans where available
+* Cancel anytime on monthly plans
+
+Pricing:
+
+* Free plan available.
+* Pro plan commonly shown at $15/month.
+* Unlimited plan commonly shown at $20/month.
+* Use official pricing page at runtime.
+* Use price 15.
+
+Pros:
+
+* Simple and fast for social graphics
+* Good for bloggers and marketers
+* Free plan available
+* Paid plans include money-back guarantee where available
+* Lightweight compared with larger design suites
+
+Cons:
+
+* Free plan has usage and asset limits
+* Less suitable for advanced design, video, or team workflows
+* Paid plan required for higher usage
+* Not a full replacement for professional design software
+
+SEO keyword:
+social media image design tool
+
+18. Kittl
+
+Official URL:
+https://www.kittl.com/
+
+Pricing URL:
+https://www.kittl.com/pricing
+
+Features URL:
+https://www.kittl.com/features
+
+Vendor:
+Kittl
+
+Product type:
+AI-first design platform for branding, typography, product visuals, templates, mockups, and creator workflows.
+
+Description guidance:
+Kittl is an AI-powered design platform for creators, designers, brands, print-on-demand sellers, and businesses that need polished branding, typography-heavy designs, product visuals, templates, mockups, and scalable creative workflows.
+
+Supported features:
+
+* AI-powered design generation
+* Image generation models
+* Pro editing tools
+* Mockups
+* Curated assets
+* Templates
+* Fonts and typography tools
+* Flows for scalable creative workflows
+* Team collaboration features
+* Brand kits and higher storage on advanced plans where available
+* Free to start with no credit card required
+
+Pricing:
+
+* Free plan available.
+* Paid plans available from official pricing page.
+* Use lowest visible non-zero paid price from official pricing page at runtime.
+* If exact price cannot be safely extracted, use price 0 and pricing metafield:
+  To visit product official website click "Get Now"
+
+Pros:
+
+* Strong for typography, branding, mockups, and product visuals
+* AI-first creative workflow
+* Free to start
+* Useful for creators, print-on-demand sellers, and brands
+* Includes templates and curated assets
+
+Cons:
+
+* Free plan has limitations
+* Advanced AI, projects, brand kits, or high-res mockups may require paid plan
+* Less focused on business documents and presentations
+* Pricing and plan limits should be verified on official website
+
+SEO keyword:
+AI design platform for creators
+
+19. Placeit
+
+Official URL:
+https://placeit.net/
+
+Pricing URL:
+https://placeit.net/pricing
+
+Vendor:
+Placeit / Envato
+
+Product type:
+Mockup, logo, video, and design template platform.
+
+Description guidance:
+Placeit is a cloud-based design platform for creating product mockups, logos, videos, gaming graphics, merch visuals, apparel mockups, YouTube visuals, slideshows, and social media content using ready-made templates. It is especially useful for ecommerce sellers, print-on-demand businesses, creators, gaming brands, and marketers.
+
+Supported features:
+
+* Mockup generator
+* Product and apparel mockups
+* Logo maker
+* Video templates
+* Design templates
+* Gaming graphics
+* YouTube and social media visuals
+* Merch videos
+* Unlimited access subscription options
+* Commercial usage rights where included
+* No credits/no limits claims where included on plan
+
+Pricing:
+
+* Subscription pricing shown as $14.95/month or $89.69/year.
+* Use price 14.95.
+
+Pros:
+
+* Strong for mockups and ecommerce visuals
+* Useful for print-on-demand and merchandise sellers
+* Logo, video, and social templates included
+* Subscription gives broad asset access
+* Good for users who need quick product presentation visuals
+
+Cons:
+
+* Best value depends on frequent use
+* Template-based output may require customization to look unique
+* Not a full professional editing or illustration suite
+* Pricing and commercial usage terms should be verified before purchase
+
+SEO keyword:
+mockup design tool
+
+20. Prezi
+
+Official URL:
+https://prezi.com/
+
+Pricing URL:
+https://prezi.com/pricing/
+
+Plans guide:
+https://support.prezi.com/hc/en-us/articles/360003478934-Guide-to-Prezi-plans
+
+Vendor:
+Prezi
+
+Product type:
+AI presentation maker, interactive presentation, video presentation, and visual storytelling platform.
+
+Description guidance:
+Prezi is an AI-powered presentation platform known for interactive, zooming, non-linear presentation experiences. It helps users create presentations, videos, infographics, and visual stories from templates, prompts, or imported content. It is useful for educators, students, sales teams, presenters, trainers, consultants, and businesses that want more dynamic presentations than traditional slide decks.
+
+Supported features:
+
+* AI presentation creation
+* Interactive zooming presentation canvas
+* Presentation templates
+* Prezi Video
+* Infographics and visual content creation
+* PDF/PPT import on supported plans
+* AI image creation and AI text transformation where available
+* Privacy and sharing controls on paid plans
+* Desktop app and offline access on higher plans
+* PDF export and portable presentations on Plus plan where available
+* Premium features, training, analytics, or priority support on higher plans where available
+
+Pricing:
+
+* Basic plan is free.
+* Official pricing page shows paid plans starting from $19/month for unlimited professional-looking presentations in some regions/pages.
+* Support documentation lists Basic as free and explains Standard, Plus, and higher plans.
+* Use lowest visible official non-zero paid plan from official pricing page at runtime.
+* If exact price cannot be safely extracted, use price 19.
+
+Pros:
+
+* Distinctive interactive presentation style
+* AI tools can speed up presentation creation
+* Good for visual storytelling and audience engagement
+* Free Basic plan available
+* Useful for educators, students, and business presenters
+
+Cons:
+
+* Prezi format may not fit every traditional slide workflow
+* Offline access and export features may require higher plans
+* Some users may need time to learn the zooming presentation format
+* Pricing and included AI credits vary by plan
+
+SEO keyword:
+AI presentation maker
+
+21. Beautiful.ai
+
+Official URL:
+https://www.beautiful.ai/
+
+Pricing URL:
+https://www.beautiful.ai/pricing
+
+Vendor:
+Beautiful.ai
+
+Product type:
+AI presentation software and smart slide design platform.
+
+Description guidance:
+Beautiful.ai is an AI-powered presentation software platform that helps individuals and teams create polished slide decks using smart templates, automated formatting, brand controls, collaboration tools, and AI-assisted slide generation. It is useful for professionals, startups, sales teams, marketing teams, consultants, educators, and businesses that need professional presentations faster.
+
+Supported features:
+
+* AI presentation maker
+* Smart Slides
+* Automated formatting
+* Presentation templates
+* Custom branding on paid plans
+* Embedded media
+* Analytics on selected plans
+* Team collaboration on team plans
+* Enterprise plan for larger organizations
+* 14-day free trial where available
+* One-off single presentation option available where offered
+
+Pricing:
+
+* Pro plan: $12/month billed annually.
+* Team plan: $40 per user/month billed annually or $50 per user/month monthly.
+* Enterprise plan: custom pricing for larger organizations.
+* One-off single presentation option: $45 where available.
+* 14-day free trial available.
+* Use price 12.
+
+Pros:
+
+* Strong for professional-looking presentations
+* Smart slide formatting saves time
+* AI-assisted deck creation
+* Good for business, startup, sales, and consulting presentations
+* Team and enterprise options available
+
+Cons:
+
+* Pro plan is billed annually
+* Team plan cost can increase with more users
+* Some team, brand, analytics, and enterprise features require higher plans
+* Not a general-purpose graphic design tool like Canva
+
+SEO keyword:
+AI presentation software
+
+Per-product SEO title examples:
+
+* Adobe Express Adobe AI Graphic Design Tool
+* VistaCreate Vista Social Media Graphic Design Tool
+* Visme Visme Visual Communication Software
+* Piktochart Piktochart Infographic Maker Software
+* Figma Figma UI UX Design Tool
+* Microsoft Designer Microsoft AI Design App
+* Snappa Snappa Quick Graphic Design Software
+* Pixlr Pixlr Online Photo Editor
+* PicMonkey PicMonkey Photo Editing Design Software
+* Affinity Canva Professional Creative Design Software
+* Inkscape Inkscape Free Vector Graphics Editor
+* CorelDRAW Corel Professional Vector Design Software
+* Adobe Photoshop Adobe Professional Photo Editing Software
+* Adobe Illustrator Adobe Vector Illustration Software
+* Desygner Desygner Business Design Platform
+* PosterMyWall PosterMyWall Poster Flyer Design Tool
+* Stencil Stencil Social Media Image Design Tool
+* Kittl Kittl AI Design Platform for Creators
+* Placeit Placeit Mockup Design Tool
+* Prezi Prezi AI Presentation Maker
+* Beautiful.ai Beautiful.ai AI Presentation Software
+
+Per-product SEO description guidance:
+Create a unique 140–160 character description for each product. Mention the main use case and audience. Avoid keyword stuffing.
+
+Acceptance checks:
+
+1. All 21 Section B products are processed.
+2. Existing matching products are updated, not duplicated.
+3. Missing products are created only when no safe match exists.
+4. Each product has:
+
+   * Title
+   * Handle
+   * Vendor
+   * Product category
+   * Product type / custom.type_multiple
+   * Body HTML with minimum 300 words
+   * Variant price
+   * SEO title
+   * SEO description
+   * custom.custom official URL
+   * custom.plans_pricing
+   * custom.product_features
+   * custom.pros_cons
+   * custom.logo_image where safely available
+5. Variant settings are:
+
+   * Charge tax false
+   * Requires shipping false
+   * Inventory tracking disabled
+   * Digital/non-physical product setup
+   * Product status active
+   * Published to Online Store true
+6. No duplicate Shopify products are created.
+7. No duplicate Shopify files are created.
+8. Logos are not attached as product media.
+9. Product media is preserved unless existing convention explicitly requires a valid non-logo media update.
+10. Metafields contain real line breaks, not literal \n.
+11. Metafields do not contain HTML where plain text is required.
+12. Body HTML uses clean <h2>, <h3>, <p>, <ul>, and <li> tags.
+13. All customer-facing copy is natural, professional, and human-written in tone.
+14. No unsupported claims, awards, rankings, or invented specs are added.
+15. Pricing is based only on provided data or official page extraction.
+16. If pricing cannot be safely confirmed, plans_pricing uses exactly:
+    To visit product official website click "Get Now"
+17. Build/lint passes without errors.
+18. Final run summary is printed.
+
+Final output after running:
+
+1. Changed files
+2. Total Section B products received
+3. Existing products updated
+4. Missing products created
+5. Skipped current-job duplicates
+6. Skipped missing required data
+7. Skipped pricing unavailable
+8. Logo uploaded count
+9. Logo reused/skipped count
+10. Failed count
+11. Product-by-product summary
+12. Newly created product handles
+
+NOTE: Show only US $ pricing, if pricing available in INR then convert into US dollar and then use in Product pricing

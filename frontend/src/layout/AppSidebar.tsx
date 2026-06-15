@@ -241,6 +241,7 @@ const navItems: NavItem[] = [
     name: "Users",
     subItems: [
       { name: "Registered Users", path: "/users" },
+      { name: "Guest Users", path: "/users/guest-users" },
       { name: "Settings", path: "/users/settings" },
     ],
   },

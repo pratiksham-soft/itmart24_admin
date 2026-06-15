@@ -3,6 +3,7 @@ import {
   deleteUserPortalUser,
   listUserPortalUsers,
 } from "../services/userPortalUsers.service";
+import { listGuestReports } from "../services/guestReport.service";
 import {
   getUserPortalAccessDetails,
   updateUserPortalAccessDetails,
@@ -23,6 +24,24 @@ router.get("/", async (_req, res) => {
     res.status(500).json({
       success: false,
       message: "Failed to fetch registered users",
+      error: error instanceof Error ? error.message : "Unknown error",
+    });
+  }
+});
+
+router.get("/guest-users", async (_req, res) => {
+  try {
+    const reports = await listGuestReports();
+    res.json({
+      success: true,
+      count: reports.length,
+      data: reports,
+    });
+  } catch (error) {
+    console.error("Failed to fetch guest users report:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch guest users report",
       error: error instanceof Error ? error.message : "Unknown error",
     });
   }

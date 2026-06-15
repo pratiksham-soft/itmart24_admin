@@ -2,6 +2,7 @@ backend/.env*
 frontend/.env*
 backend/exports/
 backend/dist/
+backend/tmp/
 backend/node_modules/
 frontend/node_modules/
 node_modules/
