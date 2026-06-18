@@ -3,7 +3,10 @@ import {
   deleteUserPortalUser,
   listUserPortalUsers,
 } from "../services/userPortalUsers.service";
-import { listGuestReports } from "../services/guestReport.service";
+import {
+  getGuestReportTrackingDetails,
+  listGuestReports,
+} from "../services/guestReport.service";
 import {
   getUserPortalAccessDetails,
   updateUserPortalAccessDetails,
@@ -43,6 +46,28 @@ router.get("/guest-users", async (_req, res) => {
       success: false,
       message: "Failed to fetch guest users report",
       error: error instanceof Error ? error.message : "Unknown error",
+    });
+  }
+});
+
+router.get("/guest-users/:guestReportId/tracking", async (req, res) => {
+  try {
+    const details = await getGuestReportTrackingDetails(
+      String(req.params.guestReportId ?? "")
+    );
+
+    res.json({
+      success: true,
+      data: details,
+    });
+  } catch (error) {
+    console.error("Failed to fetch guest tracking details:", error);
+    res.status(404).json({
+      success: false,
+      message:
+        error instanceof Error && error.message
+          ? error.message
+          : "Failed to fetch guest tracking details",
     });
   }
 });
