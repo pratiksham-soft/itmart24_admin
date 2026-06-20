@@ -131,6 +131,20 @@ export type GuestTrackingDetails = {
     planSelected: boolean;
     createAccountClicked: boolean;
     registrationStarted: boolean;
+    subscriptionPlanViewed: boolean;
+    subscriptionBillingCycleChanged: boolean;
+    oneTimeUnlockSectionViewed: boolean;
+    oneTimePlanViewed: boolean;
+    oneTimePlanSelected: boolean;
+    oneTimeOtpModalOpened: boolean;
+    oneTimeEmailEntered: boolean;
+    oneTimeOtpSendClicked: boolean;
+    oneTimeOtpSent: boolean;
+    oneTimeOtpSendFailed: boolean;
+    oneTimeOtpVerifyClicked: boolean;
+    oneTimeOtpVerified: boolean;
+    oneTimeOtpVerifyFailed: boolean;
+    oneTimeWorkspaceRedirectStarted: boolean;
   };
   duplicateSignals: {
     sameVisitorReportCount: number;
@@ -180,6 +194,58 @@ const normalizeToolName = (reportType: string, sourceTool: string | null | undef
 
 const eventSetHas = (events: GuestActivityEventRow[], names: string[]) =>
   events.some((event) => names.includes(event.event_name));
+
+const FUNNEL_EVENT_GROUPS = {
+  pageViewed: [
+    "GuestSEOHealthPageView",
+    "GuestAIAnalysisPageView",
+    "GuestCompetitorPageView",
+  ],
+  formStarted: [
+    "SEOHealthFormStarted",
+    "AIAnalysisFormStarted",
+    "CompetitorFormStarted",
+  ],
+  analyzeClicked: [
+    "SEOHealthAnalyzeClicked",
+    "AIAnalysisAnalyzeClicked",
+    "CompetitorAnalyzeClicked",
+  ],
+  reportGenerationStarted: [
+    "SEOHealthReportGenerationStarted",
+    "AIAnalysisReportGenerationStarted",
+    "CompetitorReportGenerationStarted",
+  ],
+  reportGenerated: [
+    "SEOHealthReportGenerated",
+    "AIAnalysisReportGenerated",
+    "CompetitorReportGenerated",
+  ],
+  reportViewed: [
+    "SEOHealthReportViewed",
+    "AIAnalysisReportViewed",
+    "CompetitorReportViewed",
+  ],
+  unlockClicked: ["GuestUnlockFullReportClicked"],
+  pricingViewed: ["GuestPricingViewed"],
+  planSelected: ["GuestPlanSelected"],
+  createAccountClicked: ["GuestCreateAccountClicked"],
+  registrationStarted: ["GuestRegistrationStarted"],
+  subscriptionPlanViewed: ["GuestSubscriptionPlanViewed"],
+  subscriptionBillingCycleChanged: ["GuestSubscriptionBillingCycleChanged"],
+  oneTimeUnlockSectionViewed: ["GuestOneTimeUnlockSectionViewed"],
+  oneTimePlanViewed: ["GuestOneTimePlanViewed"],
+  oneTimePlanSelected: ["GuestOneTimePlanSelected"],
+  oneTimeOtpModalOpened: ["GuestOneTimeOtpModalOpened"],
+  oneTimeEmailEntered: ["GuestOneTimeEmailEntered"],
+  oneTimeOtpSendClicked: ["GuestOneTimeOtpSendClicked"],
+  oneTimeOtpSent: ["GuestOneTimeOtpSent"],
+  oneTimeOtpSendFailed: ["GuestOneTimeOtpSendFailed"],
+  oneTimeOtpVerifyClicked: ["GuestOneTimeOtpVerifyClicked"],
+  oneTimeOtpVerified: ["GuestOneTimeOtpVerified"],
+  oneTimeOtpVerifyFailed: ["GuestOneTimeOtpVerifyFailed"],
+  oneTimeWorkspaceRedirectStarted: ["GuestOneTimeWorkspaceRedirectStarted"],
+} as const;
 
 const buildEventDetails = (event: GuestActivityEventRow) => {
   const detailParts = [
@@ -314,11 +380,7 @@ export const getGuestReportTrackingDetails = async (
 
   const reportViewed =
     Boolean(report.report_viewed_at) ||
-    eventSetHas(events, [
-      "SEOHealthReportViewed",
-      "AIAnalysisReportViewed",
-      "CompetitorReportViewed",
-    ]);
+    eventSetHas(events, [...FUNNEL_EVENT_GROUPS.reportViewed]);
 
   return {
     report: {
@@ -369,48 +431,69 @@ export const getGuestReportTrackingDetails = async (
       competitorDomain2: normalizeText(report.competitor_domain_2),
     },
     funnel: {
-      pageViewed: eventSetHas(events, [
-        "GuestSEOHealthPageView",
-        "GuestAIAnalysisPageView",
-        "GuestCompetitorPageView",
-      ]),
-      formStarted: eventSetHas(events, [
-        "SEOHealthFormStarted",
-        "AIAnalysisFormStarted",
-        "CompetitorFormStarted",
-      ]),
-      analyzeClicked: eventSetHas(events, [
-        "SEOHealthAnalyzeClicked",
-        "AIAnalysisAnalyzeClicked",
-        "CompetitorAnalyzeClicked",
-      ]),
+      pageViewed: eventSetHas(events, [...FUNNEL_EVENT_GROUPS.pageViewed]),
+      formStarted: eventSetHas(events, [...FUNNEL_EVENT_GROUPS.formStarted]),
+      analyzeClicked: eventSetHas(events, [...FUNNEL_EVENT_GROUPS.analyzeClicked]),
       reportGenerationStarted: eventSetHas(events, [
-        "SEOHealthReportGenerationStarted",
-        "AIAnalysisReportGenerationStarted",
-        "CompetitorReportGenerationStarted",
+        ...FUNNEL_EVENT_GROUPS.reportGenerationStarted,
       ]),
       reportGenerated:
         Boolean(report.report_generated_at) ||
-        eventSetHas(events, [
-          "SEOHealthReportGenerated",
-          "AIAnalysisReportGenerated",
-          "CompetitorReportGenerated",
-        ]),
+        eventSetHas(events, [...FUNNEL_EVENT_GROUPS.reportGenerated]),
       reportViewed,
       unlockClicked:
         Boolean(report.unlock_clicked_at) ||
-        eventSetHas(events, ["GuestUnlockFullReportClicked"]),
+        eventSetHas(events, [...FUNNEL_EVENT_GROUPS.unlockClicked]),
       pricingViewed:
         Boolean(report.pricing_viewed_at) ||
-        eventSetHas(events, ["GuestPricingViewed"]),
+        eventSetHas(events, [...FUNNEL_EVENT_GROUPS.pricingViewed]),
       planSelected:
-        Boolean(report.plan_selected) || eventSetHas(events, ["GuestPlanSelected"]),
+        Boolean(report.plan_selected) ||
+        eventSetHas(events, [...FUNNEL_EVENT_GROUPS.planSelected]),
       createAccountClicked:
         Boolean(report.create_account_clicked_at) ||
-        eventSetHas(events, ["GuestCreateAccountClicked"]),
+        eventSetHas(events, [...FUNNEL_EVENT_GROUPS.createAccountClicked]),
       registrationStarted:
         Boolean(report.registration_started_at) ||
-        eventSetHas(events, ["GuestRegistrationStarted"]),
+        eventSetHas(events, [...FUNNEL_EVENT_GROUPS.registrationStarted]),
+      subscriptionPlanViewed: eventSetHas(events, [
+        ...FUNNEL_EVENT_GROUPS.subscriptionPlanViewed,
+      ]),
+      subscriptionBillingCycleChanged: eventSetHas(events, [
+        ...FUNNEL_EVENT_GROUPS.subscriptionBillingCycleChanged,
+      ]),
+      oneTimeUnlockSectionViewed: eventSetHas(events, [
+        ...FUNNEL_EVENT_GROUPS.oneTimeUnlockSectionViewed,
+      ]),
+      oneTimePlanViewed: eventSetHas(events, [...FUNNEL_EVENT_GROUPS.oneTimePlanViewed]),
+      oneTimePlanSelected: eventSetHas(events, [
+        ...FUNNEL_EVENT_GROUPS.oneTimePlanSelected,
+      ]),
+      oneTimeOtpModalOpened: eventSetHas(events, [
+        ...FUNNEL_EVENT_GROUPS.oneTimeOtpModalOpened,
+      ]),
+      oneTimeEmailEntered: eventSetHas(events, [
+        ...FUNNEL_EVENT_GROUPS.oneTimeEmailEntered,
+      ]),
+      oneTimeOtpSendClicked: eventSetHas(events, [
+        ...FUNNEL_EVENT_GROUPS.oneTimeOtpSendClicked,
+      ]),
+      oneTimeOtpSent: eventSetHas(events, [...FUNNEL_EVENT_GROUPS.oneTimeOtpSent]),
+      oneTimeOtpSendFailed: eventSetHas(events, [
+        ...FUNNEL_EVENT_GROUPS.oneTimeOtpSendFailed,
+      ]),
+      oneTimeOtpVerifyClicked: eventSetHas(events, [
+        ...FUNNEL_EVENT_GROUPS.oneTimeOtpVerifyClicked,
+      ]),
+      oneTimeOtpVerified: eventSetHas(events, [
+        ...FUNNEL_EVENT_GROUPS.oneTimeOtpVerified,
+      ]),
+      oneTimeOtpVerifyFailed: eventSetHas(events, [
+        ...FUNNEL_EVENT_GROUPS.oneTimeOtpVerifyFailed,
+      ]),
+      oneTimeWorkspaceRedirectStarted: eventSetHas(events, [
+        ...FUNNEL_EVENT_GROUPS.oneTimeWorkspaceRedirectStarted,
+      ]),
     },
     duplicateSignals: {
       sameVisitorReportCount: normalizeCount(

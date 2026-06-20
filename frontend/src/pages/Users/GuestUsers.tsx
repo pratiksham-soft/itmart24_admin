@@ -78,6 +78,20 @@ type GuestTrackingDetails = {
     planSelected: boolean;
     createAccountClicked: boolean;
     registrationStarted: boolean;
+    subscriptionPlanViewed: boolean;
+    subscriptionBillingCycleChanged: boolean;
+    oneTimeUnlockSectionViewed: boolean;
+    oneTimePlanViewed: boolean;
+    oneTimePlanSelected: boolean;
+    oneTimeOtpModalOpened: boolean;
+    oneTimeEmailEntered: boolean;
+    oneTimeOtpSendClicked: boolean;
+    oneTimeOtpSent: boolean;
+    oneTimeOtpSendFailed: boolean;
+    oneTimeOtpVerifyClicked: boolean;
+    oneTimeOtpVerified: boolean;
+    oneTimeOtpVerifyFailed: boolean;
+    oneTimeWorkspaceRedirectStarted: boolean;
   };
   duplicateSignals: {
     sameVisitorReportCount: number;
@@ -626,6 +640,20 @@ const GuestUsers = () => {
                   <FunnelBadge label="Plan selected" active={trackingDetails.funnel.planSelected} />
                   <FunnelBadge label="Create account clicked" active={trackingDetails.funnel.createAccountClicked} />
                   <FunnelBadge label="Registration started" active={trackingDetails.funnel.registrationStarted} />
+                  <FunnelBadge label="Subscription plan viewed" active={trackingDetails.funnel.subscriptionPlanViewed} />
+                  <FunnelBadge label="Billing cycle changed" active={trackingDetails.funnel.subscriptionBillingCycleChanged} />
+                  <FunnelBadge label="One-time unlock viewed" active={trackingDetails.funnel.oneTimeUnlockSectionViewed} />
+                  <FunnelBadge label="One-time plan viewed" active={trackingDetails.funnel.oneTimePlanViewed} />
+                  <FunnelBadge label="One-time plan selected" active={trackingDetails.funnel.oneTimePlanSelected} />
+                  <FunnelBadge label="OTP modal opened" active={trackingDetails.funnel.oneTimeOtpModalOpened} />
+                  <FunnelBadge label="Email entered" active={trackingDetails.funnel.oneTimeEmailEntered} />
+                  <FunnelBadge label="OTP send clicked" active={trackingDetails.funnel.oneTimeOtpSendClicked} />
+                  <FunnelBadge label="OTP sent" active={trackingDetails.funnel.oneTimeOtpSent} />
+                  <FunnelBadge label="OTP send failed" active={trackingDetails.funnel.oneTimeOtpSendFailed} />
+                  <FunnelBadge label="OTP verify clicked" active={trackingDetails.funnel.oneTimeOtpVerifyClicked} />
+                  <FunnelBadge label="OTP verified" active={trackingDetails.funnel.oneTimeOtpVerified} />
+                  <FunnelBadge label="OTP verify failed" active={trackingDetails.funnel.oneTimeOtpVerifyFailed} />
+                  <FunnelBadge label="Workspace redirect started" active={trackingDetails.funnel.oneTimeWorkspaceRedirectStarted} />
                 </div>
               </section>
 
