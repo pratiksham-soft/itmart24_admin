@@ -11,6 +11,7 @@ import {
 } from "../../components/ui/table";
 import ProductSearchBar from "../Products/ProductSearchBar";
 import { API_BASE_URL } from "../../config/api";
+import { downloadCsv, downloadXlsx } from "../../utils/spreadsheetExport";
 
 type GuestReportEntry = {
   id: string;
@@ -19,6 +20,7 @@ type GuestReportEntry = {
   website: string;
   reportType: string;
   createdAt: string | null;
+  hasSuccessfulPayment: boolean;
 };
 
 type GuestTrackingDetails = {
@@ -92,6 +94,11 @@ type GuestTrackingDetails = {
     oneTimeOtpVerified: boolean;
     oneTimeOtpVerifyFailed: boolean;
     oneTimeWorkspaceRedirectStarted: boolean;
+    oneTimeReportPaymentStarted: boolean;
+    oneTimeReportPaymentSuccessful: boolean;
+    oneTimeReportPaymentFailed: boolean;
+    subscriptionPaymentSuccessful: boolean;
+    subscriptionPaymentFailed: boolean;
   };
   duplicateSignals: {
     sameVisitorReportCount: number;
@@ -110,6 +117,99 @@ type GuestTrackingDetails = {
 };
 
 const PAGE_SIZE = 25;
+const EXPORT_BASE_EVENT_NAMES = [
+  "GuestSEOHealthPageView",
+  "GuestAIAnalysisPageView",
+  "GuestCompetitorPageView",
+  "SEOHealthFormStarted",
+  "AIAnalysisFormStarted",
+  "CompetitorFormStarted",
+  "WebsiteUrlFocused",
+  "WebsiteUrlChanged",
+  "BusinessTypeChanged",
+  "BusinessCategoryChanged",
+  "BrandNameChanged",
+  "TargetCountryChanged",
+  "CompetitorUrl1Changed",
+  "CompetitorUrl2Changed",
+  "BusinessDescriptionChanged",
+  "SEOHealthAnalyzeClicked",
+  "AIAnalysisAnalyzeClicked",
+  "CompetitorAnalyzeClicked",
+  "SEOHealthReportGenerationStarted",
+  "AIAnalysisReportGenerationStarted",
+  "CompetitorReportGenerationStarted",
+  "SEOHealthReportGenerated",
+  "AIAnalysisReportGenerated",
+  "CompetitorReportGenerated",
+  "SEOHealthReportFailed",
+  "AIAnalysisReportFailed",
+  "CompetitorReportFailed",
+  "SEOHealthReportViewed",
+  "AIAnalysisReportViewed",
+  "CompetitorReportViewed",
+  "GuestUnlockFullReportClicked",
+  "GuestCreateAccountClicked",
+  "GuestPricingViewed",
+  "GuestPlanSelected",
+  "GuestRegistrationStarted",
+  "GuestSubscriptionPlanViewed",
+  "GuestSubscriptionBillingCycleChanged",
+  "GuestOneTimeUnlockSectionViewed",
+  "GuestOneTimePlanViewed",
+  "GuestOneTimePlanSelected",
+  "GuestOneTimeOtpModalOpened",
+  "GuestOneTimeEmailEntered",
+  "GuestOneTimeOtpSendClicked",
+  "GuestOneTimeOtpSent",
+  "GuestOneTimeOtpSendFailed",
+  "GuestOneTimeOtpVerifyClicked",
+  "GuestOneTimeOtpVerified",
+  "GuestOneTimeOtpVerifyFailed",
+  "GuestOneTimeWorkspaceRedirectStarted",
+  "OneTimeReportPaymentStarted",
+  "OneTimeReportPaymentSuccessful",
+  "OneTimeReportPaymentFailed",
+  "SubscriptionPaymentSuccessful",
+  "SubscriptionPaymentFailed",
+] as const;
+
+const FUNNEL_STATUS_ITEMS: Array<{
+  key: keyof GuestTrackingDetails["funnel"];
+  label: string;
+  eventNames: string[];
+}> = [
+  { key: "pageViewed", label: "Page viewed", eventNames: ["GuestSEOHealthPageView", "GuestAIAnalysisPageView", "GuestCompetitorPageView"] },
+  { key: "formStarted", label: "Form started", eventNames: ["SEOHealthFormStarted", "AIAnalysisFormStarted", "CompetitorFormStarted"] },
+  { key: "analyzeClicked", label: "Analyze clicked", eventNames: ["SEOHealthAnalyzeClicked", "AIAnalysisAnalyzeClicked", "CompetitorAnalyzeClicked"] },
+  { key: "reportGenerationStarted", label: "Generation started", eventNames: ["SEOHealthReportGenerationStarted", "AIAnalysisReportGenerationStarted", "CompetitorReportGenerationStarted"] },
+  { key: "reportGenerated", label: "Report generated", eventNames: ["SEOHealthReportGenerated", "AIAnalysisReportGenerated", "CompetitorReportGenerated"] },
+  { key: "reportViewed", label: "Report viewed", eventNames: ["SEOHealthReportViewed", "AIAnalysisReportViewed", "CompetitorReportViewed"] },
+  { key: "unlockClicked", label: "Unlock clicked", eventNames: ["GuestUnlockFullReportClicked"] },
+  { key: "pricingViewed", label: "Pricing viewed", eventNames: ["GuestPricingViewed"] },
+  { key: "planSelected", label: "Plan selected", eventNames: ["GuestPlanSelected"] },
+  { key: "createAccountClicked", label: "Create account clicked", eventNames: ["GuestCreateAccountClicked"] },
+  { key: "registrationStarted", label: "Registration started", eventNames: ["GuestRegistrationStarted"] },
+  { key: "subscriptionPlanViewed", label: "Subscription plan viewed", eventNames: ["GuestSubscriptionPlanViewed"] },
+  { key: "subscriptionBillingCycleChanged", label: "Billing cycle changed", eventNames: ["GuestSubscriptionBillingCycleChanged"] },
+  { key: "oneTimeUnlockSectionViewed", label: "One-time unlock viewed", eventNames: ["GuestOneTimeUnlockSectionViewed"] },
+  { key: "oneTimePlanViewed", label: "One-time plan viewed", eventNames: ["GuestOneTimePlanViewed"] },
+  { key: "oneTimePlanSelected", label: "One-time plan selected", eventNames: ["GuestOneTimePlanSelected"] },
+  { key: "oneTimeOtpModalOpened", label: "OTP modal opened", eventNames: ["GuestOneTimeOtpModalOpened"] },
+  { key: "oneTimeEmailEntered", label: "Email entered", eventNames: ["GuestOneTimeEmailEntered"] },
+  { key: "oneTimeOtpSendClicked", label: "OTP send clicked", eventNames: ["GuestOneTimeOtpSendClicked"] },
+  { key: "oneTimeOtpSent", label: "OTP sent", eventNames: ["GuestOneTimeOtpSent"] },
+  { key: "oneTimeOtpSendFailed", label: "OTP send failed", eventNames: ["GuestOneTimeOtpSendFailed"] },
+  { key: "oneTimeOtpVerifyClicked", label: "OTP verify clicked", eventNames: ["GuestOneTimeOtpVerifyClicked"] },
+  { key: "oneTimeOtpVerified", label: "OTP verified", eventNames: ["GuestOneTimeOtpVerified"] },
+  { key: "oneTimeOtpVerifyFailed", label: "OTP verify failed", eventNames: ["GuestOneTimeOtpVerifyFailed"] },
+  { key: "oneTimeWorkspaceRedirectStarted", label: "Workspace redirect started", eventNames: ["GuestOneTimeWorkspaceRedirectStarted"] },
+  { key: "oneTimeReportPaymentStarted", label: "One-time payment started", eventNames: ["OneTimeReportPaymentStarted"] },
+  { key: "oneTimeReportPaymentSuccessful", label: "One-time payment successful", eventNames: ["OneTimeReportPaymentSuccessful"] },
+  { key: "oneTimeReportPaymentFailed", label: "One-time payment failed", eventNames: ["OneTimeReportPaymentFailed"] },
+  { key: "subscriptionPaymentSuccessful", label: "Subscription payment successful", eventNames: ["SubscriptionPaymentSuccessful"] },
+  { key: "subscriptionPaymentFailed", label: "Subscription payment failed", eventNames: ["SubscriptionPaymentFailed"] },
+];
 
 const formatDate = (value: string | null) => {
   if (!value) return "-";
@@ -171,6 +271,9 @@ const getReportTypeClasses = (reportType: string) => {
   return "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-500/20 dark:bg-sky-500/10 dark:text-sky-300";
 };
 
+const getReportRowClasses = (hasSuccessfulPayment: boolean) =>
+  hasSuccessfulPayment ? "bg-amber-50/70 dark:bg-amber-500/10" : "";
+
 const SummaryCard = ({
   title,
   value,
@@ -223,6 +326,98 @@ const FunnelBadge = ({
   </span>
 );
 
+const getEventTimelineText = (details: GuestTrackingDetails) =>
+  details.events.length > 0
+    ? details.events
+        .map((event) => `${formatDateTime(event.time)} :: ${event.event} :: ${event.details}`)
+        .join(" || ")
+    : "-";
+
+const getFiredAndUnfiredEvents = (details: GuestTrackingDetails) => {
+  const firedFromTimeline = new Set(details.events.map((event) => event.event));
+  const firedFromFunnel = FUNNEL_STATUS_ITEMS.flatMap((item) =>
+    details.funnel[item.key] ? item.eventNames : []
+  );
+  const firedEvents = Array.from(
+    new Set([...EXPORT_BASE_EVENT_NAMES, ...firedFromTimeline, ...firedFromFunnel].filter((eventName) => firedFromTimeline.has(eventName) || firedFromFunnel.includes(eventName)))
+  );
+  const unfiredEvents = EXPORT_BASE_EVENT_NAMES.filter(
+    (eventName) => !firedEvents.includes(eventName)
+  );
+
+  return {
+    firedEvents: firedEvents.join(", ") || "-",
+    unfiredEvents: unfiredEvents.join(", ") || "-",
+  };
+};
+
+const buildExportRow = (
+  report: GuestReportEntry,
+  details: GuestTrackingDetails
+) => {
+  const { firedEvents, unfiredEvents } = getFiredAndUnfiredEvents(details);
+
+  return {
+    "List Website": report.website,
+    "List Report Type": report.reportType,
+    "List Report Date": formatDate(report.reportDate),
+    "List Report Time": formatTime(report.reportTime),
+    "List Logged At": formatDateTime(report.createdAt),
+    "Report Summary - Website": details.report.website,
+    "Report Summary - Normalized Domain": details.report.normalizedDomain ?? "-",
+    "Report Summary - Report Type": details.report.reportType,
+    "Report Summary - Report ID": details.report.reportId ?? "-",
+    "Report Summary - Guest Report ID": details.report.guestReportId,
+    "Report Summary - Logged At": formatDateTime(details.report.loggedAt),
+    "Report Summary - Report Schedule": details.report.reportSchedule,
+    "Report Summary - Source Tool": details.report.sourceTool ?? "-",
+    "Report Summary - Report Viewed": details.report.reportViewed ? "Yes" : "No",
+    "Report Summary - Report Generated At": formatDateTime(details.report.reportGeneratedAt),
+    "Report Summary - Report Viewed At": formatDateTime(details.report.reportViewedAt),
+    "Visitor / Session - Anonymous Visitor ID": details.visitor.anonymousVisitorId ?? "-",
+    "Visitor / Session - Session ID": details.visitor.sessionId ?? "-",
+    "Visitor / Session - Device Type": details.visitor.deviceType ?? "-",
+    "Visitor / Session - Browser": details.visitor.browser ?? "-",
+    "Visitor / Session - OS": details.visitor.os ?? "-",
+    "Visitor / Session - Screen Size": details.visitor.screenSize ?? "-",
+    "Visitor / Session - Referrer": details.visitor.referrer ?? "-",
+    "Visitor / Session - Landing Page URL": details.visitor.landingPageUrl ?? "-",
+    "Visitor / Session - Current URL": details.visitor.currentUrl ?? "-",
+    "Campaign / UTM - utm_source": details.campaign.utmSource ?? "-",
+    "Campaign / UTM - utm_medium": details.campaign.utmMedium ?? "-",
+    "Campaign / UTM - utm_campaign": details.campaign.utmCampaign ?? "-",
+    "Campaign / UTM - utm_content": details.campaign.utmContent ?? "-",
+    "Campaign / UTM - utm_audience": details.campaign.utmAudience ?? "-",
+    "Input Details - Website URL": details.inputs.websiteUrl,
+    "Input Details - Normalized Domain": details.inputs.normalizedDomain ?? "-",
+    "Input Details - Business Type": details.inputs.businessType ?? "-",
+    "Input Details - Business Category": details.inputs.businessCategory ?? "-",
+    "Input Details - Target Country": details.inputs.targetCountry ?? "-",
+    "Input Details - Business Goal": details.inputs.businessGoal ?? "-",
+    "Input Details - Brand Name": details.inputs.brandName ?? "-",
+    "Input Details - Competitor URL 1": details.inputs.competitorUrl1 ?? "-",
+    "Input Details - Competitor URL 2": details.inputs.competitorUrl2 ?? "-",
+    "Input Details - Competitor Domain 1": details.inputs.competitorDomain1 ?? "-",
+    "Input Details - Competitor Domain 2": details.inputs.competitorDomain2 ?? "-",
+    ...Object.fromEntries(
+      FUNNEL_STATUS_ITEMS.map((item) => [
+        `Funnel Status - ${item.label}`,
+        details.funnel[item.key] ? "Fired" : "Unfired",
+      ])
+    ),
+    "Fired Events": firedEvents,
+    "Unfired Events": unfiredEvents,
+    "Events Timeline": getEventTimelineText(details),
+    "Events Timeline - Count": details.events.length,
+    "Duplicate / Repeat Signals - Same Visitor Report Count": details.duplicateSignals.sameVisitorReportCount,
+    "Duplicate / Repeat Signals - Same Session Report Count": details.duplicateSignals.sameSessionReportCount,
+    "Duplicate / Repeat Signals - Same Domain Report Count": details.duplicateSignals.sameDomainReportCount,
+    "Duplicate / Repeat Signals - Is Repeated Domain": details.duplicateSignals.isRepeatedDomain ? "Yes" : "No",
+    "Duplicate / Repeat Signals - Is Repeated Visitor": details.duplicateSignals.isRepeatedVisitor ? "Yes" : "No",
+    "Duplicate / Repeat Signals - Is Repeated Session": details.duplicateSignals.isRepeatedSession ? "Yes" : "No",
+  };
+};
+
 const GuestUsers = () => {
   const [reports, setReports] = useState<GuestReportEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -233,6 +428,8 @@ const GuestUsers = () => {
   const [trackingDetails, setTrackingDetails] = useState<GuestTrackingDetails | null>(null);
   const [trackingLoading, setTrackingLoading] = useState(false);
   const [trackingError, setTrackingError] = useState<string | null>(null);
+  const [exportingFormat, setExportingFormat] = useState<"csv" | "xlsx" | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchReports = async () => {
@@ -307,6 +504,19 @@ const GuestUsers = () => {
     }
   }, [page, totalPages]);
 
+  async function fetchTrackingDetailsById(reportId: string) {
+    const response = await fetch(
+      `${API_BASE_URL}/api/users/guest-users/${reportId}/tracking`
+    );
+    const result = await response.json();
+
+    if (!response.ok || !result.success) {
+      throw new Error(result.message || "Failed to fetch guest tracking details");
+    }
+
+    return result.data as GuestTrackingDetails;
+  }
+
   async function openTrackingModal(report: GuestReportEntry) {
     setSelectedReport(report);
     setTrackingDetails(null);
@@ -314,16 +524,8 @@ const GuestUsers = () => {
     setTrackingLoading(true);
 
     try {
-      const response = await fetch(
-        `${API_BASE_URL}/api/users/guest-users/${report.id}/tracking`
-      );
-      const result = await response.json();
-
-      if (!response.ok || !result.success) {
-        throw new Error(result.message || "Failed to fetch guest tracking details");
-      }
-
-      setTrackingDetails(result.data as GuestTrackingDetails);
+      const details = await fetchTrackingDetailsById(report.id);
+      setTrackingDetails(details);
     } catch (fetchError) {
       console.error("Failed to fetch guest tracking details", fetchError);
       setTrackingError(
@@ -341,6 +543,42 @@ const GuestUsers = () => {
     setTrackingDetails(null);
     setTrackingError(null);
     setTrackingLoading(false);
+  }
+
+  async function handleExport(format: "csv" | "xlsx") {
+    if (filteredReports.length === 0 || exportingFormat) {
+      return;
+    }
+
+    setExportingFormat(format);
+    setExportError(null);
+
+    try {
+      const exportRows: Array<Record<string, string | number>> = [];
+
+      for (const report of filteredReports) {
+        const details = await fetchTrackingDetailsById(report.id);
+        exportRows.push(buildExportRow(report, details));
+      }
+
+      const dateTag = new Date().toISOString().slice(0, 10);
+      const fileBaseName = `guest-users-tracking-${dateTag}`;
+
+      if (format === "csv") {
+        downloadCsv(`${fileBaseName}.csv`, exportRows);
+      } else {
+        downloadXlsx(`${fileBaseName}.xlsx`, exportRows);
+      }
+    } catch (fetchError) {
+      console.error("Failed to export guest tracking details", fetchError);
+      setExportError(
+        fetchError instanceof Error
+          ? fetchError.message
+          : "Failed to export guest tracking details"
+      );
+    } finally {
+      setExportingFormat(null);
+    }
   }
 
   if (loading) {
@@ -385,6 +623,26 @@ const GuestUsers = () => {
         <ComponentCard
           title="Guest Users"
           desc="Guest activity records from the user_portal PostgreSQL guest_report table."
+          headerAction={
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => void handleExport("csv")}
+                disabled={filteredReports.length === 0 || exportingFormat !== null}
+                className="rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-xs font-semibold text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300"
+              >
+                {exportingFormat === "csv" ? "Exporting CSV..." : "Export CSV"}
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleExport("xlsx")}
+                disabled={filteredReports.length === 0 || exportingFormat !== null}
+                className="rounded-full border border-violet-200 bg-violet-50 px-4 py-2 text-xs font-semibold text-violet-700 transition hover:border-violet-300 hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-violet-500/20 dark:bg-violet-500/10 dark:text-violet-300"
+              >
+                {exportingFormat === "xlsx" ? "Exporting XLSX..." : "Export XLSX"}
+              </button>
+            </div>
+          }
         >
           <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
             <ProductSearchBar
@@ -402,6 +660,12 @@ const GuestUsers = () => {
           {error ? (
             <div className="rounded-2xl border border-error-200 bg-error-50 px-4 py-3 text-sm text-error-700 dark:border-error-500/20 dark:bg-error-500/10 dark:text-error-300">
               {error}
+            </div>
+          ) : null}
+
+          {exportError ? (
+            <div className="rounded-2xl border border-error-200 bg-error-50 px-4 py-3 text-sm text-error-700 dark:border-error-500/20 dark:bg-error-500/10 dark:text-error-300">
+              {exportError}
             </div>
           ) : null}
 
@@ -443,7 +707,10 @@ const GuestUsers = () => {
 
                   <TableBody className="divide-y divide-gray-100 dark:divide-white/[0.05]">
                     {paginatedReports.map((report) => (
-                      <TableRow key={report.id}>
+                      <TableRow
+                        key={report.id}
+                        className={getReportRowClasses(report.hasSuccessfulPayment)}
+                      >
                         <TableCell className="px-5 py-4 text-start">
                           <div className="space-y-1">
                             <a
@@ -629,31 +896,9 @@ const GuestUsers = () => {
               <section className="space-y-4">
                 <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Funnel Status</h3>
                 <div className="flex flex-wrap gap-2">
-                  <FunnelBadge label="Page viewed" active={trackingDetails.funnel.pageViewed} />
-                  <FunnelBadge label="Form started" active={trackingDetails.funnel.formStarted} />
-                  <FunnelBadge label="Analyze clicked" active={trackingDetails.funnel.analyzeClicked} />
-                  <FunnelBadge label="Generation started" active={trackingDetails.funnel.reportGenerationStarted} />
-                  <FunnelBadge label="Report generated" active={trackingDetails.funnel.reportGenerated} />
-                  <FunnelBadge label="Report viewed" active={trackingDetails.funnel.reportViewed} />
-                  <FunnelBadge label="Unlock clicked" active={trackingDetails.funnel.unlockClicked} />
-                  <FunnelBadge label="Pricing viewed" active={trackingDetails.funnel.pricingViewed} />
-                  <FunnelBadge label="Plan selected" active={trackingDetails.funnel.planSelected} />
-                  <FunnelBadge label="Create account clicked" active={trackingDetails.funnel.createAccountClicked} />
-                  <FunnelBadge label="Registration started" active={trackingDetails.funnel.registrationStarted} />
-                  <FunnelBadge label="Subscription plan viewed" active={trackingDetails.funnel.subscriptionPlanViewed} />
-                  <FunnelBadge label="Billing cycle changed" active={trackingDetails.funnel.subscriptionBillingCycleChanged} />
-                  <FunnelBadge label="One-time unlock viewed" active={trackingDetails.funnel.oneTimeUnlockSectionViewed} />
-                  <FunnelBadge label="One-time plan viewed" active={trackingDetails.funnel.oneTimePlanViewed} />
-                  <FunnelBadge label="One-time plan selected" active={trackingDetails.funnel.oneTimePlanSelected} />
-                  <FunnelBadge label="OTP modal opened" active={trackingDetails.funnel.oneTimeOtpModalOpened} />
-                  <FunnelBadge label="Email entered" active={trackingDetails.funnel.oneTimeEmailEntered} />
-                  <FunnelBadge label="OTP send clicked" active={trackingDetails.funnel.oneTimeOtpSendClicked} />
-                  <FunnelBadge label="OTP sent" active={trackingDetails.funnel.oneTimeOtpSent} />
-                  <FunnelBadge label="OTP send failed" active={trackingDetails.funnel.oneTimeOtpSendFailed} />
-                  <FunnelBadge label="OTP verify clicked" active={trackingDetails.funnel.oneTimeOtpVerifyClicked} />
-                  <FunnelBadge label="OTP verified" active={trackingDetails.funnel.oneTimeOtpVerified} />
-                  <FunnelBadge label="OTP verify failed" active={trackingDetails.funnel.oneTimeOtpVerifyFailed} />
-                  <FunnelBadge label="Workspace redirect started" active={trackingDetails.funnel.oneTimeWorkspaceRedirectStarted} />
+                  {FUNNEL_STATUS_ITEMS.map((item) => (
+                    <FunnelBadge key={item.key} label={item.label} active={trackingDetails.funnel[item.key]} />
+                  ))}
                 </div>
               </section>
 

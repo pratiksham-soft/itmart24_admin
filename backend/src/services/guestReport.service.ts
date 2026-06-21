@@ -7,6 +7,7 @@ type GuestReportRow = {
   website: string;
   report_type: string;
   created_at: Date | string;
+  has_successful_payment?: boolean;
   report_id?: string | null;
   source_tool?: string | null;
   website_url?: string | null;
@@ -72,6 +73,7 @@ export type GuestReportEntry = {
   website: string;
   reportType: string;
   createdAt: string | null;
+  hasSuccessfulPayment: boolean;
 };
 
 export type GuestTrackingDetails = {
@@ -145,6 +147,11 @@ export type GuestTrackingDetails = {
     oneTimeOtpVerified: boolean;
     oneTimeOtpVerifyFailed: boolean;
     oneTimeWorkspaceRedirectStarted: boolean;
+    oneTimeReportPaymentStarted: boolean;
+    oneTimeReportPaymentSuccessful: boolean;
+    oneTimeReportPaymentFailed: boolean;
+    subscriptionPaymentSuccessful: boolean;
+    subscriptionPaymentFailed: boolean;
   };
   duplicateSignals: {
     sameVisitorReportCount: number;
@@ -169,6 +176,7 @@ const mapGuestReportRow = (row: GuestReportRow): GuestReportEntry => ({
   website: row.website,
   reportType: row.report_type,
   createdAt: normalizeDate(row.created_at),
+  hasSuccessfulPayment: Boolean(row.has_successful_payment),
 });
 
 const normalizeCount = (value: string | number | null | undefined) => {
@@ -245,6 +253,11 @@ const FUNNEL_EVENT_GROUPS = {
   oneTimeOtpVerified: ["GuestOneTimeOtpVerified"],
   oneTimeOtpVerifyFailed: ["GuestOneTimeOtpVerifyFailed"],
   oneTimeWorkspaceRedirectStarted: ["GuestOneTimeWorkspaceRedirectStarted"],
+  oneTimeReportPaymentStarted: ["OneTimeReportPaymentStarted"],
+  oneTimeReportPaymentSuccessful: ["OneTimeReportPaymentSuccessful"],
+  oneTimeReportPaymentFailed: ["OneTimeReportPaymentFailed"],
+  subscriptionPaymentSuccessful: ["SubscriptionPaymentSuccessful"],
+  subscriptionPaymentFailed: ["SubscriptionPaymentFailed"],
 } as const;
 
 const buildEventDetails = (event: GuestActivityEventRow) => {
@@ -274,14 +287,20 @@ export const listGuestReports = async (): Promise<GuestReportEntry[]> => {
   const result = await pool.query(
     `
       SELECT
-        id,
-        report_date,
-        report_time,
-        website,
-        report_type,
-        created_at
-      FROM guest_report
-      ORDER BY report_date DESC, report_time DESC, created_at DESC
+        gr.id,
+        gr.report_date,
+        gr.report_time,
+        gr.website,
+        gr.report_type,
+        gr.created_at,
+        EXISTS (
+          SELECT 1
+          FROM guest_activity_events e
+          WHERE e.guest_report_id = gr.id
+            AND e.event_name IN ('OneTimeReportPaymentSuccessful', 'SubscriptionPaymentSuccessful')
+        ) AS has_successful_payment
+      FROM guest_report gr
+      ORDER BY gr.report_date DESC, gr.report_time DESC, gr.created_at DESC
     `
   );
 
@@ -493,6 +512,21 @@ export const getGuestReportTrackingDetails = async (
       ]),
       oneTimeWorkspaceRedirectStarted: eventSetHas(events, [
         ...FUNNEL_EVENT_GROUPS.oneTimeWorkspaceRedirectStarted,
+      ]),
+      oneTimeReportPaymentStarted: eventSetHas(events, [
+        ...FUNNEL_EVENT_GROUPS.oneTimeReportPaymentStarted,
+      ]),
+      oneTimeReportPaymentSuccessful: eventSetHas(events, [
+        ...FUNNEL_EVENT_GROUPS.oneTimeReportPaymentSuccessful,
+      ]),
+      oneTimeReportPaymentFailed: eventSetHas(events, [
+        ...FUNNEL_EVENT_GROUPS.oneTimeReportPaymentFailed,
+      ]),
+      subscriptionPaymentSuccessful: eventSetHas(events, [
+        ...FUNNEL_EVENT_GROUPS.subscriptionPaymentSuccessful,
+      ]),
+      subscriptionPaymentFailed: eventSetHas(events, [
+        ...FUNNEL_EVENT_GROUPS.subscriptionPaymentFailed,
       ]),
     },
     duplicateSignals: {
