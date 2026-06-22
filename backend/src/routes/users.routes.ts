@@ -5,6 +5,7 @@ import {
 } from "../services/userPortalUsers.service";
 import {
   getGuestReportTrackingDetails,
+  listGuestFeedback,
   listGuestReports,
 } from "../services/guestReport.service";
 import {
@@ -45,6 +46,24 @@ router.get("/guest-users", async (_req, res) => {
     res.status(500).json({
       success: false,
       message: "Failed to fetch guest users report",
+      error: error instanceof Error ? error.message : "Unknown error",
+    });
+  }
+});
+
+router.get("/guest-feedback", async (_req, res) => {
+  try {
+    const feedback = await listGuestFeedback();
+    res.json({
+      success: true,
+      count: feedback.length,
+      data: feedback,
+    });
+  } catch (error) {
+    console.error("Failed to fetch guest feedback:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch guest feedback",
       error: error instanceof Error ? error.message : "Unknown error",
     });
   }

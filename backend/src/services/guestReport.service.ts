@@ -66,6 +66,27 @@ type GuestActivityEventRow = {
   competitor_domain_2: string | null;
 };
 
+type GuestFeedbackRow = {
+  id: string;
+  guest_report_id: string | null;
+  source_tool: string | null;
+  report_type: string | null;
+  website_url: string | null;
+  normalized_domain: string | null;
+  competitor_url_1: string | null;
+  competitor_url_2: string | null;
+  business_type: string | null;
+  business_category: string | null;
+  target_country: string | null;
+  business_goal: string | null;
+  brand_name: string | null;
+  preview_usefulness: string | null;
+  unlock_blocker: string | null;
+  optional_message: string | null;
+  contact_value: string | null;
+  created_at: Date | string | null;
+};
+
 export type GuestReportEntry = {
   id: string;
   reportDate: string | null;
@@ -169,6 +190,27 @@ export type GuestTrackingDetails = {
   }>;
 };
 
+export type GuestFeedbackEntry = {
+  id: string;
+  guestReportId: string | null;
+  sourceTool: string | null;
+  reportType: string | null;
+  websiteUrl: string | null;
+  normalizedDomain: string | null;
+  competitorUrl1: string | null;
+  competitorUrl2: string | null;
+  businessType: string | null;
+  businessCategory: string | null;
+  targetCountry: string | null;
+  businessGoal: string | null;
+  brandName: string | null;
+  previewUsefulness: string | null;
+  unlockBlocker: string | null;
+  optionalMessage: string | null;
+  contactValue: string | null;
+  createdAt: string | null;
+};
+
 const mapGuestReportRow = (row: GuestReportRow): GuestReportEntry => ({
   id: row.id,
   reportDate: normalizeDate(row.report_date),
@@ -177,6 +219,27 @@ const mapGuestReportRow = (row: GuestReportRow): GuestReportEntry => ({
   reportType: row.report_type,
   createdAt: normalizeDate(row.created_at),
   hasSuccessfulPayment: Boolean(row.has_successful_payment),
+});
+
+const mapGuestFeedbackRow = (row: GuestFeedbackRow): GuestFeedbackEntry => ({
+  id: row.id,
+  guestReportId: normalizeText(row.guest_report_id),
+  sourceTool: normalizeText(row.source_tool),
+  reportType: normalizeText(row.report_type),
+  websiteUrl: normalizeText(row.website_url),
+  normalizedDomain: normalizeText(row.normalized_domain),
+  competitorUrl1: normalizeText(row.competitor_url_1),
+  competitorUrl2: normalizeText(row.competitor_url_2),
+  businessType: normalizeText(row.business_type),
+  businessCategory: normalizeText(row.business_category),
+  targetCountry: normalizeText(row.target_country),
+  businessGoal: normalizeText(row.business_goal),
+  brandName: normalizeText(row.brand_name),
+  previewUsefulness: normalizeText(row.preview_usefulness),
+  unlockBlocker: normalizeText(row.unlock_blocker),
+  optionalMessage: normalizeText(row.optional_message),
+  contactValue: normalizeText(row.contact_value),
+  createdAt: normalizeDate(row.created_at),
 });
 
 const normalizeCount = (value: string | number | null | undefined) => {
@@ -305,6 +368,37 @@ export const listGuestReports = async (): Promise<GuestReportEntry[]> => {
   );
 
   return (result.rows as GuestReportRow[]).map(mapGuestReportRow);
+};
+
+export const listGuestFeedback = async (): Promise<GuestFeedbackEntry[]> => {
+  const pool = getUserPortalPool();
+  const result = await pool.query(
+    `
+      SELECT
+        gf.id,
+        gf.guest_report_id,
+        gf.source_tool,
+        gf.report_type,
+        gf.website_url,
+        gf.normalized_domain,
+        gf.competitor_url_1,
+        gf.competitor_url_2,
+        gf.business_type,
+        gf.business_category,
+        gf.target_country,
+        gf.business_goal,
+        gf.brand_name,
+        gf.preview_usefulness,
+        gf.unlock_blocker,
+        gf.optional_message,
+        gf.contact_value,
+        gf.created_at
+      FROM guest_feedback gf
+      ORDER BY gf.created_at DESC
+    `
+  );
+
+  return (result.rows as GuestFeedbackRow[]).map(mapGuestFeedbackRow);
 };
 
 export const getGuestReportTrackingDetails = async (

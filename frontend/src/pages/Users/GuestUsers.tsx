@@ -116,6 +116,27 @@ type GuestTrackingDetails = {
   }>;
 };
 
+type GuestFeedbackEntry = {
+  id: string;
+  guestReportId: string | null;
+  sourceTool: string | null;
+  reportType: string | null;
+  websiteUrl: string | null;
+  normalizedDomain: string | null;
+  competitorUrl1: string | null;
+  competitorUrl2: string | null;
+  businessType: string | null;
+  businessCategory: string | null;
+  targetCountry: string | null;
+  businessGoal: string | null;
+  brandName: string | null;
+  previewUsefulness: string | null;
+  unlockBlocker: string | null;
+  optionalMessage: string | null;
+  contactValue: string | null;
+  createdAt: string | null;
+};
+
 const PAGE_SIZE = 25;
 const EXPORT_BASE_EVENT_NAMES = [
   "GuestSEOHealthPageView",
@@ -279,13 +300,24 @@ const SummaryCard = ({
   value,
   caption,
   accentClassName,
+  onClick,
 }: {
   title: string;
   value: string;
   caption: string;
   accentClassName: string;
+  onClick?: () => void;
 }) => (
-  <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">
+  <button
+    type="button"
+    onClick={onClick}
+    className={[
+      "rounded-2xl border border-gray-200 bg-white p-5 text-left dark:border-gray-800 dark:bg-white/[0.03]",
+      onClick
+        ? "transition hover:border-sky-300 hover:shadow-sm dark:hover:border-sky-500/30"
+        : "cursor-default",
+    ].join(" ")}
+  >
     <div className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${accentClassName}`}>
       {title}
     </div>
@@ -293,7 +325,7 @@ const SummaryCard = ({
       {value}
     </div>
     <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">{caption}</p>
-  </div>
+  </button>
 );
 
 const DetailItem = ({ label, value }: { label: string; value: string | null | undefined }) => (
@@ -420,11 +452,15 @@ const buildExportRow = (
 
 const GuestUsers = () => {
   const [reports, setReports] = useState<GuestReportEntry[]>([]);
+  const [feedback, setFeedback] = useState<GuestFeedbackEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [feedbackLoading, setFeedbackLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [feedbackError, setFeedbackError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [page, setPage] = useState(1);
   const [selectedReport, setSelectedReport] = useState<GuestReportEntry | null>(null);
+  const [feedbackModalOpen, setFeedbackModalOpen] = useState(false);
   const [trackingDetails, setTrackingDetails] = useState<GuestTrackingDetails | null>(null);
   const [trackingLoading, setTrackingLoading] = useState(false);
   const [trackingError, setTrackingError] = useState<string | null>(null);
@@ -460,6 +496,35 @@ const GuestUsers = () => {
     void fetchReports();
   }, []);
 
+  useEffect(() => {
+    const fetchFeedback = async () => {
+      setFeedbackLoading(true);
+      setFeedbackError(null);
+
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/users/guest-feedback`);
+        const result = await response.json();
+
+        if (!response.ok || !result.success) {
+          throw new Error(result.message || "Failed to fetch guest feedback");
+        }
+
+        setFeedback(Array.isArray(result.data) ? result.data : []);
+      } catch (fetchError) {
+        console.error("Failed to fetch guest feedback", fetchError);
+        setFeedbackError(
+          fetchError instanceof Error
+            ? fetchError.message
+            : "Failed to fetch guest feedback"
+        );
+      } finally {
+        setFeedbackLoading(false);
+      }
+    };
+
+    void fetchFeedback();
+  }, []);
+
   const filteredReports = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
     if (!query) return reports;
@@ -480,9 +545,7 @@ const GuestUsers = () => {
 
   const totalReports = reports.length;
   const uniqueWebsites = new Set(reports.map((report) => report.website)).size;
-  const uniqueReportTypes = new Set(
-    reports.map((report) => report.reportType.trim()).filter(Boolean)
-  ).size;
+  const totalFeedback = feedback.length;
   const latestReportDate = reports[0]?.reportDate ?? null;
 
   const totalCount = filteredReports.length;
@@ -543,6 +606,14 @@ const GuestUsers = () => {
     setTrackingDetails(null);
     setTrackingError(null);
     setTrackingLoading(false);
+  }
+
+  function openFeedbackModal() {
+    setFeedbackModalOpen(true);
+  }
+
+  function closeFeedbackModal() {
+    setFeedbackModalOpen(false);
   }
 
   async function handleExport(format: "csv" | "xlsx") {
@@ -607,10 +678,11 @@ const GuestUsers = () => {
             accentClassName="bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300"
           />
           <SummaryCard
-            title="Report Types"
-            value={String(uniqueReportTypes)}
-            caption="Unique guest report categories currently present in the database."
+            title="Feedback"
+            value={feedbackLoading ? "..." : String(totalFeedback)}
+            caption="Guest feedback submissions captured from the preview and unlock flow."
             accentClassName="bg-cyan-50 text-cyan-700 dark:bg-cyan-500/10 dark:text-cyan-300"
+            onClick={openFeedbackModal}
           />
           <SummaryCard
             title="Latest Report Date"
@@ -964,6 +1036,133 @@ const GuestUsers = () => {
             <button
               type="button"
               onClick={closeTrackingModal}
+              className="rounded-full border border-gray-200 px-5 py-2 text-sm font-semibold text-gray-700 transition hover:border-gray-300 hover:bg-gray-50 dark:border-white/[0.06] dark:text-gray-200 dark:hover:bg-white/[0.03]"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal isOpen={feedbackModalOpen} onClose={closeFeedbackModal} className="max-w-[1240px] m-4">
+        <div className="max-h-[85vh] overflow-y-auto rounded-3xl bg-white p-6 dark:bg-gray-900 md:p-8">
+          <div className="flex flex-col gap-3 border-b border-gray-200 pb-5 dark:border-white/[0.06] sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-600 dark:text-cyan-300">
+                Guest Feedback
+              </p>
+              <h2 className="text-2xl font-semibold text-gray-900 dark:text-white">
+                Preview and unlock feedback log
+              </h2>
+              <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                Review what guest users found useful and what stopped them from unlocking the full report.
+              </p>
+            </div>
+            <div className="rounded-full border border-cyan-200 bg-cyan-50 px-4 py-2 text-sm font-semibold text-cyan-700 dark:border-cyan-500/20 dark:bg-cyan-500/10 dark:text-cyan-300">
+              {feedbackLoading ? "Loading..." : `${totalFeedback} feedback item${totalFeedback === 1 ? "" : "s"}`}
+            </div>
+          </div>
+
+          {feedbackError ? (
+            <div className="mt-6 rounded-2xl border border-error-200 bg-error-50 px-5 py-4 text-sm text-error-700 dark:border-error-500/20 dark:bg-error-500/10 dark:text-error-300">
+              {feedbackError}
+            </div>
+          ) : null}
+
+          {feedbackLoading ? (
+            <div className="mt-6 rounded-2xl border border-gray-200 bg-gray-50 px-5 py-4 text-sm text-gray-600 dark:border-white/[0.06] dark:bg-white/[0.03] dark:text-gray-300">
+              Loading feedback...
+            </div>
+          ) : null}
+
+          {!feedbackLoading && !feedbackError && feedback.length === 0 ? (
+            <div className="mt-6 rounded-2xl border border-gray-200 bg-gray-50 px-5 py-4 text-sm text-gray-600 dark:border-white/[0.06] dark:bg-white/[0.03] dark:text-gray-300">
+              No guest feedback has been submitted yet.
+            </div>
+          ) : null}
+
+          {!feedbackLoading && !feedbackError && feedback.length > 0 ? (
+            <div className="mt-6 overflow-hidden rounded-2xl border border-gray-200 dark:border-white/[0.06]">
+              <div className="max-w-full overflow-x-auto">
+                <Table>
+                  <TableHeader className="border-b border-gray-100 dark:border-white/[0.05]">
+                    <TableRow>
+                      <TableCell isHeader className="px-4 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">
+                        Date
+                      </TableCell>
+                      <TableCell isHeader className="px-4 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">
+                        Website / Report
+                      </TableCell>
+                      <TableCell isHeader className="px-4 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">
+                        Useful?
+                      </TableCell>
+                      <TableCell isHeader className="px-4 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">
+                        Unlock blocker
+                      </TableCell>
+                      <TableCell isHeader className="px-4 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">
+                        Message
+                      </TableCell>
+                      <TableCell isHeader className="px-4 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">
+                        Contact
+                      </TableCell>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody className="divide-y divide-gray-100 dark:divide-white/[0.05]">
+                    {feedback.map((entry) => (
+                      <TableRow key={entry.id}>
+                        <TableCell className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">
+                          {formatDateTime(entry.createdAt)}
+                        </TableCell>
+                        <TableCell className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">
+                          <div className="space-y-1">
+                            <div className="font-medium text-gray-900 dark:text-white">
+                              {entry.normalizedDomain || entry.websiteUrl || "Anonymous guest"}
+                            </div>
+                            <div>
+                              {entry.reportType || entry.sourceTool || "-"}
+                            </div>
+                            {entry.guestReportId ? (
+                              <div className="text-xs text-gray-500 dark:text-gray-400">
+                                Report ID: {entry.guestReportId}
+                              </div>
+                            ) : null}
+                          </div>
+                        </TableCell>
+                        <TableCell className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">
+                          {entry.previewUsefulness || "-"}
+                        </TableCell>
+                        <TableCell className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">
+                          {entry.unlockBlocker || "-"}
+                        </TableCell>
+                        <TableCell className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">
+                          <div className="max-w-[320px] whitespace-pre-wrap break-words">
+                            {entry.optionalMessage || "-"}
+                          </div>
+                        </TableCell>
+                        <TableCell className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">
+                          <div className="space-y-1">
+                            <div>{entry.contactValue || "-"}</div>
+                            {(entry.businessType || entry.businessCategory || entry.brandName || entry.targetCountry) ? (
+                              <div className="text-xs text-gray-500 dark:text-gray-400">
+                                {[entry.brandName, entry.businessType, entry.businessCategory, entry.targetCountry]
+                                  .filter(Boolean)
+                                  .join(" | ")}
+                              </div>
+                            ) : null}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+          ) : null}
+
+          <div className="mt-6 flex justify-end">
+            <button
+              type="button"
+              onClick={closeFeedbackModal}
               className="rounded-full border border-gray-200 px-5 py-2 text-sm font-semibold text-gray-700 transition hover:border-gray-300 hover:bg-gray-50 dark:border-white/[0.06] dark:text-gray-200 dark:hover:bg-white/[0.03]"
             >
               Close
