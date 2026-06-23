@@ -487,9 +487,35 @@ export const listGuestReportDuplicates = async (
   filters: GuestDuplicateAuditFilters = {}
 ): Promise<GuestDuplicateAuditGroup[]> => {
   const pool = getUserPortalPool();
+  const columnsResult = await pool.query(
+    `
+      SELECT column_name
+      FROM information_schema.columns
+      WHERE table_schema = ANY (current_schemas(false))
+        AND table_name = 'guest_report'
+    `
+  );
+  const availableColumns = new Set(
+    (columnsResult.rows as Array<{ column_name: string }>).map((row) =>
+      String(row.column_name)
+    )
+  );
+  const hasColumn = (name: string) => availableColumns.has(name);
+  const websiteSourceExpression = hasColumn("website_url")
+    ? "COALESCE(website_url, website)"
+    : "website";
+  const normalizedDomainExpression = hasColumn("normalized_domain")
+    ? `COALESCE(NULLIF(BTRIM(normalized_domain), ''), LOWER(REGEXP_REPLACE(SPLIT_PART(SPLIT_PART(SPLIT_PART(COALESCE(${websiteSourceExpression}, website), '://', 2), '/', 1), '?', 1), '^www\\.', '')))`
+    : `LOWER(REGEXP_REPLACE(SPLIT_PART(SPLIT_PART(SPLIT_PART(COALESCE(${websiteSourceExpression}, website), '://', 2), '/', 1), '?', 1), '^www\\.', ''))`;
+  const generatedAtExpression = hasColumn("report_generated_at")
+    ? "COALESCE(report_generated_at, created_at)"
+    : "created_at";
+  const optionalColumnExpression = (name: string) =>
+    hasColumn(name) ? name : `NULL::text`;
+  const ipHashExpression = hasColumn("ip_hash") ? "ip_hash" : "NULL::text";
   const whereClauses: string[] = [
-    "normalized_domain IS NOT NULL",
-    "BTRIM(normalized_domain) <> ''",
+    `${normalizedDomainExpression} IS NOT NULL`,
+    `BTRIM(${normalizedDomainExpression}) <> ''`,
   ];
   const values: unknown[] = [];
 
@@ -500,7 +526,7 @@ export const listGuestReportDuplicates = async (
 
   if (filters.domain?.trim()) {
     values.push(`%${filters.domain.trim().toLowerCase()}%`);
-    whereClauses.push(`LOWER(normalized_domain) LIKE $${values.length}`);
+    whereClauses.push(`LOWER(${normalizedDomainExpression}) LIKE $${values.length}`);
   }
 
   values.push(Math.min(Math.max(Number(filters.limit ?? 100), 1), 250));
@@ -509,7 +535,7 @@ export const listGuestReportDuplicates = async (
     `
       WITH duplicate_groups AS (
         SELECT
-          normalized_domain,
+          ${normalizedDomainExpression} AS normalized_domain,
           CASE
             WHEN report_type IN ('SEO Health', 'SEO_HEALTH') THEN 'SEO_HEALTH'
             WHEN report_type IN ('AI Analyzer', 'AI_VISIBILITY') THEN 'AI_VISIBILITY'
@@ -517,11 +543,11 @@ export const listGuestReportDuplicates = async (
             ELSE NULL
           END AS report_type_key,
           COUNT(*)::int AS attempt_count,
-          MIN(COALESCE(report_generated_at, created_at)) AS first_generated_at,
-          MAX(COALESCE(report_generated_at, created_at)) AS latest_generated_at,
-          COUNT(DISTINCT anonymous_visitor_id)::int AS unique_anonymous_visitors,
-          COUNT(DISTINCT session_id)::int AS unique_sessions,
-          COUNT(DISTINCT ip_hash)::int AS unique_ip_hashes
+          MIN(${generatedAtExpression}) AS first_generated_at,
+          MAX(${generatedAtExpression}) AS latest_generated_at,
+          COUNT(DISTINCT ${optionalColumnExpression("anonymous_visitor_id")})::int AS unique_anonymous_visitors,
+          COUNT(DISTINCT ${optionalColumnExpression("session_id")})::int AS unique_sessions,
+          COUNT(DISTINCT ${ipHashExpression})::int AS unique_ip_hashes
         FROM guest_report
         WHERE ${whereClauses.join(" AND ")}
         GROUP BY normalized_domain, report_type_key
@@ -541,27 +567,29 @@ export const listGuestReportDuplicates = async (
             jsonb_build_object(
               'guestReportId', gr.id,
               'createdAt', gr.created_at,
-              'generatedAt', COALESCE(gr.report_generated_at, gr.created_at),
+              'generatedAt', ${hasColumn("report_generated_at") ? "COALESCE(gr.report_generated_at, gr.created_at)" : "gr.created_at"},
               'website', gr.website,
-              'websiteUrl', gr.website_url,
-              'sourceTool', gr.source_tool,
-              'anonymousVisitorId', gr.anonymous_visitor_id,
-              'sessionId', gr.session_id,
-              'ipHash', gr.ip_hash,
-              'deviceType', gr.device_type,
-              'browser', gr.browser,
-              'os', gr.os,
-              'utmSource', gr.utm_source,
-              'utmMedium', gr.utm_medium,
-              'utmCampaign', gr.utm_campaign,
-              'referrer', gr.referrer,
-              'landingPageUrl', gr.landing_page_url,
-              'currentUrl', gr.current_url
+              'websiteUrl', ${hasColumn("website_url") ? "gr.website_url" : "NULL::text"},
+              'sourceTool', ${hasColumn("source_tool") ? "gr.source_tool" : "NULL::text"},
+              'anonymousVisitorId', ${hasColumn("anonymous_visitor_id") ? "gr.anonymous_visitor_id" : "NULL::text"},
+              'sessionId', ${hasColumn("session_id") ? "gr.session_id" : "NULL::text"},
+              'ipHash', ${hasColumn("ip_hash") ? "gr.ip_hash" : "NULL::text"},
+              'deviceType', ${hasColumn("device_type") ? "gr.device_type" : "NULL::text"},
+              'browser', ${hasColumn("browser") ? "gr.browser" : "NULL::text"},
+              'os', ${hasColumn("os") ? "gr.os" : "NULL::text"},
+              'utmSource', ${hasColumn("utm_source") ? "gr.utm_source" : "NULL::text"},
+              'utmMedium', ${hasColumn("utm_medium") ? "gr.utm_medium" : "NULL::text"},
+              'utmCampaign', ${hasColumn("utm_campaign") ? "gr.utm_campaign" : "NULL::text"},
+              'referrer', ${hasColumn("referrer") ? "gr.referrer" : "NULL::text"},
+              'landingPageUrl', ${hasColumn("landing_page_url") ? "gr.landing_page_url" : "NULL::text"},
+              'currentUrl', ${hasColumn("current_url") ? "gr.current_url" : "NULL::text"}
             )
-            ORDER BY COALESCE(gr.report_generated_at, gr.created_at) DESC, gr.created_at DESC
+            ORDER BY ${hasColumn("report_generated_at") ? "COALESCE(gr.report_generated_at, gr.created_at)" : "gr.created_at"} DESC, gr.created_at DESC
           )
           FROM guest_report gr
-          WHERE gr.normalized_domain = g.normalized_domain
+          WHERE ${hasColumn("normalized_domain")
+            ? `COALESCE(NULLIF(BTRIM(gr.normalized_domain), ''), LOWER(REGEXP_REPLACE(SPLIT_PART(SPLIT_PART(SPLIT_PART(COALESCE(${hasColumn("website_url") ? "gr.website_url" : "gr.website"}, gr.website), '://', 2), '/', 1), '?', 1), '^www\\.', '')))`
+            : `LOWER(REGEXP_REPLACE(SPLIT_PART(SPLIT_PART(SPLIT_PART(COALESCE(${hasColumn("website_url") ? "gr.website_url" : "gr.website"}, gr.website), '://', 2), '/', 1), '?', 1), '^www\\.', ''))`} = g.normalized_domain
             AND (
               (g.report_type_key = 'SEO_HEALTH' AND gr.report_type IN ('SEO Health', 'SEO_HEALTH'))
               OR (g.report_type_key = 'AI_VISIBILITY' AND gr.report_type IN ('AI Analyzer', 'AI_VISIBILITY'))
