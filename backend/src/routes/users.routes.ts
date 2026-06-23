@@ -6,6 +6,7 @@ import {
 import {
   getGuestReportTrackingDetails,
   listGuestFeedback,
+  listGuestReportDuplicates,
   listGuestReports,
 } from "../services/guestReport.service";
 import {
@@ -64,6 +65,37 @@ router.get("/guest-feedback", async (_req, res) => {
     res.status(500).json({
       success: false,
       message: "Failed to fetch guest feedback",
+      error: error instanceof Error ? error.message : "Unknown error",
+    });
+  }
+});
+
+router.get("/guest-report-duplicates", async (req, res) => {
+  try {
+    const reportTypeParam = String(req.query.reportType ?? "").trim();
+    const reportType =
+      reportTypeParam === "SEO_HEALTH" ||
+      reportTypeParam === "AI_VISIBILITY" ||
+      reportTypeParam === "COMPETITOR_COMPARISON"
+        ? reportTypeParam
+        : undefined;
+
+    const duplicates = await listGuestReportDuplicates({
+      reportType,
+      domain: String(req.query.domain ?? ""),
+      limit: Number(req.query.limit ?? 100),
+    });
+
+    res.json({
+      success: true,
+      count: duplicates.length,
+      data: duplicates,
+    });
+  } catch (error) {
+    console.error("Failed to fetch duplicate guest report audit:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch duplicate guest report audit",
       error: error instanceof Error ? error.message : "Unknown error",
     });
   }

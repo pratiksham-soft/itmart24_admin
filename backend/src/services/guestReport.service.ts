@@ -87,6 +87,27 @@ type GuestFeedbackRow = {
   created_at: Date | string | null;
 };
 
+type GuestDuplicateAttemptRow = {
+  guestReportId?: unknown;
+  createdAt?: unknown;
+  generatedAt?: unknown;
+  website?: unknown;
+  websiteUrl?: unknown;
+  sourceTool?: unknown;
+  anonymousVisitorId?: unknown;
+  sessionId?: unknown;
+  ipHash?: unknown;
+  deviceType?: unknown;
+  browser?: unknown;
+  os?: unknown;
+  utmSource?: unknown;
+  utmMedium?: unknown;
+  utmCampaign?: unknown;
+  referrer?: unknown;
+  landingPageUrl?: unknown;
+  currentUrl?: unknown;
+};
+
 export type GuestReportEntry = {
   id: string;
   reportDate: string | null;
@@ -211,6 +232,46 @@ export type GuestFeedbackEntry = {
   createdAt: string | null;
 };
 
+export type GuestDuplicateAuditAttemptEntry = {
+  guestReportId: string;
+  createdAt: string | null;
+  generatedAt: string | null;
+  website: string;
+  websiteUrl: string | null;
+  sourceTool: string | null;
+  anonymousVisitorId: string | null;
+  sessionId: string | null;
+  ipHash: string | null;
+  deviceType: string | null;
+  browser: string | null;
+  os: string | null;
+  utmSource: string | null;
+  utmMedium: string | null;
+  utmCampaign: string | null;
+  referrer: string | null;
+  landingPageUrl: string | null;
+  currentUrl: string | null;
+};
+
+export type GuestDuplicateAuditGroup = {
+  normalizedDomain: string;
+  reportType: "SEO_HEALTH" | "AI_VISIBILITY" | "COMPETITOR_COMPARISON";
+  reportTypeLabel: string;
+  totalAttempts: number;
+  firstGeneratedAt: string | null;
+  latestGeneratedAt: string | null;
+  uniqueAnonymousVisitors: number;
+  uniqueSessions: number;
+  uniqueIpHashes: number;
+  attempts: GuestDuplicateAuditAttemptEntry[];
+};
+
+export type GuestDuplicateAuditFilters = {
+  reportType?: "SEO_HEALTH" | "AI_VISIBILITY" | "COMPETITOR_COMPARISON";
+  domain?: string;
+  limit?: number;
+};
+
 const mapGuestReportRow = (row: GuestReportRow): GuestReportEntry => ({
   id: row.id,
   reportDate: normalizeDate(row.report_date),
@@ -261,6 +322,27 @@ const normalizeToolName = (reportType: string, sourceTool: string | null | undef
   if (normalizedReportType.includes("seo")) return "guest_seo_health";
   if (normalizedReportType.includes("ai")) return "guest_ai_analysis";
   return "guest_competitor_comparison";
+};
+
+const DUPLICATE_REPORT_TYPE_LABELS: Record<
+  GuestDuplicateAuditGroup["reportType"],
+  string
+> = {
+  SEO_HEALTH: "SEO Health",
+  AI_VISIBILITY: "AI Analysis",
+  COMPETITOR_COMPARISON: "Competitor Comparison",
+};
+
+const DUPLICATE_REPORT_TYPE_ALIASES: Record<
+  GuestDuplicateAuditGroup["reportType"],
+  string[]
+> = {
+  SEO_HEALTH: ["SEO Health", "SEO_HEALTH"],
+  AI_VISIBILITY: ["AI Analyzer", "AI_VISIBILITY"],
+  COMPETITOR_COMPARISON: [
+    "Competitor Comparison",
+    "COMPETITOR_COMPARISON",
+  ],
 };
 
 const eventSetHas = (events: GuestActivityEventRow[], names: string[]) =>
@@ -399,6 +481,154 @@ export const listGuestFeedback = async (): Promise<GuestFeedbackEntry[]> => {
   );
 
   return (result.rows as GuestFeedbackRow[]).map(mapGuestFeedbackRow);
+};
+
+export const listGuestReportDuplicates = async (
+  filters: GuestDuplicateAuditFilters = {}
+): Promise<GuestDuplicateAuditGroup[]> => {
+  const pool = getUserPortalPool();
+  const whereClauses: string[] = [
+    "normalized_domain IS NOT NULL",
+    "BTRIM(normalized_domain) <> ''",
+  ];
+  const values: unknown[] = [];
+
+  if (filters.reportType) {
+    values.push(DUPLICATE_REPORT_TYPE_ALIASES[filters.reportType]);
+    whereClauses.push(`report_type = ANY($${values.length}::text[])`);
+  }
+
+  if (filters.domain?.trim()) {
+    values.push(`%${filters.domain.trim().toLowerCase()}%`);
+    whereClauses.push(`LOWER(normalized_domain) LIKE $${values.length}`);
+  }
+
+  values.push(Math.min(Math.max(Number(filters.limit ?? 100), 1), 250));
+
+  const result = await pool.query(
+    `
+      WITH duplicate_groups AS (
+        SELECT
+          normalized_domain,
+          CASE
+            WHEN report_type IN ('SEO Health', 'SEO_HEALTH') THEN 'SEO_HEALTH'
+            WHEN report_type IN ('AI Analyzer', 'AI_VISIBILITY') THEN 'AI_VISIBILITY'
+            WHEN report_type IN ('Competitor Comparison', 'COMPETITOR_COMPARISON') THEN 'COMPETITOR_COMPARISON'
+            ELSE NULL
+          END AS report_type_key,
+          COUNT(*)::int AS attempt_count,
+          MIN(COALESCE(report_generated_at, created_at)) AS first_generated_at,
+          MAX(COALESCE(report_generated_at, created_at)) AS latest_generated_at,
+          COUNT(DISTINCT anonymous_visitor_id)::int AS unique_anonymous_visitors,
+          COUNT(DISTINCT session_id)::int AS unique_sessions,
+          COUNT(DISTINCT ip_hash)::int AS unique_ip_hashes
+        FROM guest_report
+        WHERE ${whereClauses.join(" AND ")}
+        GROUP BY normalized_domain, report_type_key
+        HAVING COUNT(*) > 1 AND report_type_key IS NOT NULL
+      )
+      SELECT
+        g.normalized_domain,
+        g.report_type_key,
+        g.attempt_count,
+        g.first_generated_at,
+        g.latest_generated_at,
+        g.unique_anonymous_visitors,
+        g.unique_sessions,
+        g.unique_ip_hashes,
+        (
+          SELECT jsonb_agg(
+            jsonb_build_object(
+              'guestReportId', gr.id,
+              'createdAt', gr.created_at,
+              'generatedAt', COALESCE(gr.report_generated_at, gr.created_at),
+              'website', gr.website,
+              'websiteUrl', gr.website_url,
+              'sourceTool', gr.source_tool,
+              'anonymousVisitorId', gr.anonymous_visitor_id,
+              'sessionId', gr.session_id,
+              'ipHash', gr.ip_hash,
+              'deviceType', gr.device_type,
+              'browser', gr.browser,
+              'os', gr.os,
+              'utmSource', gr.utm_source,
+              'utmMedium', gr.utm_medium,
+              'utmCampaign', gr.utm_campaign,
+              'referrer', gr.referrer,
+              'landingPageUrl', gr.landing_page_url,
+              'currentUrl', gr.current_url
+            )
+            ORDER BY COALESCE(gr.report_generated_at, gr.created_at) DESC, gr.created_at DESC
+          )
+          FROM guest_report gr
+          WHERE gr.normalized_domain = g.normalized_domain
+            AND (
+              (g.report_type_key = 'SEO_HEALTH' AND gr.report_type IN ('SEO Health', 'SEO_HEALTH'))
+              OR (g.report_type_key = 'AI_VISIBILITY' AND gr.report_type IN ('AI Analyzer', 'AI_VISIBILITY'))
+              OR (g.report_type_key = 'COMPETITOR_COMPARISON' AND gr.report_type IN ('Competitor Comparison', 'COMPETITOR_COMPARISON'))
+            )
+        ) AS attempts_json
+      FROM duplicate_groups g
+      ORDER BY g.latest_generated_at DESC
+      LIMIT $${values.length}
+    `,
+    values
+  );
+
+  return (result.rows as Array<{
+    normalized_domain: string;
+    report_type_key: GuestDuplicateAuditGroup["reportType"];
+    attempt_count: string | number;
+    first_generated_at: string | Date | null;
+    latest_generated_at: string | Date | null;
+    unique_anonymous_visitors: string | number;
+    unique_sessions: string | number;
+    unique_ip_hashes: string | number;
+    attempts_json: unknown;
+  }>).map((row) => {
+    const reportType = String(row.report_type_key) as GuestDuplicateAuditGroup["reportType"];
+    const attemptsJson = Array.isArray(row.attempts_json)
+      ? (row.attempts_json as GuestDuplicateAttemptRow[])
+      : [];
+
+    return {
+      normalizedDomain: String(row.normalized_domain),
+      reportType,
+      reportTypeLabel: DUPLICATE_REPORT_TYPE_LABELS[reportType] ?? reportType,
+      totalAttempts: normalizeCount(row.attempt_count),
+      firstGeneratedAt: normalizeDate(row.first_generated_at),
+      latestGeneratedAt: normalizeDate(row.latest_generated_at),
+      uniqueAnonymousVisitors: normalizeCount(row.unique_anonymous_visitors),
+      uniqueSessions: normalizeCount(row.unique_sessions),
+      uniqueIpHashes: normalizeCount(row.unique_ip_hashes),
+      attempts: attemptsJson.map((attempt) => ({
+        guestReportId: String(attempt.guestReportId ?? ""),
+        createdAt: normalizeDate((attempt.createdAt as string | Date | null | undefined) ?? null),
+        generatedAt: normalizeDate(
+          (attempt.generatedAt as string | Date | null | undefined) ?? null
+        ),
+        website: String(attempt.website ?? ""),
+        websiteUrl: normalizeText(attempt.websiteUrl as string | null | undefined),
+        sourceTool: normalizeText(attempt.sourceTool as string | null | undefined),
+        anonymousVisitorId: normalizeText(
+          attempt.anonymousVisitorId as string | null | undefined
+        ),
+        sessionId: normalizeText(attempt.sessionId as string | null | undefined),
+        ipHash: normalizeText(attempt.ipHash as string | null | undefined),
+        deviceType: normalizeText(attempt.deviceType as string | null | undefined),
+        browser: normalizeText(attempt.browser as string | null | undefined),
+        os: normalizeText(attempt.os as string | null | undefined),
+        utmSource: normalizeText(attempt.utmSource as string | null | undefined),
+        utmMedium: normalizeText(attempt.utmMedium as string | null | undefined),
+        utmCampaign: normalizeText(attempt.utmCampaign as string | null | undefined),
+        referrer: normalizeText(attempt.referrer as string | null | undefined),
+        landingPageUrl: normalizeText(
+          attempt.landingPageUrl as string | null | undefined
+        ),
+        currentUrl: normalizeText(attempt.currentUrl as string | null | undefined),
+      })),
+    };
+  });
 };
 
 export const getGuestReportTrackingDetails = async (

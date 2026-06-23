@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import PageMeta from "../../components/common/PageMeta";
 import ComponentCard from "../../components/common/ComponentCard";
 import { Modal } from "../../components/ui/modal";
@@ -135,6 +135,40 @@ type GuestFeedbackEntry = {
   optionalMessage: string | null;
   contactValue: string | null;
   createdAt: string | null;
+};
+
+type GuestDuplicateAuditAttemptEntry = {
+  guestReportId: string;
+  createdAt: string | null;
+  generatedAt: string | null;
+  website: string;
+  websiteUrl: string | null;
+  sourceTool: string | null;
+  anonymousVisitorId: string | null;
+  sessionId: string | null;
+  ipHash: string | null;
+  deviceType: string | null;
+  browser: string | null;
+  os: string | null;
+  utmSource: string | null;
+  utmMedium: string | null;
+  utmCampaign: string | null;
+  referrer: string | null;
+  landingPageUrl: string | null;
+  currentUrl: string | null;
+};
+
+type GuestDuplicateAuditGroup = {
+  normalizedDomain: string;
+  reportType: "SEO_HEALTH" | "AI_VISIBILITY" | "COMPETITOR_COMPARISON";
+  reportTypeLabel: string;
+  totalAttempts: number;
+  firstGeneratedAt: string | null;
+  latestGeneratedAt: string | null;
+  uniqueAnonymousVisitors: number;
+  uniqueSessions: number;
+  uniqueIpHashes: number;
+  attempts: GuestDuplicateAuditAttemptEntry[];
 };
 
 const PAGE_SIZE = 25;
@@ -295,6 +329,9 @@ const getReportTypeClasses = (reportType: string) => {
 const getReportRowClasses = (hasSuccessfulPayment: boolean) =>
   hasSuccessfulPayment ? "bg-amber-50/70 dark:bg-amber-500/10" : "";
 
+const getDuplicateAuditKey = (group: GuestDuplicateAuditGroup) =>
+  `${group.normalizedDomain}::${group.reportType}`;
+
 const SummaryCard = ({
   title,
   value,
@@ -453,11 +490,17 @@ const buildExportRow = (
 const GuestUsers = () => {
   const [reports, setReports] = useState<GuestReportEntry[]>([]);
   const [feedback, setFeedback] = useState<GuestFeedbackEntry[]>([]);
+  const [duplicateGroups, setDuplicateGroups] = useState<GuestDuplicateAuditGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [feedbackLoading, setFeedbackLoading] = useState(true);
+  const [duplicateLoading, setDuplicateLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [feedbackError, setFeedbackError] = useState<string | null>(null);
+  const [duplicateError, setDuplicateError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [duplicateDomainFilter, setDuplicateDomainFilter] = useState("");
+  const [duplicateReportTypeFilter, setDuplicateReportTypeFilter] = useState("");
+  const [expandedDuplicateKeys, setExpandedDuplicateKeys] = useState<string[]>([]);
   const [page, setPage] = useState(1);
   const [selectedReport, setSelectedReport] = useState<GuestReportEntry | null>(null);
   const [feedbackModalOpen, setFeedbackModalOpen] = useState(false);
@@ -525,6 +568,54 @@ const GuestUsers = () => {
     void fetchFeedback();
   }, []);
 
+  useEffect(() => {
+    const fetchDuplicateGroups = async () => {
+      setDuplicateLoading(true);
+      setDuplicateError(null);
+
+      try {
+        const params = new URLSearchParams();
+        params.set("limit", "100");
+
+        if (duplicateDomainFilter.trim()) {
+          params.set("domain", duplicateDomainFilter.trim());
+        }
+
+        if (duplicateReportTypeFilter) {
+          params.set("reportType", duplicateReportTypeFilter);
+        }
+
+        const response = await fetch(
+          `${API_BASE_URL}/api/users/guest-report-duplicates?${params.toString()}`
+        );
+        const result = await response.json();
+
+        if (!response.ok || !result.success) {
+          throw new Error(result.message || "Failed to fetch duplicate guest audit");
+        }
+
+        const nextGroups = Array.isArray(result.data) ? result.data : [];
+        setDuplicateGroups(nextGroups);
+        setExpandedDuplicateKeys((current) =>
+          current.filter((key) =>
+            nextGroups.some((group: GuestDuplicateAuditGroup) => getDuplicateAuditKey(group) === key)
+          )
+        );
+      } catch (fetchError) {
+        console.error("Failed to fetch duplicate guest audit", fetchError);
+        setDuplicateError(
+          fetchError instanceof Error
+            ? fetchError.message
+            : "Failed to fetch duplicate guest audit"
+        );
+      } finally {
+        setDuplicateLoading(false);
+      }
+    };
+
+    void fetchDuplicateGroups();
+  }, [duplicateDomainFilter, duplicateReportTypeFilter]);
+
   const filteredReports = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
     if (!query) return reports;
@@ -546,6 +637,11 @@ const GuestUsers = () => {
   const totalReports = reports.length;
   const uniqueWebsites = new Set(reports.map((report) => report.website)).size;
   const totalFeedback = feedback.length;
+  const totalDuplicateGroups = duplicateGroups.length;
+  const totalDuplicateAttempts = duplicateGroups.reduce(
+    (sum, group) => sum + group.totalAttempts,
+    0
+  );
   const latestReportDate = reports[0]?.reportDate ?? null;
 
   const totalCount = filteredReports.length;
@@ -616,6 +712,15 @@ const GuestUsers = () => {
     setFeedbackModalOpen(false);
   }
 
+  function toggleDuplicateDetails(group: GuestDuplicateAuditGroup) {
+    const key = getDuplicateAuditKey(group);
+    setExpandedDuplicateKeys((current) =>
+      current.includes(key)
+        ? current.filter((entry) => entry !== key)
+        : [...current, key]
+    );
+  }
+
   async function handleExport(format: "csv" | "xlsx") {
     if (filteredReports.length === 0 || exportingFormat) {
       return;
@@ -664,7 +769,7 @@ const GuestUsers = () => {
       />
 
       <div className="space-y-6">
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
           <SummaryCard
             title="Guest Reports"
             value={String(totalReports)}
@@ -685,12 +790,228 @@ const GuestUsers = () => {
             onClick={openFeedbackModal}
           />
           <SummaryCard
+            title="Duplicate Audits"
+            value={duplicateLoading ? "..." : String(totalDuplicateGroups)}
+            caption={
+              duplicateLoading
+                ? "Checking repeated same-domain report activity."
+                : `${totalDuplicateAttempts} repeated attempts grouped by normalized domain + report type.`
+            }
+            accentClassName="bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300"
+          />
+          <SummaryCard
             title="Latest Report Date"
             value={formatDate(latestReportDate)}
             caption="Most recent report date based on the guest_report feed ordering."
             accentClassName="bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300"
           />
         </div>
+
+        <ComponentCard
+          title="Duplicate Guest Sample Audit"
+          desc="Audit repeated free sample activity by normalized domain and report type, then expand a row to inspect every historical attempt."
+        >
+          <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_220px_auto] lg:items-center">
+            <ProductSearchBar
+              id="duplicate-guest-search"
+              label="Filter duplicate domains"
+              value={duplicateDomainFilter}
+              onChange={setDuplicateDomainFilter}
+              placeholder="Search normalized domain"
+            />
+
+            <label className="flex flex-col gap-2 text-sm font-medium text-gray-700 dark:text-gray-300">
+              <span>Report type</span>
+              <select
+                value={duplicateReportTypeFilter}
+                onChange={(event) => setDuplicateReportTypeFilter(event.target.value)}
+                className="h-11 rounded-xl border border-gray-200 bg-white px-4 text-sm text-gray-800 outline-none transition focus:border-sky-400 dark:border-white/[0.08] dark:bg-white/[0.03] dark:text-white"
+              >
+                <option value="">All report types</option>
+                <option value="SEO_HEALTH">SEO Health</option>
+                <option value="AI_VISIBILITY">AI Analysis</option>
+                <option value="COMPETITOR_COMPARISON">Competitor Comparison</option>
+              </select>
+            </label>
+
+            <div className="rounded-2xl border border-rose-100 bg-rose-50 px-4 py-3 text-sm text-rose-700 dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-300">
+              Same-domain repeats only. No new rows are created from this admin audit view.
+            </div>
+          </div>
+
+          {duplicateError ? (
+            <div className="rounded-2xl border border-error-200 bg-error-50 px-4 py-3 text-sm text-error-700 dark:border-error-500/20 dark:bg-error-500/10 dark:text-error-300">
+              {duplicateError}
+            </div>
+          ) : null}
+
+          {duplicateLoading ? (
+            <div className="rounded-2xl border border-gray-200 bg-gray-50 px-5 py-4 text-sm text-gray-600 dark:border-white/[0.06] dark:bg-white/[0.03] dark:text-gray-300">
+              Loading duplicate guest sample audit...
+            </div>
+          ) : null}
+
+          {!duplicateLoading && !duplicateError && duplicateGroups.length === 0 ? (
+            <div className="rounded-2xl border border-gray-200 bg-gray-50 px-5 py-4 text-sm text-gray-600 dark:border-white/[0.06] dark:bg-white/[0.03] dark:text-gray-300">
+              No duplicate guest sample groups matched the current filters.
+            </div>
+          ) : null}
+
+          {!duplicateLoading && !duplicateError && duplicateGroups.length > 0 ? (
+            <div className="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-white/[0.05] dark:bg-white/[0.03]">
+              <div className="max-w-full overflow-x-auto">
+                <Table>
+                  <TableHeader className="border-b border-gray-100 dark:border-white/[0.05]">
+                    <TableRow>
+                      <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">
+                        Domain
+                      </TableCell>
+                      <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">
+                        Report Type
+                      </TableCell>
+                      <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">
+                        Attempts
+                      </TableCell>
+                      <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">
+                        Visitor Signals
+                      </TableCell>
+                      <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">
+                        Latest Attempt
+                      </TableCell>
+                      <TableCell isHeader className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400">
+                        Action
+                      </TableCell>
+                    </TableRow>
+                  </TableHeader>
+
+                  <TableBody className="divide-y divide-gray-100 dark:divide-white/[0.05]">
+                    {duplicateGroups.map((group) => {
+                      const isExpanded = expandedDuplicateKeys.includes(
+                        getDuplicateAuditKey(group)
+                      );
+
+                      return (
+                        <Fragment key={getDuplicateAuditKey(group)}>
+                          <TableRow key={getDuplicateAuditKey(group)}>
+                            <TableCell className="px-5 py-4 text-start">
+                              <div className="space-y-1">
+                                <div className="text-sm font-semibold text-gray-900 dark:text-white">
+                                  {group.normalizedDomain}
+                                </div>
+                                <div className="text-xs text-gray-500 dark:text-gray-400">
+                                  First seen {formatDateTime(group.firstGeneratedAt)}
+                                </div>
+                              </div>
+                            </TableCell>
+
+                            <TableCell className="px-5 py-4">
+                              <span
+                                className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${getReportTypeClasses(
+                                  group.reportTypeLabel
+                                )}`}
+                              >
+                                {group.reportTypeLabel}
+                              </span>
+                            </TableCell>
+
+                            <TableCell className="px-5 py-4 text-sm text-gray-600 dark:text-gray-300">
+                              <div className="font-semibold text-gray-900 dark:text-white">
+                                {group.totalAttempts}
+                              </div>
+                              <div className="text-xs text-gray-500 dark:text-gray-400">
+                                guest sample rows
+                              </div>
+                            </TableCell>
+
+                            <TableCell className="px-5 py-4 text-sm text-gray-600 dark:text-gray-300">
+                              <div>Visitors: {group.uniqueAnonymousVisitors}</div>
+                              <div>Sessions: {group.uniqueSessions}</div>
+                              <div>IP hashes: {group.uniqueIpHashes}</div>
+                            </TableCell>
+
+                            <TableCell className="px-5 py-4 text-sm text-gray-600 dark:text-gray-300">
+                              {formatDateTime(group.latestGeneratedAt)}
+                            </TableCell>
+
+                            <TableCell className="px-5 py-4">
+                              <button
+                                type="button"
+                                onClick={() => toggleDuplicateDetails(group)}
+                                className="rounded-full border border-rose-200 bg-rose-50 px-4 py-2 text-xs font-semibold text-rose-700 transition hover:border-rose-300 hover:bg-rose-100 dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-300"
+                              >
+                                {isExpanded ? "Hide Attempts" : "View Attempts"}
+                              </button>
+                            </TableCell>
+                          </TableRow>
+
+                          {isExpanded ? (
+                            <TableRow>
+                              <TableCell colSpan={6} className="px-5 py-5">
+                                <div className="space-y-4">
+                                  <div className="flex flex-wrap items-center gap-3 text-xs text-gray-500 dark:text-gray-400">
+                                    <span>
+                                      Showing {group.attempts.length} attempt
+                                      {group.attempts.length === 1 ? "" : "s"}
+                                    </span>
+                                    <span>Latest: {formatDateTime(group.latestGeneratedAt)}</span>
+                                  </div>
+
+                                  <div className="grid gap-4 xl:grid-cols-2">
+                                    {group.attempts.map((attempt, index) => (
+                                      <div
+                                        key={attempt.guestReportId || `${getDuplicateAuditKey(group)}-${index}`}
+                                        className="rounded-2xl border border-gray-200 bg-gray-50 p-4 dark:border-white/[0.06] dark:bg-white/[0.03]"
+                                      >
+                                        <div className="flex flex-col gap-3 border-b border-gray-200 pb-3 dark:border-white/[0.06] sm:flex-row sm:items-start sm:justify-between">
+                                          <div>
+                                            <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                                              Attempt {index + 1}
+                                            </p>
+                                            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                              Generated {formatDateTime(attempt.generatedAt)}
+                                            </p>
+                                          </div>
+                                          <div className="text-xs text-gray-500 dark:text-gray-400">
+                                            Row ID: {attempt.guestReportId}
+                                          </div>
+                                        </div>
+
+                                        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                                          <DetailItem label="Website" value={attempt.websiteUrl || attempt.website} />
+                                          <DetailItem label="Source Tool" value={attempt.sourceTool} />
+                                          <DetailItem label="Anonymous Visitor ID" value={attempt.anonymousVisitorId} />
+                                          <DetailItem label="Session ID" value={attempt.sessionId} />
+                                          <DetailItem label="IP Hash" value={attempt.ipHash} />
+                                          <DetailItem
+                                            label="Device"
+                                            value={[attempt.deviceType, attempt.browser, attempt.os].filter(Boolean).join(" | ") || "-"}
+                                          />
+                                          <DetailItem
+                                            label="UTM"
+                                            value={[attempt.utmSource, attempt.utmMedium, attempt.utmCampaign].filter(Boolean).join(" | ") || "-"}
+                                          />
+                                          <DetailItem label="Referrer" value={attempt.referrer} />
+                                          <DetailItem label="Landing Page" value={attempt.landingPageUrl} />
+                                          <DetailItem label="Current URL" value={attempt.currentUrl} />
+                                          <DetailItem label="Created At" value={formatDateTime(attempt.createdAt)} />
+                                          <DetailItem label="Generated At" value={formatDateTime(attempt.generatedAt)} />
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          ) : null}
+                        </Fragment>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+          ) : null}
+        </ComponentCard>
 
         <ComponentCard
           title="Guest Users"
