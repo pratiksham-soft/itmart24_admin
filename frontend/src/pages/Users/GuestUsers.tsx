@@ -312,6 +312,36 @@ const getWebsiteHost = (website: string) => {
   }
 };
 
+const getWebsitePreview = (website: string, extraCharacters = 12) => {
+  const normalizedWebsite = website.trim();
+  if (!normalizedWebsite) return website;
+
+  try {
+    const parsedUrl = new URL(normalizedWebsite);
+    const mainWebsite = `${parsedUrl.origin}/`;
+    const remainder = `${parsedUrl.pathname}${parsedUrl.search}${parsedUrl.hash}`.replace(
+      /^\/+/,
+      "",
+    );
+
+    if (!remainder) {
+      return mainWebsite;
+    }
+
+    if (remainder.length <= extraCharacters) {
+      return `${mainWebsite}${remainder}`;
+    }
+
+    return `${mainWebsite}${remainder.slice(0, extraCharacters)}...`;
+  } catch {
+    if (normalizedWebsite.length <= extraCharacters + 3) {
+      return normalizedWebsite;
+    }
+
+    return `${normalizedWebsite.slice(0, extraCharacters)}...`;
+  }
+};
+
 const getReportTypeClasses = (reportType: string) => {
   const normalized = reportType.trim().toLowerCase();
 
@@ -1115,7 +1145,7 @@ const GuestUsers = () => {
                               {getWebsiteHost(report.website)}
                             </a>
                             <div className="text-theme-xs text-gray-500 dark:text-gray-400">
-                              {report.website}
+                              {getWebsitePreview(report.website)}
                             </div>
                           </div>
                         </TableCell>
