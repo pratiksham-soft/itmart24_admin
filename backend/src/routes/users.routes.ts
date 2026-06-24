@@ -4,10 +4,13 @@ import {
   listUserPortalUsers,
 } from "../services/userPortalUsers.service";
 import {
+  addGuestReportDuplicateExclusion,
   getGuestReportTrackingDetails,
+  listGuestReportDuplicateExclusions,
   listGuestFeedback,
   listGuestReportDuplicates,
   listGuestReports,
+  removeGuestReportDuplicateExclusion,
 } from "../services/guestReport.service";
 import {
   getUserPortalAccessDetails,
@@ -97,6 +100,71 @@ router.get("/guest-report-duplicates", async (req, res) => {
       success: false,
       message: "Failed to fetch duplicate guest report audit",
       error: error instanceof Error ? error.message : "Unknown error",
+    });
+  }
+});
+
+router.get("/guest-report-duplicate-exclusions", async (_req, res) => {
+  try {
+    const exclusions = await listGuestReportDuplicateExclusions();
+    res.json({
+      success: true,
+      count: exclusions.length,
+      data: exclusions,
+    });
+  } catch (error) {
+    console.error("Failed to fetch guest report duplicate exclusions:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch guest report duplicate exclusions",
+      error: error instanceof Error ? error.message : "Unknown error",
+    });
+  }
+});
+
+router.post("/guest-report-duplicate-exclusions", async (req, res) => {
+  try {
+    const exclusion = await addGuestReportDuplicateExclusion({
+      website: String(req.body?.website ?? ""),
+      notes: typeof req.body?.notes === "string" ? req.body.notes : "",
+    });
+
+    res.status(201).json({
+      success: true,
+      message: "Excluded website saved successfully.",
+      data: exclusion,
+    });
+  } catch (error) {
+    console.error("Failed to save guest report duplicate exclusion:", error);
+    res.status(400).json({
+      success: false,
+      message:
+        error instanceof Error && error.message
+          ? error.message
+          : "Failed to save guest report duplicate exclusion",
+    });
+  }
+});
+
+router.delete("/guest-report-duplicate-exclusions/:exclusionId", async (req, res) => {
+  try {
+    const deleted = await removeGuestReportDuplicateExclusion(
+      String(req.params.exclusionId ?? "")
+    );
+
+    res.json({
+      success: true,
+      message: "Excluded website removed successfully.",
+      data: deleted,
+    });
+  } catch (error) {
+    console.error("Failed to delete guest report duplicate exclusion:", error);
+    res.status(404).json({
+      success: false,
+      message:
+        error instanceof Error && error.message
+          ? error.message
+          : "Failed to delete guest report duplicate exclusion",
     });
   }
 });

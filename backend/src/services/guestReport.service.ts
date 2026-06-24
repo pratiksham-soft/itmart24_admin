@@ -257,6 +257,7 @@ export type GuestDuplicateAuditGroup = {
   normalizedDomain: string;
   reportType: "SEO_HEALTH" | "AI_VISIBILITY" | "COMPETITOR_COMPARISON";
   reportTypeLabel: string;
+  isExcluded: boolean;
   totalAttempts: number;
   firstGeneratedAt: string | null;
   latestGeneratedAt: string | null;
@@ -271,6 +272,17 @@ export type GuestDuplicateAuditFilters = {
   domain?: string;
   limit?: number;
 };
+
+export type GuestDuplicateExclusionEntry = {
+  id: string;
+  normalizedDomain: string;
+  websiteInput: string;
+  notes: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+};
+
+const DUPLICATE_EXCLUSION_TABLE = "guest_report_duplicate_exclusions";
 
 const mapGuestReportRow = (row: GuestReportRow): GuestReportEntry => ({
   id: row.id,
@@ -311,6 +323,50 @@ const normalizeCount = (value: string | number | null | undefined) => {
 const normalizeText = (value: string | null | undefined) => {
   const normalized = String(value ?? "").trim();
   return normalized || null;
+};
+
+const normalizeDuplicateExclusionDomain = (value: string) => {
+  const trimmedValue = value.trim();
+  if (!trimmedValue) {
+    return null;
+  }
+
+  try {
+    return new URL(trimmedValue).hostname.replace(/^www\./i, "").toLowerCase();
+  } catch {
+    try {
+      return new URL(`https://${trimmedValue}`).hostname.replace(/^www\./i, "").toLowerCase();
+    } catch {
+      return (
+        trimmedValue
+          .toLowerCase()
+          .replace(/^https?:\/\//i, "")
+          .split("/")[0]
+          .split("?")[0]
+          .replace(/^www\./i, "")
+          .trim() || null
+      );
+    }
+  }
+};
+
+const ensureGuestDuplicateExclusionsTable = async () => {
+  const pool = getUserPortalPool();
+  await pool.query(
+    `
+      CREATE TABLE IF NOT EXISTS guest_report_duplicate_exclusions (
+        id UUID PRIMARY KEY,
+        normalized_domain TEXT NOT NULL UNIQUE,
+        website_input TEXT NOT NULL,
+        notes TEXT NOT NULL DEFAULT '',
+        created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+      )
+    `
+  );
+  await pool.query(
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_guest_report_duplicate_exclusions_domain_unique ON guest_report_duplicate_exclusions (normalized_domain)`
+  );
 };
 
 const normalizeToolName = (reportType: string, sourceTool: string | null | undefined) => {
@@ -487,6 +543,7 @@ export const listGuestReportDuplicates = async (
   filters: GuestDuplicateAuditFilters = {}
 ): Promise<GuestDuplicateAuditGroup[]> => {
   const pool = getUserPortalPool();
+  await ensureGuestDuplicateExclusionsTable();
   const columnsResult = await pool.query(
     `
       SELECT column_name
@@ -556,6 +613,11 @@ export const listGuestReportDuplicates = async (
       SELECT
         g.normalized_domain,
         g.report_type_key,
+        EXISTS (
+          SELECT 1
+          FROM guest_report_duplicate_exclusions ex
+          WHERE ex.normalized_domain = g.normalized_domain
+        ) AS is_excluded,
         g.attempt_count,
         g.first_generated_at,
         g.latest_generated_at,
@@ -606,6 +668,7 @@ export const listGuestReportDuplicates = async (
   return (result.rows as Array<{
     normalized_domain: string;
     report_type_key: GuestDuplicateAuditGroup["reportType"];
+    is_excluded: boolean;
     attempt_count: string | number;
     first_generated_at: string | Date | null;
     latest_generated_at: string | Date | null;
@@ -623,6 +686,7 @@ export const listGuestReportDuplicates = async (
       normalizedDomain: String(row.normalized_domain),
       reportType,
       reportTypeLabel: DUPLICATE_REPORT_TYPE_LABELS[reportType] ?? reportType,
+      isExcluded: Boolean(row.is_excluded),
       totalAttempts: normalizeCount(row.attempt_count),
       firstGeneratedAt: normalizeDate(row.first_generated_at),
       latestGeneratedAt: normalizeDate(row.latest_generated_at),
@@ -657,6 +721,124 @@ export const listGuestReportDuplicates = async (
       })),
     };
   });
+};
+
+export const listGuestReportDuplicateExclusions = async (): Promise<
+  GuestDuplicateExclusionEntry[]
+> => {
+  const pool = getUserPortalPool();
+  await ensureGuestDuplicateExclusionsTable();
+  const result = await pool.query(
+    `
+      SELECT
+        id,
+        normalized_domain,
+        website_input,
+        notes,
+        created_at,
+        updated_at
+      FROM guest_report_duplicate_exclusions
+      ORDER BY normalized_domain ASC, created_at DESC
+    `
+  );
+
+  return (result.rows as Array<{
+    id: string;
+    normalized_domain: string;
+    website_input: string;
+    notes: string | null;
+    created_at: string | Date | null;
+    updated_at: string | Date | null;
+  }>).map((row) => ({
+    id: String(row.id),
+    normalizedDomain: String(row.normalized_domain),
+    websiteInput: String(row.website_input),
+    notes: normalizeText(row.notes),
+    createdAt: normalizeDate(row.created_at),
+    updatedAt: normalizeDate(row.updated_at),
+  }));
+};
+
+export const addGuestReportDuplicateExclusion = async (input: {
+  website: string;
+  notes?: string;
+}): Promise<GuestDuplicateExclusionEntry> => {
+  const pool = getUserPortalPool();
+  await ensureGuestDuplicateExclusionsTable();
+
+  const normalizedDomain = normalizeDuplicateExclusionDomain(input.website);
+  if (!normalizedDomain) {
+    throw new Error("A valid website or domain is required.");
+  }
+
+  const result = await pool.query(
+    `
+      INSERT INTO guest_report_duplicate_exclusions (
+        id,
+        normalized_domain,
+        website_input,
+        notes,
+        created_at,
+        updated_at
+      )
+      VALUES (gen_random_uuid(), $1, $2, $3, NOW(), NOW())
+      ON CONFLICT (normalized_domain)
+      DO UPDATE
+      SET
+        website_input = EXCLUDED.website_input,
+        notes = EXCLUDED.notes,
+        updated_at = NOW()
+      RETURNING
+        id,
+        normalized_domain,
+        website_input,
+        notes,
+        created_at,
+        updated_at
+    `,
+    [normalizedDomain, input.website.trim(), input.notes?.trim() ?? ""]
+  );
+
+  const row = result.rows[0] as {
+    id: string;
+    normalized_domain: string;
+    website_input: string;
+    notes: string | null;
+    created_at: string | Date | null;
+    updated_at: string | Date | null;
+  };
+
+  return {
+    id: String(row.id),
+    normalizedDomain: String(row.normalized_domain),
+    websiteInput: String(row.website_input),
+    notes: normalizeText(row.notes),
+    createdAt: normalizeDate(row.created_at),
+    updatedAt: normalizeDate(row.updated_at),
+  };
+};
+
+export const removeGuestReportDuplicateExclusion = async (
+  exclusionId: string
+): Promise<{ id: string }> => {
+  const pool = getUserPortalPool();
+  await ensureGuestDuplicateExclusionsTable();
+  const result = await pool.query(
+    `
+      DELETE FROM guest_report_duplicate_exclusions
+      WHERE id = $1
+      RETURNING id
+    `,
+    [exclusionId]
+  );
+
+  if (!result.rowCount) {
+    throw new Error("Excluded website not found.");
+  }
+
+  return {
+    id: String(result.rows[0]?.id ?? exclusionId),
+  };
 };
 
 export const getGuestReportTrackingDetails = async (

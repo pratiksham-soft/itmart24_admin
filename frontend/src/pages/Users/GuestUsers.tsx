@@ -162,6 +162,7 @@ type GuestDuplicateAuditGroup = {
   normalizedDomain: string;
   reportType: "SEO_HEALTH" | "AI_VISIBILITY" | "COMPETITOR_COMPARISON";
   reportTypeLabel: string;
+  isExcluded: boolean;
   totalAttempts: number;
   firstGeneratedAt: string | null;
   latestGeneratedAt: string | null;
@@ -169,6 +170,15 @@ type GuestDuplicateAuditGroup = {
   uniqueSessions: number;
   uniqueIpHashes: number;
   attempts: GuestDuplicateAuditAttemptEntry[];
+};
+
+type GuestDuplicateExclusionEntry = {
+  id: string;
+  normalizedDomain: string;
+  websiteInput: string;
+  notes: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
 };
 
 const PAGE_SIZE = 25;
@@ -531,6 +541,13 @@ const GuestUsers = () => {
   const [duplicateDomainFilter, setDuplicateDomainFilter] = useState("");
   const [duplicateReportTypeFilter, setDuplicateReportTypeFilter] = useState("");
   const [expandedDuplicateKeys, setExpandedDuplicateKeys] = useState<string[]>([]);
+  const [duplicateExclusions, setDuplicateExclusions] = useState<GuestDuplicateExclusionEntry[]>([]);
+  const [duplicateExclusionModalOpen, setDuplicateExclusionModalOpen] = useState(false);
+  const [duplicateExclusionWebsite, setDuplicateExclusionWebsite] = useState("");
+  const [duplicateExclusionNotes, setDuplicateExclusionNotes] = useState("");
+  const [duplicateExclusionLoading, setDuplicateExclusionLoading] = useState(true);
+  const [duplicateExclusionSaving, setDuplicateExclusionSaving] = useState(false);
+  const [duplicateExclusionError, setDuplicateExclusionError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [selectedReport, setSelectedReport] = useState<GuestReportEntry | null>(null);
   const [feedbackModalOpen, setFeedbackModalOpen] = useState(false);
@@ -646,6 +663,39 @@ const GuestUsers = () => {
     void fetchDuplicateGroups();
   }, [duplicateDomainFilter, duplicateReportTypeFilter]);
 
+  useEffect(() => {
+    const fetchDuplicateExclusions = async () => {
+      setDuplicateExclusionLoading(true);
+      setDuplicateExclusionError(null);
+
+      try {
+        const response = await fetch(
+          `${API_BASE_URL}/api/users/guest-report-duplicate-exclusions`
+        );
+        const result = await response.json();
+
+        if (!response.ok || !result.success) {
+          throw new Error(
+            result.message || "Failed to fetch excluded guest websites"
+          );
+        }
+
+        setDuplicateExclusions(Array.isArray(result.data) ? result.data : []);
+      } catch (fetchError) {
+        console.error("Failed to fetch duplicate exclusions", fetchError);
+        setDuplicateExclusionError(
+          fetchError instanceof Error
+            ? fetchError.message
+            : "Failed to fetch excluded guest websites"
+        );
+      } finally {
+        setDuplicateExclusionLoading(false);
+      }
+    };
+
+    void fetchDuplicateExclusions();
+  }, []);
+
   const filteredReports = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
     if (!query) return reports;
@@ -692,6 +742,121 @@ const GuestUsers = () => {
       setPage(totalPages);
     }
   }, [page, totalPages]);
+
+  function openDuplicateExclusionModal(prefillWebsite?: string) {
+    setDuplicateExclusionError(null);
+    setDuplicateExclusionWebsite(prefillWebsite ?? "");
+    setDuplicateExclusionNotes("");
+    setDuplicateExclusionModalOpen(true);
+  }
+
+  function closeDuplicateExclusionModal() {
+    setDuplicateExclusionModalOpen(false);
+    setDuplicateExclusionWebsite("");
+    setDuplicateExclusionNotes("");
+    setDuplicateExclusionError(null);
+  }
+
+  async function saveDuplicateExclusion() {
+    const website = duplicateExclusionWebsite.trim();
+    if (!website) {
+      setDuplicateExclusionError("Enter a website or domain to exclude.");
+      return;
+    }
+
+    setDuplicateExclusionSaving(true);
+    setDuplicateExclusionError(null);
+
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/api/users/guest-report-duplicate-exclusions`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            website,
+            notes: duplicateExclusionNotes.trim(),
+          }),
+        }
+      );
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.message || "Failed to save excluded website");
+      }
+
+      const savedExclusion = result.data as GuestDuplicateExclusionEntry;
+      setDuplicateExclusions((current) => {
+        const next = current.filter(
+          (entry) => entry.normalizedDomain !== savedExclusion.normalizedDomain
+        );
+        return [savedExclusion, ...next].sort((left, right) =>
+          left.normalizedDomain.localeCompare(right.normalizedDomain)
+        );
+      });
+      setDuplicateGroups((current) =>
+        current.map((group) =>
+          group.normalizedDomain === savedExclusion.normalizedDomain
+            ? { ...group, isExcluded: true }
+            : group
+        )
+      );
+      closeDuplicateExclusionModal();
+    } catch (saveError) {
+      console.error("Failed to save duplicate exclusion", saveError);
+      setDuplicateExclusionError(
+        saveError instanceof Error
+          ? saveError.message
+          : "Failed to save excluded website"
+      );
+    } finally {
+      setDuplicateExclusionSaving(false);
+    }
+  }
+
+  async function removeDuplicateExclusion(exclusionId: string) {
+    setDuplicateExclusionError(null);
+
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/api/users/guest-report-duplicate-exclusions/${exclusionId}`,
+        {
+          method: "DELETE",
+        }
+      );
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.message || "Failed to remove excluded website");
+      }
+
+      setDuplicateExclusions((current) => {
+        const removedEntry = current.find((entry) => entry.id === exclusionId);
+        const next = current.filter((entry) => entry.id !== exclusionId);
+
+        if (removedEntry) {
+          setDuplicateGroups((groups) =>
+            groups.map((group) =>
+              group.normalizedDomain === removedEntry.normalizedDomain
+                ? { ...group, isExcluded: false }
+                : group
+            )
+          );
+        }
+
+        return next;
+      });
+    } catch (removeError) {
+      console.error("Failed to remove duplicate exclusion", removeError);
+      setDuplicateExclusionError(
+        removeError instanceof Error
+          ? removeError.message
+          : "Failed to remove excluded website"
+      );
+    }
+  }
 
   async function fetchTrackingDetailsById(reportId: string) {
     const response = await fetch(
@@ -869,6 +1034,19 @@ const GuestUsers = () => {
             </div>
           </div>
 
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-sky-100 bg-sky-50 px-4 py-3 text-sm text-sky-800 dark:border-sky-500/20 dark:bg-sky-500/10 dark:text-sky-200">
+            <div>
+              Excluded websites bypass the guest sample repeat lock in `seo-health`, `ai-analysis`, and `compare-competitors`.
+            </div>
+            <button
+              type="button"
+              onClick={() => openDuplicateExclusionModal(duplicateDomainFilter.trim())}
+              className="rounded-full border border-sky-200 bg-white px-4 py-2 text-xs font-semibold text-sky-700 transition hover:border-sky-300 hover:bg-sky-100 dark:border-sky-400/30 dark:bg-sky-500/10 dark:text-sky-200"
+            >
+              Exclude Website
+            </button>
+          </div>
+
           {duplicateError ? (
             <div className="rounded-2xl border border-error-200 bg-error-50 px-4 py-3 text-sm text-error-700 dark:border-error-500/20 dark:bg-error-500/10 dark:text-error-300">
               {duplicateError}
@@ -925,8 +1103,15 @@ const GuestUsers = () => {
                           <TableRow key={getDuplicateAuditKey(group)}>
                             <TableCell className="px-5 py-4 text-start">
                               <div className="space-y-1">
-                                <div className="text-sm font-semibold text-gray-900 dark:text-white">
-                                  {group.normalizedDomain}
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <div className="text-sm font-semibold text-gray-900 dark:text-white">
+                                    {group.normalizedDomain}
+                                  </div>
+                                  {group.isExcluded ? (
+                                    <span className="inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">
+                                      Excluded
+                                    </span>
+                                  ) : null}
                                 </div>
                                 <div className="text-xs text-gray-500 dark:text-gray-400">
                                   First seen {formatDateTime(group.firstGeneratedAt)}
@@ -964,13 +1149,24 @@ const GuestUsers = () => {
                             </TableCell>
 
                             <TableCell className="px-5 py-4">
-                              <button
-                                type="button"
-                                onClick={() => toggleDuplicateDetails(group)}
-                                className="rounded-full border border-rose-200 bg-rose-50 px-4 py-2 text-xs font-semibold text-rose-700 transition hover:border-rose-300 hover:bg-rose-100 dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-300"
-                              >
-                                {isExpanded ? "Hide Attempts" : "View Attempts"}
-                              </button>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => toggleDuplicateDetails(group)}
+                                  className="rounded-full border border-rose-200 bg-rose-50 px-4 py-2 text-xs font-semibold text-rose-700 transition hover:border-rose-300 hover:bg-rose-100 dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-300"
+                                >
+                                  {isExpanded ? "Hide Attempts" : "View Attempts"}
+                                </button>
+                                {!group.isExcluded ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => openDuplicateExclusionModal(group.normalizedDomain)}
+                                    className="rounded-full border border-sky-200 bg-sky-50 px-4 py-2 text-xs font-semibold text-sky-700 transition hover:border-sky-300 hover:bg-sky-100 dark:border-sky-500/20 dark:bg-sky-500/10 dark:text-sky-300"
+                                  >
+                                    Exclude
+                                  </button>
+                                ) : null}
+                              </div>
                             </TableCell>
                           </TableRow>
 
@@ -1391,6 +1587,127 @@ const GuestUsers = () => {
             >
               Close
             </button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal isOpen={duplicateExclusionModalOpen} onClose={closeDuplicateExclusionModal} className="max-w-[980px] m-4">
+        <div className="max-h-[85vh] overflow-y-auto rounded-3xl bg-white p-6 dark:bg-gray-900 md:p-8">
+          <div className="space-y-6">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-600 dark:text-sky-300">
+                Duplicate Audit Exclusions
+              </p>
+              <h2 className="text-2xl font-semibold text-gray-900 dark:text-white">
+                Exclude websites from guest sample repeat lock
+              </h2>
+              <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                Added websites can generate fresh sample previews again in SEO Health, AI Analysis, and Compare Competitors.
+              </p>
+            </div>
+
+            <div className="grid gap-4 rounded-3xl border border-gray-200 bg-gray-50 p-5 dark:border-white/[0.08] dark:bg-white/[0.03]">
+              <label className="space-y-2 text-sm font-medium text-gray-700 dark:text-gray-300">
+                <span>Website or domain</span>
+                <input
+                  type="text"
+                  value={duplicateExclusionWebsite}
+                  onChange={(event) => setDuplicateExclusionWebsite(event.target.value)}
+                  placeholder="example.com or https://example.com/path"
+                  className="h-11 w-full rounded-xl border border-gray-200 bg-white px-4 text-sm text-gray-800 outline-none transition focus:border-sky-400 dark:border-white/[0.08] dark:bg-white/[0.02] dark:text-white"
+                />
+              </label>
+
+              <label className="space-y-2 text-sm font-medium text-gray-700 dark:text-gray-300">
+                <span>Notes (optional)</span>
+                <textarea
+                  value={duplicateExclusionNotes}
+                  onChange={(event) => setDuplicateExclusionNotes(event.target.value)}
+                  placeholder="Why this website should bypass the duplicate preview lock"
+                  rows={3}
+                  className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-800 outline-none transition focus:border-sky-400 dark:border-white/[0.08] dark:bg-white/[0.02] dark:text-white"
+                />
+              </label>
+
+              {duplicateExclusionError ? (
+                <div className="rounded-2xl border border-error-200 bg-error-50 px-4 py-3 text-sm text-error-700 dark:border-error-500/20 dark:bg-error-500/10 dark:text-error-300">
+                  {duplicateExclusionError}
+                </div>
+              ) : null}
+
+              <div className="flex flex-wrap justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={closeDuplicateExclusionModal}
+                  className="rounded-full border border-gray-200 px-5 py-2 text-sm font-semibold text-gray-700 transition hover:border-gray-300 hover:bg-gray-50 dark:border-white/[0.06] dark:text-gray-200 dark:hover:bg-white/[0.03]"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void saveDuplicateExclusion()}
+                  disabled={duplicateExclusionSaving}
+                  className="rounded-full border border-sky-200 bg-sky-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60 dark:border-sky-400/20"
+                >
+                  {duplicateExclusionSaving ? "Saving..." : "Save Exclusion"}
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                  Current excluded websites
+                </h3>
+                <div className="text-sm text-gray-500 dark:text-gray-400">
+                  {duplicateExclusions.length} total
+                </div>
+              </div>
+
+              {duplicateExclusionLoading ? (
+                <div className="rounded-2xl border border-gray-200 bg-gray-50 px-5 py-4 text-sm text-gray-600 dark:border-white/[0.06] dark:bg-white/[0.03] dark:text-gray-300">
+                  Loading excluded websites...
+                </div>
+              ) : null}
+
+              {!duplicateExclusionLoading && duplicateExclusions.length === 0 ? (
+                <div className="rounded-2xl border border-gray-200 bg-gray-50 px-5 py-4 text-sm text-gray-600 dark:border-white/[0.06] dark:bg-white/[0.03] dark:text-gray-300">
+                  No excluded websites yet.
+                </div>
+              ) : null}
+
+              {!duplicateExclusionLoading && duplicateExclusions.length > 0 ? (
+                <div className="space-y-3">
+                  {duplicateExclusions.map((entry) => (
+                    <div
+                      key={entry.id}
+                      className="flex flex-col gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-4 dark:border-white/[0.06] dark:bg-white/[0.02] sm:flex-row sm:items-start sm:justify-between"
+                    >
+                      <div className="space-y-1">
+                        <div className="text-sm font-semibold text-gray-900 dark:text-white">
+                          {entry.normalizedDomain}
+                        </div>
+                        <div className="text-xs text-gray-500 dark:text-gray-400">
+                          Input: {entry.websiteInput}
+                        </div>
+                        {entry.notes ? (
+                          <div className="text-xs text-gray-500 dark:text-gray-400">
+                            Notes: {entry.notes}
+                          </div>
+                        ) : null}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => void removeDuplicateExclusion(entry.id)}
+                        className="rounded-full border border-rose-200 bg-rose-50 px-4 py-2 text-xs font-semibold text-rose-700 transition hover:border-rose-300 hover:bg-rose-100 dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-300"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </div>
           </div>
         </div>
       </Modal>
