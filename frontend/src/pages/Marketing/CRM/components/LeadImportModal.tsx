@@ -139,7 +139,7 @@ export default function LeadImportModal({
           <div>
             <h3 className="text-2xl font-semibold text-gray-800 dark:text-white/90">Import Leads</h3>
             <p className="mt-1 max-w-3xl text-sm text-gray-500 dark:text-gray-400">
-              Upload a CSV file to bulk import CRM leads. Download the sample file and keep the column names unchanged.
+              Upload a CSV file to bulk import CRM leads. For multiple emails or phone numbers, separate values with commas in the same cell.
             </p>
           </div>
           <a
@@ -316,6 +316,7 @@ export default function LeadImportModal({
                           <th className="px-3 py-2 font-medium">Lead</th>
                           <th className="px-3 py-2 font-medium">Email</th>
                           <th className="px-3 py-2 font-medium">Company</th>
+                          <th className="px-3 py-2 font-medium">Lead Type</th>
                           <th className="px-3 py-2 font-medium">Status</th>
                           <th className="px-3 py-2 font-medium">Priority</th>
                           <th className="px-3 py-2 font-medium">Result</th>
@@ -330,6 +331,7 @@ export default function LeadImportModal({
                             </td>
                             <td className="px-3 py-2 text-gray-700 dark:text-gray-300">{row.email || "No email"}</td>
                             <td className="px-3 py-2 text-gray-700 dark:text-gray-300">{row.companyName || "No company"}</td>
+                            <td className="px-3 py-2 text-gray-700 dark:text-gray-300">{row.leadType || "Not Set"}</td>
                             <td className="px-3 py-2 text-gray-700 dark:text-gray-300">{row.leadStatus}</td>
                             <td className="px-3 py-2 text-gray-700 dark:text-gray-300">{row.leadPriority}</td>
                             <td className="px-3 py-2">

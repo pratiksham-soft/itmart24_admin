@@ -80,6 +80,8 @@ export const defaultCRMSettings: CRMSettings = {
   defaultCurrency: "USD",
 };
 
+export const crmLeadTypes = ["Vendor", "Consumer"] as const;
+
 export const toOptions = (items: string[]): CRMOption[] =>
   items.map((item) => ({
     label: item,
@@ -121,6 +123,20 @@ export const formatCurrency = (value?: number | null, currency = "USD") =>
 
 export const readErrorMessage = (error: unknown, fallback: string) =>
   error instanceof Error && error.message ? error.message : fallback;
+
+export const formatLeadType = (value?: string | null) => {
+  if (value && crmLeadTypes.includes(value as (typeof crmLeadTypes)[number])) {
+    return value;
+  }
+
+  return "Not Set";
+};
+
+export const getLeadTypeBadgeColor = (value?: string | null): BadgeTone => {
+  if (value === "Vendor") return "primary";
+  if (value === "Consumer") return "info";
+  return "light";
+};
 
 export const getStatusBadgeColor = (value: string): BadgeTone => {
   const normalized = value.toLowerCase();

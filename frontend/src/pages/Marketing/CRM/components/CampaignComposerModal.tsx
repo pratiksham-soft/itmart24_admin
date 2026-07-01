@@ -17,7 +17,10 @@ import type {
   CRMLeadEmailRecipient,
 } from "../types/crm.types";
 import {
+  crmLeadTypes,
+  formatLeadType,
   fullLeadName,
+  getLeadTypeBadgeColor,
   getPriorityBadgeColor,
   getStatusBadgeColor,
   readErrorMessage,
@@ -97,13 +100,17 @@ const formatDuration = (recipientCount: number, delaySeconds: number) => {
 
 const mapRecipientToLead = (recipient: CRMCampaignRecipient): CRMLeadEmailRecipient => ({
   id: recipient.leadId ?? recipient.id,
+  recipientKey: recipient.recipientKey ?? `${recipient.leadId ?? recipient.id}::${recipient.email.toLowerCase()}`,
   firstName: recipient.firstName,
   lastName: recipient.lastName,
   email: recipient.email,
   phone: null,
+  emails: [recipient.email],
+  phones: [],
   companyName: recipient.companyName,
   jobTitle: recipient.jobTitle,
   website: recipient.website,
+  leadType: recipient.leadType ?? null,
   leadStatus: "Selected",
   leadPriority: "Medium",
   leadScore: 0,
@@ -118,6 +125,13 @@ export default function CampaignComposerModal({
   onClose,
   onSaved,
 }: CampaignComposerModalProps) {
+  const getLeadEmails = (lead: CRMLeadEmailRecipient) => {
+    const values = Array.isArray(lead.emails) && lead.emails.length > 0 ? lead.emails : lead.email ? [lead.email] : [];
+    return Array.from(new Set(values.filter(Boolean).map((email) => email.trim().toLowerCase())));
+  };
+
+  const buildRecipientKey = (leadId: number, email: string) => `${leadId}::${email.trim().toLowerCase()}`;
+
   const [accounts, setAccounts] = useState<EmailAccount[]>([]);
   const [loadingAccounts, setLoadingAccounts] = useState(false);
   const [form, setForm] = useState<CampaignFormState>(defaultFormState([], null));
@@ -130,16 +144,18 @@ export default function CampaignComposerModal({
   const [leadSearch, setLeadSearch] = useState("");
   const [leadFilters, setLeadFilters] = useState({
     status: "",
+    leadType: "",
     priority: "",
     tags: "",
     owner: "",
     companyName: "",
   });
   const [loadingLeads, setLoadingLeads] = useState(false);
+  const [hasLoadedRecipients, setHasLoadedRecipients] = useState(false);
   const [invalidFilteredCount, setInvalidFilteredCount] = useState(0);
-  const [selectedRecipients, setSelectedRecipients] = useState<Record<number, CRMLeadEmailRecipient>>({});
+  const [selectedRecipients, setSelectedRecipients] = useState<Record<string, CRMLeadEmailRecipient>>({});
   const [loadingInitialRecipients, setLoadingInitialRecipients] = useState(false);
-  const [previewRecipientId, setPreviewRecipientId] = useState<number | null>(null);
+  const [previewRecipientId, setPreviewRecipientId] = useState<string | null>(null);
   useEffect(() => {
     if (!isOpen) {
       return;
@@ -187,6 +203,7 @@ export default function CampaignComposerModal({
           limit: leadLimit,
           q: leadSearch,
           status: leadFilters.status,
+          leadType: leadFilters.leadType,
           priority: leadFilters.priority,
           owner: leadFilters.owner,
           tags: leadFilters.tags,
@@ -218,15 +235,20 @@ export default function CampaignComposerModal({
       isMounted = false;
       window.clearTimeout(timer);
     };
-  }, [isOpen, leadFilters, leadLimit, leadPage, leadSearch]);
+  }, [hasLoadedRecipients, isOpen, leadFilters, leadLimit, leadPage, leadSearch]);
 
   useEffect(() => {
     if (!isOpen) {
       setSelectedRecipients({});
       setLeadPage(1);
       setLeadSearch("");
+      setHasLoadedRecipients(false);
+      setLeadItems([]);
+      setLeadTotalPages(0);
+      setInvalidFilteredCount(0);
       setLeadFilters({
         status: "",
+        leadType: "",
         priority: "",
         tags: "",
         owner: "",
@@ -238,6 +260,7 @@ export default function CampaignComposerModal({
 
     if (!initialCampaign) {
       setSelectedRecipients({});
+      setPreviewRecipientId(null);
       return;
     }
 
@@ -255,11 +278,14 @@ export default function CampaignComposerModal({
         const mapped = Object.fromEntries(
           response.items
             .filter((recipient) => recipient.leadId != null)
-            .map((recipient) => [recipient.leadId as number, mapRecipientToLead(recipient)])
+            .map((recipient) => {
+              const mappedRecipient = mapRecipientToLead(recipient);
+              return [mappedRecipient.recipientKey, mappedRecipient];
+            })
         );
         setSelectedRecipients(mapped);
         const firstId = Object.keys(mapped)[0];
-        setPreviewRecipientId(firstId ? Number(firstId) : null);
+        setPreviewRecipientId(firstId ?? null);
       } catch (loadError) {
         if (!isMounted) {
           return;
@@ -279,7 +305,10 @@ export default function CampaignComposerModal({
   }, [initialCampaign, isOpen]);
 
   const selectedRecipientList = useMemo(
-    () => Object.values(selectedRecipients).sort((left, right) => left.id - right.id),
+    () =>
+      Object.values(selectedRecipients).sort((left, right) =>
+        left.id === right.id ? left.email.localeCompare(right.email) : left.id - right.id
+      ),
     [selectedRecipients]
   );
 
@@ -293,13 +322,19 @@ export default function CampaignComposerModal({
     : form.subject;
   const renderedBody = previewRecipient ? renderTemplate(form.body, previewRecipient) : form.body;
 
-  const toggleRecipient = (lead: CRMLeadEmailRecipient) => {
+  const toggleRecipient = (lead: CRMLeadEmailRecipient, email = lead.email) => {
+    const normalizedEmail = email.trim().toLowerCase();
+    const recipientKey = buildRecipientKey(lead.id, normalizedEmail);
     setSelectedRecipients((current) => {
       const next = { ...current };
-      if (next[lead.id]) {
-        delete next[lead.id];
+      if (next[recipientKey]) {
+        delete next[recipientKey];
       } else {
-        next[lead.id] = lead;
+        next[recipientKey] = {
+          ...lead,
+          recipientKey,
+          email: normalizedEmail,
+        };
       }
       return next;
     });
@@ -313,6 +348,7 @@ export default function CampaignComposerModal({
         limit: 5000,
         q: leadSearch,
         status: leadFilters.status,
+        leadType: leadFilters.leadType,
         priority: leadFilters.priority,
         owner: leadFilters.owner,
         tags: leadFilters.tags,
@@ -321,13 +357,22 @@ export default function CampaignComposerModal({
       setSelectedRecipients((current) => {
         const next = { ...current };
         response.items.forEach((lead) => {
-          next[lead.id] = lead;
+          getLeadEmails(lead).forEach((email) => {
+            const recipientKey = buildRecipientKey(lead.id, email);
+            next[recipientKey] = {
+              ...lead,
+              recipientKey,
+              email,
+            };
+          });
         });
         return next;
       });
       if (response.items[0]) {
-        setPreviewRecipientId(response.items[0].id);
+        const firstEmail = getLeadEmails(response.items[0])[0];
+        setPreviewRecipientId(firstEmail ? buildRecipientKey(response.items[0].id, firstEmail) : null);
       }
+      setHasLoadedRecipients(true);
       setInvalidFilteredCount(response.meta.invalidFilteredCount);
     } catch (selectionError) {
       setError(readErrorMessage(selectionError, "Failed to select filtered leads."));
@@ -372,7 +417,11 @@ export default function CampaignComposerModal({
         body: form.body,
         bodyMode: form.bodyMode,
         delaySeconds: form.delaySeconds,
-        recipientLeadIds: selectedRecipientList.map((lead) => lead.id),
+        recipientLeadIds: Array.from(new Set(selectedRecipientList.map((lead) => lead.id))),
+        recipientSelections: selectedRecipientList.map((lead) => ({
+          leadId: lead.id,
+          email: lead.email,
+        })),
       };
 
       const savedCampaign = initialCampaign
@@ -558,7 +607,7 @@ export default function CampaignComposerModal({
                 <div>
                   <div className="text-sm font-semibold text-gray-800 dark:text-white/90">Recipients</div>
                   <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                    Select CRM leads with valid email addresses. Selected: {selectedRecipientList.length}.
+                    Select CRM lead email addresses. Selected: {selectedRecipientList.length}.
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -579,13 +628,16 @@ export default function CampaignComposerModal({
                 </div>
               </div>
 
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-7">
                 <InputField
                   placeholder="Search name, company, email, website, tags"
                   value={leadSearch}
                   onChange={(event) => {
                     setLeadSearch(event.target.value);
                     setLeadPage(1);
+                    setHasLoadedRecipients(false);
+                    setLeadItems([]);
+                    setInvalidFilteredCount(0);
                   }}
                 />
                 <select
@@ -594,6 +646,9 @@ export default function CampaignComposerModal({
                   onChange={(event) => {
                     setLeadFilters((current) => ({ ...current, status: event.target.value }));
                     setLeadPage(1);
+                    setHasLoadedRecipients(false);
+                    setLeadItems([]);
+                    setInvalidFilteredCount(0);
                   }}
                 >
                   <option value="">All statuses</option>
@@ -605,10 +660,31 @@ export default function CampaignComposerModal({
                 </select>
                 <select
                   className={selectClassName}
+                  value={leadFilters.leadType}
+                  onChange={(event) => {
+                    setLeadFilters((current) => ({ ...current, leadType: event.target.value }));
+                    setLeadPage(1);
+                    setHasLoadedRecipients(false);
+                    setLeadItems([]);
+                    setInvalidFilteredCount(0);
+                  }}
+                >
+                  <option value="">All lead types</option>
+                  {crmLeadTypes.map((item) => (
+                    <option key={item} value={item}>
+                      {item}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  className={selectClassName}
                   value={leadFilters.priority}
                   onChange={(event) => {
                     setLeadFilters((current) => ({ ...current, priority: event.target.value }));
                     setLeadPage(1);
+                    setHasLoadedRecipients(false);
+                    setLeadItems([]);
+                    setInvalidFilteredCount(0);
                   }}
                 >
                   <option value="">All priorities</option>
@@ -624,6 +700,9 @@ export default function CampaignComposerModal({
                   onChange={(event) => {
                     setLeadFilters((current) => ({ ...current, tags: event.target.value }));
                     setLeadPage(1);
+                    setHasLoadedRecipients(false);
+                    setLeadItems([]);
+                    setInvalidFilteredCount(0);
                   }}
                 />
                 <InputField
@@ -632,6 +711,9 @@ export default function CampaignComposerModal({
                   onChange={(event) => {
                     setLeadFilters((current) => ({ ...current, owner: event.target.value }));
                     setLeadPage(1);
+                    setHasLoadedRecipients(false);
+                    setLeadItems([]);
+                    setInvalidFilteredCount(0);
                   }}
                 />
                 <InputField
@@ -640,11 +722,28 @@ export default function CampaignComposerModal({
                   onChange={(event) => {
                     setLeadFilters((current) => ({ ...current, companyName: event.target.value }));
                     setLeadPage(1);
+                    setHasLoadedRecipients(false);
+                    setLeadItems([]);
+                    setInvalidFilteredCount(0);
                   }}
                 />
               </div>
 
-              {invalidFilteredCount > 0 ? (
+              <div className="mt-3 flex justify-end">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setLeadPage(1);
+                    setHasLoadedRecipients(true);
+                  }}
+                >
+                  Filter
+                </Button>
+              </div>
+
+              {hasLoadedRecipients && invalidFilteredCount > 0 ? (
                 <div className="mt-3 rounded-2xl bg-warning-50 px-4 py-3 text-sm text-warning-700">
                   {invalidFilteredCount} filtered lead{invalidFilteredCount === 1 ? "" : "s"} without valid email were excluded automatically.
                 </div>
@@ -658,20 +757,27 @@ export default function CampaignComposerModal({
                       <th className="px-3 py-2 font-medium">Lead</th>
                       <th className="px-3 py-2 font-medium">Email</th>
                       <th className="px-3 py-2 font-medium">Company</th>
+                      <th className="px-3 py-2 font-medium">Lead Type</th>
                       <th className="px-3 py-2 font-medium">Status</th>
                       <th className="px-3 py-2 font-medium">Priority</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {loadingLeads ? (
+                    {!hasLoadedRecipients ? (
                       <tr>
-                        <td className="px-3 py-6 text-gray-500 dark:text-gray-400" colSpan={6}>
+                        <td className="px-3 py-6 text-gray-500 dark:text-gray-400" colSpan={7}>
+                          Apply filters and click Filter to load recipients.
+                        </td>
+                      </tr>
+                    ) : loadingLeads ? (
+                      <tr>
+                        <td className="px-3 py-6 text-gray-500 dark:text-gray-400" colSpan={7}>
                           Loading lead recipients...
                         </td>
                       </tr>
                     ) : leadItems.length === 0 ? (
                       <tr>
-                        <td className="px-3 py-6 text-gray-500 dark:text-gray-400" colSpan={6}>
+                        <td className="px-3 py-6 text-gray-500 dark:text-gray-400" colSpan={7}>
                           No email-ready leads matched your filters.
                         </td>
                       </tr>
@@ -679,16 +785,36 @@ export default function CampaignComposerModal({
                       leadItems.map((lead) => (
                         <tr key={lead.id} className="border-b border-gray-100 last:border-b-0 dark:border-gray-800">
                           <td className="px-3 py-3">
-                            <input
-                              type="checkbox"
-                              checked={Boolean(selectedRecipients[lead.id])}
-                              onChange={() => toggleRecipient(lead)}
-                              className="h-4 w-4"
-                            />
+                            <div className="space-y-2">
+                              {getLeadEmails(lead).map((email) => {
+                                const recipientKey = buildRecipientKey(lead.id, email);
+                                return (
+                                  <div key={recipientKey}>
+                                    <input
+                                      type="checkbox"
+                                      checked={Boolean(selectedRecipients[recipientKey])}
+                                      onChange={() => toggleRecipient(lead, email)}
+                                      className="h-4 w-4"
+                                    />
+                                  </div>
+                                );
+                              })}
+                            </div>
                           </td>
                           <td className="px-3 py-3 font-medium text-gray-800 dark:text-white/90">{fullLeadName(lead)}</td>
-                          <td className="px-3 py-3 text-gray-700 dark:text-gray-300">{lead.email}</td>
+                          <td className="px-3 py-3 text-gray-700 dark:text-gray-300">
+                            <div className="space-y-2">
+                              {getLeadEmails(lead).map((email) => (
+                                <div key={`${lead.id}-${email}`} className="break-all">{email}</div>
+                              ))}
+                            </div>
+                          </td>
                           <td className="px-3 py-3 text-gray-700 dark:text-gray-300">{lead.companyName || "No company"}</td>
+                          <td className="px-3 py-3">
+                            <Badge color={getLeadTypeBadgeColor(lead.leadType)} size="sm">
+                              {formatLeadType(lead.leadType)}
+                            </Badge>
+                          </td>
                           <td className="px-3 py-3">
                             <Badge color={getStatusBadgeColor(lead.leadStatus)} size="sm">
                               {lead.leadStatus}
@@ -740,12 +866,12 @@ export default function CampaignComposerModal({
                 <div className="text-sm font-semibold text-gray-800 dark:text-white/90">Preview Email</div>
                 <select
                   className={`${selectClassName} max-w-xs`}
-                  value={previewRecipient?.id ?? ""}
-                  onChange={(event) => setPreviewRecipientId(event.target.value ? Number(event.target.value) : null)}
+                  value={previewRecipient?.recipientKey ?? ""}
+                  onChange={(event) => setPreviewRecipientId(event.target.value || null)}
                 >
                   <option value="">Preview recipient</option>
                   {selectedRecipientList.map((recipient) => (
-                    <option key={recipient.id} value={recipient.id}>
+                    <option key={recipient.recipientKey} value={recipient.recipientKey}>
                       {fullLeadName(recipient)} ({recipient.email})
                     </option>
                   ))}
@@ -772,7 +898,19 @@ export default function CampaignComposerModal({
             </div>
 
             <div className="rounded-3xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">
-              <div className="text-sm font-semibold text-gray-800 dark:text-white/90">Selected Recipients</div>
+              <div className="flex items-center justify-between gap-3">
+                <div className="text-sm font-semibold text-gray-800 dark:text-white/90">Selected Recipients</div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedRecipients({});
+                    setPreviewRecipientId(null);
+                  }}
+                  className="text-sm font-medium text-brand-600 hover:underline"
+                >
+                  Clear all
+                </button>
+              </div>
               <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                 {selectedRecipientList.length} valid lead{selectedRecipientList.length === 1 ? "" : "s"} selected.
               </div>
@@ -793,6 +931,11 @@ export default function CampaignComposerModal({
                         <div className="font-medium text-gray-800 dark:text-white/90">{fullLeadName(recipient)}</div>
                         <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                           {recipient.email} {recipient.companyName ? `· ${recipient.companyName}` : ""}
+                        </div>
+                        <div className="mt-2">
+                          <Badge color={getLeadTypeBadgeColor(recipient.leadType)} size="sm">
+                            {formatLeadType(recipient.leadType)}
+                          </Badge>
                         </div>
                       </div>
                       <button

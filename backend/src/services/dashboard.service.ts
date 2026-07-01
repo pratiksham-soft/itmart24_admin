@@ -1,5 +1,6 @@
 import admin from "firebase-admin";
 import pg from "pg";
+import { DEFAULT_USER_PORTAL_DATABASE } from "../config/databaseTargets";
 import { firestore } from "../config/firebase";
 
 const { Pool } = pg as any;
@@ -323,7 +324,9 @@ const getUserPortalPoolConfig = () => {
     user,
     password,
     database:
-      process.env.USER_PORTAL_DB_NAME ?? process.env.USER_PORTAL_DATABASE ?? "user_portal",
+      process.env.USER_PORTAL_DB_NAME ??
+      process.env.USER_PORTAL_DATABASE ??
+      DEFAULT_USER_PORTAL_DATABASE,
     max: parseIntegerEnv(process.env.USER_PORTAL_DB_POOL_MAX, 4),
     idleTimeoutMillis: parseIntegerEnv(process.env.USER_PORTAL_DB_IDLE_TIMEOUT_MS, 30000),
     connectionTimeoutMillis: parseIntegerEnv(

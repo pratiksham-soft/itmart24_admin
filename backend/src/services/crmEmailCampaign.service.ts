@@ -14,6 +14,7 @@ type PaginationQuery = {
   limit?: unknown;
   q?: unknown;
   status?: unknown;
+  leadType?: unknown;
   priority?: unknown;
   owner?: unknown;
   tags?: unknown;
@@ -29,6 +30,12 @@ type CampaignPayload = {
   bodyMode?: unknown;
   delaySeconds?: unknown;
   recipientLeadIds?: unknown;
+  recipientSelections?: unknown;
+};
+
+type RecipientSelection = {
+  leadId: number;
+  email: string;
 };
 
 type CampaignRecord = {
@@ -67,12 +74,14 @@ type CampaignRecipientRecord = {
   id: number;
   campaignId: number;
   leadId: number | null;
+  recipientKey?: string;
   email: string;
   firstName: string | null;
   lastName: string | null;
   companyName: string | null;
   jobTitle: string | null;
   website: string | null;
+  leadType?: string | null;
   status: string;
   personalizedSubject: string | null;
   personalizedBodyHtml: string | null;
@@ -84,13 +93,17 @@ type CampaignRecipientRecord = {
 
 type LeadRecipientCandidate = {
   id: number;
+  recipientKey: string;
   firstName: string | null;
   lastName: string | null;
   email: string;
   phone: string | null;
+  emails: string[];
+  phones: string[];
   companyName: string | null;
   jobTitle: string | null;
   website: string | null;
+  leadType: string | null;
   leadStatus: string;
   leadPriority: string;
   leadScore: number;
@@ -113,6 +126,20 @@ const toTrimmedString = (value: unknown) => String(value ?? "").trim();
 const toOptionalString = (value: unknown) => {
   const normalized = toTrimmedString(value);
   return normalized || null;
+};
+const splitCommaSeparatedValues = (value: unknown) => {
+  if (Array.isArray(value)) {
+    return value
+      .map((entry) => String(entry ?? "").trim())
+      .filter(Boolean);
+  }
+  if (typeof value === "string") {
+    return value
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+  }
+  return [] as string[];
 };
 const toNumberOrNull = (value: unknown) => {
   if (value === null || value === undefined || value === "") {
@@ -158,13 +185,24 @@ const mapCampaign = (row: Record<string, unknown>): CampaignRecord =>
   camelizeRow(row) as CampaignRecord;
 
 const mapCampaignRecipient = (row: Record<string, unknown>): CampaignRecipientRecord =>
-  camelizeRow(row) as CampaignRecipientRecord;
+  ({
+    ...(camelizeRow(row) as CampaignRecipientRecord),
+    recipientKey: `${Number(row.lead_id ?? 0)}::${String(row.email ?? "").toLowerCase()}`,
+  });
 
 const mapLeadRecipient = (row: Record<string, unknown>): LeadRecipientCandidate => {
   const mapped = camelizeRow(row);
+  const emails = normalizeJsonField<string[]>(mapped.emails, []);
+  const phones = normalizeJsonField<string[]>(mapped.phones, []);
+  const primaryEmail = String(mapped.email ?? emails[0] ?? "");
+  const primaryPhone = mapped.phone ? String(mapped.phone) : phones[0] ?? null;
   return {
     ...(mapped as LeadRecipientCandidate),
-    email: String(mapped.email ?? ""),
+    recipientKey: `${Number(mapped.id ?? 0)}::${primaryEmail.toLowerCase()}`,
+    email: primaryEmail,
+    phone: primaryPhone,
+    emails,
+    phones,
     tags: normalizeJsonField<string[]>(mapped.tags, []),
     notes: normalizeJsonField<Array<Record<string, unknown>>>(mapped.notes, []),
   };
@@ -358,6 +396,35 @@ const sanitizeLeadIds = (value: unknown) => {
   return ids;
 };
 
+const sanitizeRecipientSelections = (value: unknown) => {
+  if (!Array.isArray(value)) {
+    return [] as RecipientSelection[];
+  }
+
+  const seen = new Set<string>();
+  const selections: RecipientSelection[] = [];
+
+  value.forEach((entry) => {
+    const record = (entry ?? {}) as Record<string, unknown>;
+    const leadId = Number(record.leadId);
+    const email = toTrimmedString(record.email).toLowerCase();
+    if (!Number.isFinite(leadId) || leadId <= 0 || !isValidEmail(email)) {
+      return;
+    }
+    const recipientKey = `${Math.round(leadId)}::${email}`;
+    if (seen.has(recipientKey)) {
+      return;
+    }
+    seen.add(recipientKey);
+    selections.push({
+      leadId: Math.round(leadId),
+      email,
+    });
+  });
+
+  return selections;
+};
+
 const sanitizeCampaignPayload = async (payload: CampaignPayload) => {
   const name = toTrimmedString(payload.name);
   const subject = toTrimmedString(payload.subject);
@@ -369,7 +436,11 @@ const sanitizeCampaignPayload = async (payload: CampaignPayload) => {
   const delaySeconds = Number.isFinite(delaySecondsRaw)
     ? Math.max(MIN_DELAY_SECONDS, Math.min(MAX_DELAY_SECONDS, Math.round(delaySecondsRaw)))
     : 10;
-  const recipientLeadIds = sanitizeLeadIds(payload.recipientLeadIds);
+  const recipientSelections = sanitizeRecipientSelections(payload.recipientSelections);
+  const recipientLeadIds =
+    recipientSelections.length > 0
+      ? Array.from(new Set(recipientSelections.map((selection) => selection.leadId)))
+      : sanitizeLeadIds(payload.recipientLeadIds);
 
   if (!name) {
     throw new Error("Campaign name is required.");
@@ -398,6 +469,7 @@ const sanitizeCampaignPayload = async (payload: CampaignPayload) => {
     bodyMode,
     delaySeconds,
     recipientLeadIds,
+    recipientSelections,
   };
 };
 
@@ -415,9 +487,12 @@ const loadLeadRecipientsByIds = async (leadIds: number[]) => {
         last_name,
         email,
         phone,
+        emails,
+        phones,
         company_name,
         job_title,
         website,
+        lead_type,
         lead_status,
         lead_priority,
         lead_score,
@@ -433,13 +508,40 @@ const loadLeadRecipientsByIds = async (leadIds: number[]) => {
   );
 
   return (result.rows as Array<Record<string, unknown>>)
-    .map(mapLeadRecipient)
-    .filter((lead) => isValidEmail(lead.email));
+    .map(mapLeadRecipient);
 };
 
-const replaceCampaignRecipients = async (campaignId: number, leadIds: number[]) => {
-  const recipients = await loadLeadRecipientsByIds(leadIds);
-  if (recipients.length === 0) {
+const replaceCampaignRecipients = async (campaignId: number, leadIds: number[], recipientSelections?: RecipientSelection[]) => {
+  const leads = await loadLeadRecipientsByIds(leadIds);
+  const selectedRecipients =
+    recipientSelections && recipientSelections.length > 0
+      ? recipientSelections
+          .map((selection) => {
+            const lead = leads.find((entry) => entry.id === selection.leadId);
+            if (!lead) {
+              return null;
+            }
+            return {
+              ...lead,
+              recipientKey: `${lead.id}::${selection.email}`,
+              email: selection.email,
+            };
+          })
+          .filter((entry): entry is LeadRecipientCandidate => entry !== null && isValidEmail(entry.email))
+      : leads.flatMap((lead) => {
+          const emails = Array.from(
+            new Set(
+              (Array.isArray(lead.emails) && lead.emails.length > 0 ? lead.emails : [lead.email]).filter((email): email is string => isValidEmail(email))
+            )
+          );
+          return emails.map((email) => ({
+            ...lead,
+            recipientKey: `${lead.id}::${email.toLowerCase()}`,
+            email,
+          }));
+        });
+
+  if (selectedRecipients.length === 0) {
     throw new Error("At least one selected lead must have a valid email address.");
   }
 
@@ -449,7 +551,7 @@ const replaceCampaignRecipients = async (campaignId: number, leadIds: number[]) 
     await client.query("BEGIN");
     await client.query("DELETE FROM crm_campaign_recipients WHERE campaign_id = $1", [campaignId]);
 
-    for (const recipient of recipients) {
+    for (const recipient of selectedRecipients) {
       await client.query(
         `
           INSERT INTO crm_campaign_recipients (
@@ -493,7 +595,7 @@ const replaceCampaignRecipients = async (campaignId: number, leadIds: number[]) 
             updated_at = NOW()
         WHERE id = $1
       `,
-      [campaignId, recipients.length]
+      [campaignId, selectedRecipients.length]
     );
     await client.query("COMMIT");
   } catch (error) {
@@ -503,7 +605,7 @@ const replaceCampaignRecipients = async (campaignId: number, leadIds: number[]) 
     client.release();
   }
 
-  return recipients.length;
+  return selectedRecipients.length;
 };
 
 const syncCampaignCounts = async (campaignId: number) => {
@@ -785,6 +887,7 @@ export const listLeadEmailRecipients = async (query: PaginationQuery) =>
     const pagination = buildPagination(query);
     const q = toTrimmedString(query.q).toLowerCase();
     const status = toTrimmedString(query.status);
+    const leadType = toTrimmedString(query.leadType);
     const priority = toTrimmedString(query.priority);
     const owner = toTrimmedString(query.owner);
     const tags = toTrimmedString(query.tags).toLowerCase();
@@ -795,6 +898,10 @@ export const listLeadEmailRecipients = async (query: PaginationQuery) =>
     if (status) {
       values.push(status);
       clauses.push(`lead.lead_status = $${values.length}`);
+    }
+    if (leadType) {
+      values.push(leadType);
+      clauses.push(`lead.lead_type = $${values.length}`);
     }
     if (priority) {
       values.push(priority);
@@ -819,8 +926,10 @@ export const listLeadEmailRecipients = async (query: PaginationQuery) =>
         lead.first_name ILIKE ${parameter}
         OR lead.last_name ILIKE ${parameter}
         OR lead.email ILIKE ${parameter}
+        OR lead.emails::text ILIKE ${parameter}
         OR lead.company_name ILIKE ${parameter}
         OR lead.website ILIKE ${parameter}
+        OR lead.lead_type ILIKE ${parameter}
         OR lead.tags::text ILIKE ${parameter}
       )`);
     }
@@ -836,9 +945,12 @@ export const listLeadEmailRecipients = async (query: PaginationQuery) =>
             lead.last_name,
             lead.email,
             lead.phone,
+            lead.emails,
+            lead.phones,
             lead.company_name,
             lead.job_title,
             lead.website,
+            lead.lead_type,
             lead.lead_status,
             lead.lead_priority,
             lead.lead_score,
@@ -847,7 +959,14 @@ export const listLeadEmailRecipients = async (query: PaginationQuery) =>
             lead.assigned_to
           FROM crm_leads lead
           WHERE ${whereClause}
-            AND lead.email ~* '^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$'
+            AND (
+              lead.email ~* '^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$'
+              OR EXISTS (
+                SELECT 1
+                FROM jsonb_array_elements_text(COALESCE(lead.emails, '[]'::jsonb)) AS email_entry(value)
+                WHERE email_entry.value ~* '^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$'
+              )
+            )
           ORDER BY lead.updated_at DESC, lead.id DESC
           LIMIT $${values.length + 1}
           OFFSET $${values.length + 2}
@@ -859,7 +978,14 @@ export const listLeadEmailRecipients = async (query: PaginationQuery) =>
           SELECT COUNT(*)::int AS total
           FROM crm_leads lead
           WHERE ${whereClause}
-            AND lead.email ~* '^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$'
+            AND (
+              lead.email ~* '^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$'
+              OR EXISTS (
+                SELECT 1
+                FROM jsonb_array_elements_text(COALESCE(lead.emails, '[]'::jsonb)) AS email_entry(value)
+                WHERE email_entry.value ~* '^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$'
+              )
+            )
         `,
         values
       ),
@@ -1019,7 +1145,7 @@ export const createCampaign = async (payload: CampaignPayload, actor: AdminActor
     );
 
     const campaign = mapCampaign(result.rows[0] as Record<string, unknown>);
-    await replaceCampaignRecipients(campaign.id, input.recipientLeadIds);
+    await replaceCampaignRecipients(campaign.id, input.recipientLeadIds, input.recipientSelections);
 
     await insertActivity({
       activityType: "Campaign Created",
@@ -1078,7 +1204,7 @@ export const updateCampaign = async (id: number, payload: CampaignPayload, actor
       ]
     );
 
-    await replaceCampaignRecipients(id, input.recipientLeadIds);
+    await replaceCampaignRecipients(id, input.recipientLeadIds, input.recipientSelections);
     return loadCampaignById(id);
   });
 
@@ -1159,7 +1285,7 @@ export const duplicateCampaign = async (id: number, actor: AdminActor) =>
     const duplicate = mapCampaign(result.rows[0] as Record<string, unknown>);
     const recipientRows = await pool.query(
       `
-        SELECT lead_id
+        SELECT lead_id, email
         FROM crm_campaign_recipients
         WHERE campaign_id = $1
           AND lead_id IS NOT NULL
@@ -1167,10 +1293,16 @@ export const duplicateCampaign = async (id: number, actor: AdminActor) =>
       `,
       [id]
     );
-    const leadIds = recipientRows.rows
-      .map((row: Record<string, unknown>) => Number((row as { lead_id?: unknown }).lead_id))
+    const recipientSelections = recipientRows.rows
+      .map((row: Record<string, unknown>) => ({
+        leadId: Number((row as { lead_id?: unknown }).lead_id),
+        email: toTrimmedString((row as { email?: unknown }).email).toLowerCase(),
+      }))
+      .filter((entry: RecipientSelection) => Number.isFinite(entry.leadId) && entry.leadId > 0 && isValidEmail(entry.email));
+    const leadIds = recipientSelections
+      .map((entry: RecipientSelection) => entry.leadId)
       .filter((entry: number) => Number.isFinite(entry) && entry > 0);
-    await replaceCampaignRecipients(duplicate.id, leadIds);
+    await replaceCampaignRecipients(duplicate.id, leadIds, recipientSelections);
     return loadCampaignById(duplicate.id);
   });
 
@@ -1349,11 +1481,11 @@ export const getCampaignRecipients = async (id: number, query: PaginationQuery) 
     const pagination = buildPagination(query);
     const status = toTrimmedString(query.status).toLowerCase();
     const values: unknown[] = [id];
-    const clauses = ["campaign_id = $1"];
+    const clauses = ["recipient.campaign_id = $1"];
 
     if (status) {
       values.push(status);
-      clauses.push(`LOWER(status) = $${values.length}`);
+      clauses.push(`LOWER(recipient.status) = $${values.length}`);
     }
 
     const whereClause = clauses.join(" AND ");
@@ -1361,10 +1493,11 @@ export const getCampaignRecipients = async (id: number, query: PaginationQuery) 
     const [itemsResult, countResult] = await Promise.all([
       pool.query(
         `
-          SELECT *
-          FROM crm_campaign_recipients
+          SELECT recipient.*, lead.lead_type
+          FROM crm_campaign_recipients recipient
+          LEFT JOIN crm_leads lead ON lead.id = recipient.lead_id
           WHERE ${whereClause}
-          ORDER BY id ASC
+          ORDER BY recipient.id ASC
           LIMIT $${values.length + 1}
           OFFSET $${values.length + 2}
         `,
@@ -1373,7 +1506,7 @@ export const getCampaignRecipients = async (id: number, query: PaginationQuery) 
       pool.query(
         `
           SELECT COUNT(*)::int AS total
-          FROM crm_campaign_recipients
+          FROM crm_campaign_recipients recipient
           WHERE ${whereClause}
         `,
         values

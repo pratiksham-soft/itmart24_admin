@@ -7,7 +7,7 @@ import LeadImportModal from "./components/LeadImportModal";
 import CRMEntityPage from "./components/CRMEntityPage";
 import { addLeadNote, addLeadTask, convertLead, createLead, deleteLead, getLeadCustomPortfolio, getLeads, updateLead } from "./services/crmApi";
 import type { BannerState, CRMCustomPortfolioLead, CRMLead, CRMLeadImportResult } from "./types/crm.types";
-import { defaultCRMSettings, formatCurrency, formatDateTime, fullLeadName, getPriorityBadgeColor, getStatusBadgeColor, isOverdue, readErrorMessage, toOptions } from "./utils/crmHelpers";
+import { crmLeadTypes, defaultCRMSettings, formatCurrency, formatDateTime, formatLeadType, fullLeadName, getLeadTypeBadgeColor, getPriorityBadgeColor, getStatusBadgeColor, isOverdue, readErrorMessage, toOptions } from "./utils/crmHelpers";
 import { Modal } from "../../../components/ui/modal";
 import ActivityTimeline from "./components/ActivityTimeline";
 
@@ -23,6 +23,7 @@ export default function LeadsPage() {
   const [customPortfolioLoading, setCustomPortfolioLoading] = useState(false);
 
   const filters = [
+    { key: "leadType", label: "Lead Type", options: toOptions([...crmLeadTypes]) },
     { key: "status", label: "Status", options: toOptions(defaultCRMSettings.leadStatuses) },
     { key: "source", label: "Source", options: toOptions(defaultCRMSettings.leadSources) },
     { key: "priority", label: "Priority", options: toOptions(defaultCRMSettings.leadPriorities) },
@@ -32,6 +33,12 @@ export default function LeadsPage() {
     setBanner({ tone, message });
     window.setTimeout(() => setBanner(null), 3000);
   };
+
+  const getLeadEmails = (lead: CRMLead) =>
+    Array.isArray(lead.emails) && lead.emails.length > 0 ? lead.emails : lead.email ? [lead.email] : [];
+
+  const getLeadPhones = (lead: CRMLead) =>
+    Array.isArray(lead.phones) && lead.phones.length > 0 ? lead.phones : lead.phone ? [lead.phone] : [];
 
   return (
     <>
@@ -52,13 +59,16 @@ export default function LeadsPage() {
               <div>
                 <div className="flex flex-wrap items-center gap-2 font-semibold text-gray-800 dark:text-white/90">
                   <span>{fullLeadName(lead as CRMLead)}</span>
+                  <Badge color={getLeadTypeBadgeColor((lead as CRMLead).leadType)} size="sm">
+                    {formatLeadType((lead as CRMLead).leadType)}
+                  </Badge>
                   {(lead as CRMLead).hasCustomPortfolio ? (
                     <span className="inline-flex rounded-full bg-blue-light-50 px-2.5 py-1 text-[11px] font-medium text-blue-light-700 dark:bg-blue-light-500/10 dark:text-blue-light-300">
                       Custom Portfolio
                     </span>
                   ) : null}
                 </div>
-                <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">{(lead as CRMLead).email || "No email"}</div>
+                <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">{getLeadEmails(lead as CRMLead).join(", ") || "No email"}</div>
               </div>
             ),
           },
@@ -70,6 +80,15 @@ export default function LeadsPage() {
                 <div>{(lead as CRMLead).companyName || "Not linked"}</div>
                 <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">{(lead as CRMLead).jobTitle || "No title"}</div>
               </div>
+            ),
+          },
+          {
+            key: "type",
+            label: "Lead Type",
+            render: (lead) => (
+              <Badge color={getLeadTypeBadgeColor((lead as CRMLead).leadType)} size="sm">
+                {formatLeadType((lead as CRMLead).leadType)}
+              </Badge>
             ),
           },
           {
@@ -180,6 +199,11 @@ export default function LeadsPage() {
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div>
                 <h3 className="text-2xl font-semibold text-gray-800 dark:text-white/90">{fullLeadName(viewLead)}</h3>
+                <div className="mt-3">
+                  <Badge color={getLeadTypeBadgeColor(viewLead.leadType)} size="sm">
+                    {formatLeadType(viewLead.leadType)}
+                  </Badge>
+                </div>
                 <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
                   {viewLead.companyName || "No company"} · {viewLead.email || "No email"} · {viewLead.phone || "No phone"}
                 </p>
@@ -257,6 +281,10 @@ export default function LeadsPage() {
             {detailTab === "overview" ? (
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
+                  <div className="text-sm text-gray-500 dark:text-gray-400">Lead Type</div>
+                  <div className="mt-1 font-semibold text-gray-800 dark:text-white/90">{formatLeadType(viewLead.leadType)}</div>
+                </div>
+                <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
                   <div className="text-sm text-gray-500 dark:text-gray-400">Status</div>
                   <div className="mt-1 font-semibold text-gray-800 dark:text-white/90">{viewLead.leadStatus}</div>
                 </div>
@@ -271,6 +299,14 @@ export default function LeadsPage() {
                 <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
                   <div className="text-sm text-gray-500 dark:text-gray-400">Estimated Value</div>
                   <div className="mt-1 font-semibold text-gray-800 dark:text-white/90">{formatCurrency(viewLead.estimatedValue, viewLead.currency)}</div>
+                </div>
+                <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03] md:col-span-2">
+                  <div className="text-sm text-gray-500 dark:text-gray-400">Emails</div>
+                  <div className="mt-1 font-semibold text-gray-800 dark:text-white/90 break-words">{getLeadEmails(viewLead).join(", ") || "No email"}</div>
+                </div>
+                <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03] md:col-span-2">
+                  <div className="text-sm text-gray-500 dark:text-gray-400">Phone Numbers</div>
+                  <div className="mt-1 font-semibold text-gray-800 dark:text-white/90 break-words">{getLeadPhones(viewLead).join(", ") || "No phone"}</div>
                 </div>
               </div>
             ) : null}

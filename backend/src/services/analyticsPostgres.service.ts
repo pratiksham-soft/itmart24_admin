@@ -1,8 +1,8 @@
 import pg from "pg";
+import { DEFAULT_ANALYTICS_DATABASE } from "../config/databaseTargets";
 
 const { Client, Pool } = pg as any;
 
-const DEFAULT_DATABASE_NAME = "itmart24_analytics";
 const DEFAULT_PORT = 5432;
 const ADMIN_DATABASE_CANDIDATES = ["postgres", "template1", "defaultdb"];
 
@@ -62,7 +62,7 @@ const readConfig = () => {
     process.env.ANALYTICS_PG_DATABASE ??
     process.env.PGDATABASE ??
     process.env.POSTGRES_DATABASE ??
-    DEFAULT_DATABASE_NAME;
+    DEFAULT_ANALYTICS_DATABASE;
 
   const sslEnabled = parseBooleanEnv(
     process.env.ANALYTICS_PG_SSL ?? process.env.PGSSLMODE,
@@ -607,9 +607,12 @@ const TABLE_STATEMENTS = [
       last_name TEXT,
       email TEXT,
       phone TEXT,
+      emails JSONB NOT NULL DEFAULT '[]'::jsonb,
+      phones JSONB NOT NULL DEFAULT '[]'::jsonb,
       company_name TEXT,
       job_title TEXT,
       website TEXT,
+      lead_type TEXT,
       lead_source TEXT NOT NULL DEFAULT 'Other',
       lead_status TEXT NOT NULL DEFAULT 'New',
       lead_priority TEXT NOT NULL DEFAULT 'Medium',
@@ -897,6 +900,18 @@ const TABLE_STATEMENTS = [
       created_at TIMESTAMP NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMP NOT NULL DEFAULT NOW()
     )
+  `,
+  `
+    ALTER TABLE crm_leads
+    ADD COLUMN IF NOT EXISTS lead_type TEXT
+  `,
+  `
+    ALTER TABLE crm_leads
+    ADD COLUMN IF NOT EXISTS emails JSONB NOT NULL DEFAULT '[]'::jsonb
+  `,
+  `
+    ALTER TABLE crm_leads
+    ADD COLUMN IF NOT EXISTS phones JSONB NOT NULL DEFAULT '[]'::jsonb
   `,
   `
     CREATE INDEX IF NOT EXISTS idx_crm_leads_email ON crm_leads (email) WHERE deleted_at IS NULL

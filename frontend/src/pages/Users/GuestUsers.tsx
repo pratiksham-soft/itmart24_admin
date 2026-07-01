@@ -541,6 +541,7 @@ const GuestUsers = () => {
   const [duplicateDomainFilter, setDuplicateDomainFilter] = useState("");
   const [duplicateReportTypeFilter, setDuplicateReportTypeFilter] = useState("");
   const [expandedDuplicateKeys, setExpandedDuplicateKeys] = useState<string[]>([]);
+  const [isDuplicateAuditExpanded, setIsDuplicateAuditExpanded] = useState(false);
   const [duplicateExclusions, setDuplicateExclusions] = useState<GuestDuplicateExclusionEntry[]>([]);
   const [duplicateExclusionModalOpen, setDuplicateExclusionModalOpen] = useState(false);
   const [duplicateExclusionWebsite, setDuplicateExclusionWebsite] = useState("");
@@ -1005,7 +1006,24 @@ const GuestUsers = () => {
         <ComponentCard
           title="Duplicate Guest Sample Audit"
           desc="Audit repeated free sample activity by normalized domain and report type, then expand a row to inspect every historical attempt."
+          headerAction={
+            <button
+              type="button"
+              onClick={() => setIsDuplicateAuditExpanded((current) => !current)}
+              className="rounded-full border border-rose-200 bg-rose-50 px-4 py-2 text-xs font-semibold text-rose-700 transition hover:border-rose-300 hover:bg-rose-100 dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-300"
+            >
+              {isDuplicateAuditExpanded ? "Collapse" : "Expand"}
+            </button>
+          }
         >
+          {!isDuplicateAuditExpanded ? (
+            <div className="rounded-2xl border border-gray-200 bg-gray-50 px-5 py-4 text-sm text-gray-600 dark:border-white/[0.06] dark:bg-white/[0.03] dark:text-gray-300">
+              Expand this section to view the table with columns Domain, Report Type, Attempts, Visitor Signals, Latest Attempt, and Action.
+            </div>
+          ) : null}
+
+          {isDuplicateAuditExpanded ? (
+            <>
           <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_220px_auto] lg:items-center">
             <ProductSearchBar
               id="duplicate-guest-search"
@@ -1236,6 +1254,8 @@ const GuestUsers = () => {
                 </Table>
               </div>
             </div>
+          ) : null}
+            </>
           ) : null}
         </ComponentCard>
 

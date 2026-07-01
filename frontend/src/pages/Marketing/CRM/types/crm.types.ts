@@ -27,6 +27,7 @@ export type CRMListParams = {
   limit?: number;
   q?: string;
   status?: string;
+  leadType?: string;
   source?: string;
   owner?: string;
   priority?: string;
@@ -42,9 +43,12 @@ export type CRMLead = {
   lastName: string | null;
   email: string | null;
   phone: string | null;
+  emails: string[];
+  phones: string[];
   companyName: string | null;
   jobTitle: string | null;
   website: string | null;
+  leadType: string | null;
   leadSource: string;
   leadStatus: string;
   leadPriority: string;
@@ -217,12 +221,14 @@ export type CRMCampaignRecipient = {
   id: number;
   campaignId: number;
   leadId: number | null;
+  recipientKey?: string;
   email: string;
   firstName: string | null;
   lastName: string | null;
   companyName: string | null;
   jobTitle: string | null;
   website: string | null;
+  leadType?: string | null;
   status: string;
   personalizedSubject: string | null;
   personalizedBodyHtml: string | null;
@@ -234,13 +240,17 @@ export type CRMCampaignRecipient = {
 
 export type CRMLeadEmailRecipient = {
   id: number;
+  recipientKey: string;
   firstName: string | null;
   lastName: string | null;
   email: string;
   phone: string | null;
+  emails: string[];
+  phones: string[];
   companyName: string | null;
   jobTitle: string | null;
   website: string | null;
+  leadType: string | null;
   leadStatus: string;
   leadPriority: string;
   leadScore: number;
@@ -391,6 +401,7 @@ export type CRMLeadImportPreviewRow = {
   lastName: string | null;
   email: string | null;
   companyName: string | null;
+  leadType: string | null;
   leadStatus: string;
   leadPriority: string;
   status: "valid" | "invalid" | "duplicate";

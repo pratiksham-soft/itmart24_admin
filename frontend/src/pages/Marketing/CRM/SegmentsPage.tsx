@@ -128,7 +128,7 @@ export default function SegmentsPage() {
               <SegmentBuilder
                 conditions={form.conditions}
                 onChange={(conditions) => setForm((current) => ({ ...current, conditions }))}
-                fieldOptions={toOptions(["leadStatus", "leadSource", "country", "tags", "dealValue", "nextFollowUpAt", "lastActivityAt", "lifecycleStage", "status", "stage", "owner"])}
+                fieldOptions={toOptions(["leadType", "leadStatus", "leadSource", "country", "tags", "dealValue", "nextFollowUpAt", "lastActivityAt", "lifecycleStage", "status", "stage", "owner"])}
                 operatorOptions={toOptions(["equals", "contains", "greater_than", "before", "older_than_days"])}
               />
 

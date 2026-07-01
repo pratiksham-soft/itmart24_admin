@@ -5,8 +5,8 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.listAnalyticsPreaggregated = exports.getAnalyticsPool = exports.initializeAnalyticsPostgres = exports.ensureTables = exports.ensureDatabase = exports.formatAnalyticsConnectionError = exports.getLastSuccessfulAnalyticsConfigSummary = exports.getAnalyticsConfigSummary = void 0;
 const pg_1 = __importDefault(require("pg"));
+const databaseTargets_1 = require("../config/databaseTargets");
 const { Client, Pool } = pg_1.default;
-const DEFAULT_DATABASE_NAME = "itmart24_analytics";
 const DEFAULT_PORT = 5432;
 const ADMIN_DATABASE_CANDIDATES = ["postgres", "template1", "defaultdb"];
 let analyticsPool = null;
@@ -41,7 +41,7 @@ const readConfig = () => {
     const database = process.env.ANALYTICS_PG_DATABASE ??
         process.env.PGDATABASE ??
         process.env.POSTGRES_DATABASE ??
-        DEFAULT_DATABASE_NAME;
+        databaseTargets_1.DEFAULT_ANALYTICS_DATABASE;
     const sslEnabled = parseBooleanEnv(process.env.ANALYTICS_PG_SSL ?? process.env.PGSSLMODE, false);
     return {
         host,
@@ -539,9 +539,12 @@ const TABLE_STATEMENTS = [
       last_name TEXT,
       email TEXT,
       phone TEXT,
+      emails JSONB NOT NULL DEFAULT '[]'::jsonb,
+      phones JSONB NOT NULL DEFAULT '[]'::jsonb,
       company_name TEXT,
       job_title TEXT,
       website TEXT,
+      lead_type TEXT,
       lead_source TEXT NOT NULL DEFAULT 'Other',
       lead_status TEXT NOT NULL DEFAULT 'New',
       lead_priority TEXT NOT NULL DEFAULT 'Medium',
@@ -829,6 +832,18 @@ const TABLE_STATEMENTS = [
       created_at TIMESTAMP NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMP NOT NULL DEFAULT NOW()
     )
+  `,
+    `
+    ALTER TABLE crm_leads
+    ADD COLUMN IF NOT EXISTS lead_type TEXT
+  `,
+    `
+    ALTER TABLE crm_leads
+    ADD COLUMN IF NOT EXISTS emails JSONB NOT NULL DEFAULT '[]'::jsonb
+  `,
+    `
+    ALTER TABLE crm_leads
+    ADD COLUMN IF NOT EXISTS phones JSONB NOT NULL DEFAULT '[]'::jsonb
   `,
     `
     CREATE INDEX IF NOT EXISTS idx_crm_leads_email ON crm_leads (email) WHERE deleted_at IS NULL

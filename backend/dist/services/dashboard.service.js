@@ -6,6 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.getGrowthInsights = exports.getDashboardOverview = exports.buildSuggestedMonthlyTarget = exports.computeMonthlyAchievement = exports.fetchDashboardCollections = exports.getMonthRange = exports.parseMonthKey = exports.formatMonthLabel = exports.toIsoString = void 0;
 const firebase_admin_1 = __importDefault(require("firebase-admin"));
 const pg_1 = __importDefault(require("pg"));
+const databaseTargets_1 = require("../config/databaseTargets");
 const firebase_1 = require("../config/firebase");
 const { Pool } = pg_1.default;
 const MONTHLY_TARGETS_COLLECTION = "monthly_targets";
@@ -94,7 +95,9 @@ const getUserPortalPoolConfig = () => {
             process.env.PGPORT, 5432),
         user,
         password,
-        database: process.env.USER_PORTAL_DB_NAME ?? process.env.USER_PORTAL_DATABASE ?? "user_portal",
+        database: process.env.USER_PORTAL_DB_NAME ??
+            process.env.USER_PORTAL_DATABASE ??
+            databaseTargets_1.DEFAULT_USER_PORTAL_DATABASE,
         max: parseIntegerEnv(process.env.USER_PORTAL_DB_POOL_MAX, 4),
         idleTimeoutMillis: parseIntegerEnv(process.env.USER_PORTAL_DB_IDLE_TIMEOUT_MS, 30000),
         connectionTimeoutMillis: parseIntegerEnv(process.env.USER_PORTAL_DB_CONNECT_TIMEOUT_MS, 15000),

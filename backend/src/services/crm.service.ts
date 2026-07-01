@@ -13,6 +13,7 @@ type PaginationQuery = {
   limit?: unknown;
   q?: unknown;
   status?: unknown;
+  leadType?: unknown;
   source?: unknown;
   owner?: unknown;
   priority?: unknown;
@@ -74,6 +75,7 @@ type LeadImportPreviewRow = {
   lastName: string | null;
   email: string | null;
   companyName: string | null;
+  leadType: string | null;
   leadStatus: string;
   leadPriority: string;
   status: "valid" | "invalid" | "duplicate";
@@ -116,6 +118,7 @@ type CsvLeadDraft = {
 const DEFAULT_PAGE_SIZE = 10;
 const MAX_PAGE_SIZE = 100;
 const MAX_LEAD_IMPORT_ROWS = 2000;
+const CRM_LEAD_TYPES = ["Vendor", "Consumer"] as const;
 const CRM_ALLOWED_SORT_ORDER = new Set(["asc", "desc"]);
 const CRM_LEAD_IMPORT_HEADERS = [
   "firstName",
@@ -125,6 +128,7 @@ const CRM_LEAD_IMPORT_HEADERS = [
   "companyName",
   "jobTitle",
   "website",
+  "leadType",
   "leadSource",
   "leadStatus",
   "leadPriority",
@@ -275,6 +279,23 @@ const toOptionalString = (value: unknown) => {
   return normalized || null;
 };
 
+const splitCommaSeparatedValues = (value: unknown) => {
+  if (Array.isArray(value)) {
+    return value
+      .map((entry) => String(entry ?? "").trim())
+      .filter(Boolean);
+  }
+
+  if (typeof value === "string") {
+    return value
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+  }
+
+  return [] as string[];
+};
+
 const toEmail = (value: unknown, fieldName: string) => {
   const normalized = toTrimmedString(value).toLowerCase();
   if (!normalized) {
@@ -287,6 +308,23 @@ const toEmail = (value: unknown, fieldName: string) => {
   }
 
   return normalized;
+};
+
+const toEmailArray = (value: unknown, fieldName: string) => {
+  const values = Array.from(
+    new Set(
+      splitCommaSeparatedValues(value).map((entry) => entry.toLowerCase())
+    )
+  );
+
+  values.forEach((entry, index) => {
+    const isValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(entry);
+    if (!isValid) {
+      throw new Error(`${fieldName} #${index + 1} must be a valid email address.`);
+    }
+  });
+
+  return values;
 };
 
 const toUrl = (value: unknown, fieldName: string) => {
@@ -392,6 +430,9 @@ const toTagArray = (value: unknown) => {
   return [] as string[];
 };
 
+const toPhoneArray = (value: unknown) =>
+  Array.from(new Set(splitCommaSeparatedValues(value)));
+
 const normalizeCsvHeader = (value: string) =>
   value.replace(/^\uFEFF/, "").trim().replace(/\s+/g, "");
 
@@ -461,8 +502,15 @@ const normalizeJsonField = <T>(value: unknown, fallback: T): T => {
 
 const mapLead = (row: Record<string, unknown>): any => {
   const record = camelizeRow(row);
+  const emails = normalizeJsonField<string[]>(record.emails, []);
+  const phones = normalizeJsonField<string[]>(record.phones, []);
   return {
     ...record,
+    leadType: record.leadType ? String(record.leadType) : null,
+    email: record.email ? String(record.email) : emails[0] ?? null,
+    phone: record.phone ? String(record.phone) : phones[0] ?? null,
+    emails,
+    phones,
     tags: normalizeJsonField<string[]>(record.tags, []),
     notes: normalizeJsonField<JsonRecord[]>(record.notes, []),
     hasCustomPortfolio: Boolean(record.hasCustomPortfolio),
@@ -521,6 +569,7 @@ const buildPagination = (query: PaginationQuery) => {
     offset,
     q: toTrimmedString(query.q),
     status: toTrimmedString(query.status),
+    leadType: toTrimmedString(query.leadType),
     source: toTrimmedString(query.source),
     owner: toTrimmedString(query.owner),
     priority: toTrimmedString(query.priority),
@@ -725,8 +774,11 @@ const sanitizeLeadPayload = async (
   const firstName = toTrimmedString(payload.firstName);
   const lastName = toTrimmedString(payload.lastName);
   const companyName = toTrimmedString(payload.companyName);
-  const email = toEmail(payload.email, "Lead email");
-  if (!firstName && !lastName && !companyName && !email) {
+  const emails = toEmailArray(payload.emails ?? payload.email, "Lead email");
+  const phones = toPhoneArray(payload.phones ?? payload.phone);
+  const email = emails[0] ?? null;
+  const phone = phones[0] ?? null;
+  if (!firstName && !lastName && !companyName && emails.length === 0) {
     throw new Error("At least one of firstName, lastName, companyName, or email is required.");
   }
 
@@ -734,10 +786,17 @@ const sanitizeLeadPayload = async (
     firstName: firstName || null,
     lastName: lastName || null,
     email,
-    phone: toOptionalString(payload.phone),
+    phone,
+    emails,
+    phones,
     companyName: companyName || null,
     jobTitle: toOptionalString(payload.jobTitle),
     website: toUrl(payload.website, "Website"),
+    leadType: assertAllowed(
+      toOptionalString(payload.leadType),
+      [...CRM_LEAD_TYPES],
+      "leadType"
+    ),
     leadSource:
       assertAllowed(
         toOptionalString(payload.leadSource),
@@ -953,8 +1012,14 @@ const fetchExistingLeadsByEmail = async (emails: string[]) => {
       SELECT *
       FROM crm_leads
       WHERE deleted_at IS NULL
-        AND email IS NOT NULL
-        AND LOWER(email) = ANY($1::text[])
+        AND (
+          (email IS NOT NULL AND LOWER(email) = ANY($1::text[]))
+          OR EXISTS (
+            SELECT 1
+            FROM jsonb_array_elements_text(COALESCE(emails, '[]'::jsonb)) AS email_entry(value)
+            WHERE LOWER(email_entry.value) = ANY($1::text[])
+          )
+        )
     `,
     [emails]
   );
@@ -962,9 +1027,14 @@ const fetchExistingLeadsByEmail = async (emails: string[]) => {
   const existingLeads = new Map<string, any>();
   for (const row of result.rows as Array<Record<string, unknown>>) {
     const mapped = mapLead(row);
-    if (mapped.email) {
-      existingLeads.set(String(mapped.email).toLowerCase(), mapped);
-    }
+    const leadEmails = Array.isArray(mapped.emails) && mapped.emails.length > 0
+      ? mapped.emails
+      : mapped.email
+        ? [mapped.email]
+        : [];
+    leadEmails.forEach((email: string) => {
+      existingLeads.set(String(email).toLowerCase(), mapped);
+    });
   }
 
   return existingLeads;
@@ -980,9 +1050,12 @@ const buildLeadImportPayload = async (
     lastName: toOptionalString(row.lastName),
     email: toOptionalString(row.email),
     phone: toOptionalString(row.phone),
+    emails: splitCommaSeparatedValues(row.email),
+    phones: splitCommaSeparatedValues(row.phone),
     companyName: toOptionalString(row.companyName),
     jobTitle: toOptionalString(row.jobTitle),
     website: toOptionalString(row.website),
+    leadType: toOptionalString(row.leadType) ?? "Consumer",
     leadSource: toOptionalString(row.leadSource) ?? "Manual Entry",
     leadStatus: toOptionalString(row.leadStatus) ?? "New",
     leadPriority: toOptionalString(row.leadPriority) ?? "Medium",
@@ -1008,9 +1081,12 @@ const buildLeadImportUpdatePayload = (
     ...(payload.lastName ? { lastName: payload.lastName } : {}),
     ...(payload.email ? { email: payload.email } : {}),
     ...(payload.phone ? { phone: payload.phone } : {}),
+    ...(payload.emails ? { emails: payload.emails } : {}),
+    ...(payload.phones ? { phones: payload.phones } : {}),
     ...(payload.companyName ? { companyName: payload.companyName } : {}),
     ...(payload.jobTitle ? { jobTitle: payload.jobTitle } : {}),
     ...(payload.website ? { website: payload.website } : {}),
+    ...(payload.leadType ? { leadType: payload.leadType } : {}),
     ...(payload.leadSource ? { leadSource: payload.leadSource } : {}),
     ...(payload.leadStatus ? { leadStatus: payload.leadStatus } : {}),
     ...(payload.leadPriority ? { leadPriority: payload.leadPriority } : {}),
@@ -1071,8 +1147,8 @@ const prepareLeadImport = async (
   const duplicateEmails = Array.from(
     new Set(
       drafts
-        .filter((draft) => draft.status === "valid" && draft.payload?.email)
-        .map((draft) => String(draft.payload?.email).toLowerCase())
+        .filter((draft) => draft.status === "valid" && Array.isArray(draft.payload?.emails))
+        .flatMap((draft) => (draft.payload?.emails as string[]).map((email) => String(email).toLowerCase()))
     )
   );
   const existingLeadsByEmail = await fetchExistingLeadsByEmail(duplicateEmails);
@@ -1087,14 +1163,17 @@ const prepareLeadImport = async (
       continue;
     }
 
-    const email = draft.payload.email ? String(draft.payload.email).toLowerCase() : null;
-    const existingLead = email ? existingLeadsByEmail.get(email) : null;
+    const draftEmails = Array.isArray(draft.payload.emails)
+      ? (draft.payload.emails as string[]).map((email) => String(email).toLowerCase())
+      : [];
+    const matchedEmail = draftEmails.find((email) => existingLeadsByEmail.has(email)) ?? null;
+    const existingLead = matchedEmail ? existingLeadsByEmail.get(matchedEmail) : null;
     if (!existingLead) {
       willCreate += 1;
       continue;
     }
 
-    draft.duplicateEmail = email;
+    draft.duplicateEmail = matchedEmail;
     draft.duplicateLeadId = Number(existingLead.id);
     draft.status = "duplicate";
 
@@ -1108,7 +1187,7 @@ const prepareLeadImport = async (
     draft.duplicateAction = action;
     duplicates.push({
       row: draft.row,
-      email: email as string,
+      email: matchedEmail as string,
       action,
     });
 
@@ -1127,6 +1206,7 @@ const prepareLeadImport = async (
     lastName: toOptionalString(draft.raw.lastName),
     email: toOptionalString(draft.raw.email),
     companyName: toOptionalString(draft.raw.companyName),
+    leadType: toOptionalString(draft.raw.leadType),
     leadStatus: toOptionalString(draft.raw.leadStatus) ?? "New",
     leadPriority: toOptionalString(draft.raw.leadPriority) ?? "Medium",
     status: draft.status === "duplicate" ? "duplicate" : draft.status === "invalid" ? "invalid" : "valid",
@@ -1361,6 +1441,7 @@ const resolveSegmentWhere = (
     const value = record.value;
 
     const allowedFieldMap: Record<string, string> = {
+      leadType: `${alias}.lead_type`,
       leadStatus: `${alias}.lead_status`,
       leadSource: `${alias}.lead_source`,
       country: `${alias}.country`,
@@ -1585,12 +1666,16 @@ export const listLeads = async (query: PaginationQuery) =>
       "lead.first_name",
       "lead.last_name",
       "lead.email",
+      "lead.emails::text",
       "lead.phone",
+      "lead.phones::text",
       "lead.company_name",
+      "lead.lead_type",
       "lead.lead_source",
     ],
     filters: [
       { queryValue: toTrimmedString(query.status), clause: "lead.lead_status = ?" },
+      { queryValue: toTrimmedString(query.leadType), clause: "lead.lead_type = ?" },
       { queryValue: toTrimmedString(query.source), clause: "lead.lead_source = ?" },
       { queryValue: toTrimmedString(query.owner), clause: "lead.assigned_to::text = ?" },
       { queryValue: toTrimmedString(query.priority), clause: "lead.lead_priority = ?" },
@@ -1695,16 +1780,16 @@ export const createLead = async (
   const result = await pool.query(
     `
       INSERT INTO crm_leads (
-        first_name, last_name, email, phone, company_name, job_title, website,
-        lead_source, lead_status, lead_priority, lead_score, estimated_value, currency,
+        first_name, last_name, email, phone, emails, phones, company_name, job_title, website,
+        lead_type, lead_source, lead_status, lead_priority, lead_score, estimated_value, currency,
         assigned_to, tags, notes, next_follow_up_at, last_activity_at,
         created_by, updated_by, created_at, updated_at
       )
       VALUES (
-        $1, $2, $3, $4, $5, $6, $7,
-        $8, $9, $10, $11, $12, $13,
-        $14, $15::jsonb, $16::jsonb, $17, NOW(),
-        $18, $19, NOW(), NOW()
+        $1, $2, $3, $4, $5::jsonb, $6::jsonb, $7, $8, $9,
+        $10, $11, $12, $13, $14, $15, $16,
+        $17, $18::jsonb, $19::jsonb, $20, NOW(),
+        $21, $22, NOW(), NOW()
       )
       RETURNING *
     `,
@@ -1713,9 +1798,12 @@ export const createLead = async (
       input.lastName,
       input.email,
       input.phone,
+      JSON.stringify(input.emails),
+      JSON.stringify(input.phones),
       input.companyName,
       input.jobTitle,
       input.website,
+      input.leadType,
       input.leadSource,
       input.leadStatus,
       input.leadPriority,
@@ -1778,21 +1866,24 @@ export const updateLead = async (
           last_name = $3,
           email = $4,
           phone = $5,
-          company_name = $6,
-          job_title = $7,
-          website = $8,
-          lead_source = $9,
-          lead_status = $10,
-          lead_priority = $11,
-          lead_score = $12,
-          estimated_value = $13,
-          currency = $14,
-          assigned_to = $15,
-          tags = $16::jsonb,
-          notes = $17::jsonb,
-          next_follow_up_at = $18,
+          emails = $6::jsonb,
+          phones = $7::jsonb,
+          company_name = $8,
+          job_title = $9,
+          website = $10,
+          lead_type = $11,
+          lead_source = $12,
+          lead_status = $13,
+          lead_priority = $14,
+          lead_score = $15,
+          estimated_value = $16,
+          currency = $17,
+          assigned_to = $18,
+          tags = $19::jsonb,
+          notes = $20::jsonb,
+          next_follow_up_at = $21,
           last_activity_at = NOW(),
-          updated_by = $19,
+          updated_by = $22,
           updated_at = NOW()
       WHERE id = $1 AND deleted_at IS NULL
       RETURNING *
@@ -1803,9 +1894,12 @@ export const updateLead = async (
       input.lastName,
       input.email,
       input.phone,
+      JSON.stringify(input.emails),
+      JSON.stringify(input.phones),
       input.companyName,
       input.jobTitle,
       input.website,
+      input.leadType,
       input.leadSource,
       input.leadStatus,
       input.leadPriority,

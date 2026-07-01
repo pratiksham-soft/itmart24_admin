@@ -1,4 +1,5 @@
 import pg from "pg";
+import { DEFAULT_USER_PORTAL_DATABASE } from "../config/databaseTargets";
 
 const { Pool } = pg as any;
 
@@ -182,7 +183,7 @@ const getUserPortalPoolConfig = () => {
     database:
       process.env.USER_PORTAL_DB_NAME ??
       process.env.USER_PORTAL_DATABASE ??
-      "user_portal",
+      DEFAULT_USER_PORTAL_DATABASE,
     max: parseIntegerEnv(process.env.USER_PORTAL_DB_POOL_MAX, 6),
     idleTimeoutMillis: parseIntegerEnv(
       process.env.USER_PORTAL_DB_IDLE_TIMEOUT_MS,

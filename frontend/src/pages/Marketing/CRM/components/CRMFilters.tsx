@@ -32,7 +32,7 @@ export default function CRMFilters({
     <div className="mb-6 rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
       <div className="grid gap-4 xl:grid-cols-[minmax(0,2fr)_repeat(4,minmax(0,1fr))_auto]">
         <InputField
-          placeholder="Search by name, email, company, source..."
+          placeholder="Search by name, email, company, source, type..."
           value={searchValue}
           onChange={(event) => onSearchChange(event.target.value)}
         />

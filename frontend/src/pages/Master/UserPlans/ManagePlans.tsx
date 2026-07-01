@@ -3,15 +3,24 @@ import axios from "axios";
 import PlanForm from "./PlanForm";
 import PlanTable from "./PlanTable";
 import PlanView from "./PlanView";
-import { SubscriptionPlan } from "./types";
+import OneTimeReportPlanForm from "./OneTimeReportPlanForm";
+import OneTimeReportPlanTable from "./OneTimeReportPlanTable";
+import OneTimeReportPlanView from "./OneTimeReportPlanView";
+import { OneTimeReportPlan, SubscriptionPlan } from "./types";
 
 const ManagePlans = () => {
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
+  const [oneTimePlans, setOneTimePlans] = useState<OneTimeReportPlan[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlan | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [viewPlan, setViewPlan] = useState<SubscriptionPlan | null>(null);
+  const [selectedOneTimePlan, setSelectedOneTimePlan] =
+    useState<OneTimeReportPlan | null>(null);
+  const [isOneTimeFormOpen, setIsOneTimeFormOpen] = useState(false);
+  const [viewOneTimePlan, setViewOneTimePlan] = useState<OneTimeReportPlan | null>(null);
+  const [isOneTimeSectionOpen, setIsOneTimeSectionOpen] = useState(true);
 
   const pricingOverrideCount = plans.reduce(
     (count, plan) =>
@@ -22,17 +31,25 @@ const ManagePlans = () => {
       ),
     0
   );
+  const oneTimePricingOverrideCount = oneTimePlans.reduce(
+    (count, plan) => count + (plan.countryPricing?.length ?? 0),
+    0
+  );
 
   useEffect(() => {
     const fetchPlans = async () => {
       try {
         setLoading(true);
         setError(null);
-        const res = await axios.get("/api/user-plans");
-        setPlans(res.data);
+        const [subscriptionPlansResponse, oneTimePlansResponse] = await Promise.all([
+          axios.get("/api/user-plans"),
+          axios.get("/api/user-one-time-report-plans"),
+        ]);
+        setPlans(subscriptionPlansResponse.data);
+        setOneTimePlans(oneTimePlansResponse.data);
       } catch (err) {
         console.error(err);
-        setError("Failed to load user plans");
+        setError("Failed to load user billing plans");
       } finally {
         setLoading(false);
       }
@@ -69,6 +86,34 @@ const ManagePlans = () => {
     setIsFormOpen(false);
   };
 
+  const handleCreateOneTimePlan = () => {
+    setSelectedOneTimePlan(null);
+    setIsOneTimeFormOpen(true);
+  };
+
+  const handleEditOneTimePlan = (plan: OneTimeReportPlan) => {
+    setSelectedOneTimePlan(plan);
+    setIsOneTimeFormOpen(true);
+  };
+
+  const handleDeleteOneTimePlan = async (planId: string) => {
+    if (!confirm("Are you sure you want to delete this one-time report plan?")) {
+      return;
+    }
+
+    try {
+      await axios.delete(`/api/user-one-time-report-plans/${planId}`);
+      setOneTimePlans((prev) => prev.filter((plan) => plan.id !== planId));
+    } catch (deleteError: any) {
+      alert(deleteError?.response?.data?.error || "Failed to delete one-time report plan");
+    }
+  };
+
+  const handleCloseOneTimeForm = () => {
+    setSelectedOneTimePlan(null);
+    setIsOneTimeFormOpen(false);
+  };
+
   return (
     <div className="space-y-6 p-6">
       <div className="rounded-3xl border border-gray-200 bg-gradient-to-r from-slate-50 via-white to-sky-50 p-6 shadow-sm dark:border-white/[0.05] dark:from-gray-900 dark:via-gray-900 dark:to-slate-900">
@@ -97,7 +142,7 @@ const ManagePlans = () => {
           </div>
         </div>
 
-        <div className="mt-5 grid gap-3 sm:grid-cols-3">
+        <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <div className="rounded-2xl border border-white bg-white/80 px-4 py-3 shadow-sm dark:border-white/[0.05] dark:bg-white/[0.03]">
             <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
               Total plans
@@ -122,10 +167,18 @@ const ManagePlans = () => {
               {pricingOverrideCount}
             </p>
           </div>
+          <div className="rounded-2xl border border-white bg-white/80 px-4 py-3 shadow-sm dark:border-white/[0.05] dark:bg-white/[0.03]">
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+              One-time report plans
+            </p>
+            <p className="mt-2 text-2xl font-semibold text-gray-900 dark:text-white">
+              {oneTimePlans.length}
+            </p>
+          </div>
         </div>
       </div>
 
-      {loading ? <div className="text-gray-500">Loading user plans...</div> : null}
+      {loading ? <div className="text-gray-500">Loading user billing plans...</div> : null}
       {error ? <div className="text-red-600">{error}</div> : null}
 
       {!loading && !error ? (
@@ -137,7 +190,87 @@ const ManagePlans = () => {
         />
       ) : null}
 
+      {!loading && !error ? (
+        <div className="rounded-3xl border border-gray-200 bg-white shadow-sm dark:border-white/[0.08] dark:bg-white/[0.02]">
+          <div className="flex flex-col gap-4 border-b border-gray-200 px-6 py-5 dark:border-white/[0.08] lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-brand-500">
+                One-Time Report Pricing
+              </p>
+              <h2 className="mt-2 text-2xl font-semibold text-gray-900 dark:text-white">
+                One-Time Report Plans & Pricing
+              </h2>
+              <p className="mt-2 max-w-3xl text-sm text-gray-600 dark:text-gray-400">
+                Manage one-time report plan rows separately from subscription plans, including
+                base INR pricing and country-level overrides for each analyzer workflow.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap gap-3">
+              <button
+                type="button"
+                onClick={() => setIsOneTimeSectionOpen((prev) => !prev)}
+                className="rounded-full border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 transition hover:border-gray-400 dark:border-gray-700 dark:text-gray-200"
+              >
+                {isOneTimeSectionOpen ? "Collapse section" : "Expand section"}
+              </button>
+              <button
+                type="button"
+                onClick={handleCreateOneTimePlan}
+                className="rounded-full bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700"
+              >
+                + Create One-Time Report Plan
+              </button>
+            </div>
+          </div>
+
+          {isOneTimeSectionOpen ? (
+            <div className="space-y-6 p-6">
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="rounded-2xl border border-gray-200 bg-gray-50/70 px-4 py-3 dark:border-white/[0.08] dark:bg-white/[0.03]">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                    Total one-time plans
+                  </p>
+                  <p className="mt-2 text-2xl font-semibold text-gray-900 dark:text-white">
+                    {oneTimePlans.length}
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-gray-200 bg-gray-50/70 px-4 py-3 dark:border-white/[0.08] dark:bg-white/[0.03]">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                    Active now
+                  </p>
+                  <p className="mt-2 text-2xl font-semibold text-gray-900 dark:text-white">
+                    {oneTimePlans.filter((plan) => plan.isActive).length}
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-gray-200 bg-gray-50/70 px-4 py-3 dark:border-white/[0.08] dark:bg-white/[0.03]">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                    Country overrides
+                  </p>
+                  <p className="mt-2 text-2xl font-semibold text-gray-900 dark:text-white">
+                    {oneTimePricingOverrideCount}
+                  </p>
+                </div>
+              </div>
+
+              <OneTimeReportPlanTable
+                plans={oneTimePlans}
+                onEdit={handleEditOneTimePlan}
+                onDelete={handleDeleteOneTimePlan}
+                onView={setViewOneTimePlan}
+              />
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
       {viewPlan ? <PlanView plan={viewPlan} onClose={() => setViewPlan(null)} /> : null}
+      {viewOneTimePlan ? (
+        <OneTimeReportPlanView
+          plan={viewOneTimePlan}
+          onClose={() => setViewOneTimePlan(null)}
+        />
+      ) : null}
 
       {isFormOpen ? (
         <PlanForm
@@ -155,6 +288,26 @@ const ManagePlans = () => {
               return [...prev, updatedPlan];
             });
             handleCloseForm();
+          }}
+        />
+      ) : null}
+
+      {isOneTimeFormOpen ? (
+        <OneTimeReportPlanForm
+          plan={selectedOneTimePlan}
+          onClose={handleCloseOneTimeForm}
+          onSaved={(updatedPlan) => {
+            setOneTimePlans((prev) => {
+              const exists = prev.find((plan) => plan.id === updatedPlan.id);
+              if (exists) {
+                return prev.map((plan) =>
+                  plan.id === updatedPlan.id ? updatedPlan : plan
+                );
+              }
+
+              return [...prev, updatedPlan];
+            });
+            handleCloseOneTimeForm();
           }}
         />
       ) : null}

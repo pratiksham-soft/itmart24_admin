@@ -33,3 +33,28 @@ export type SubscriptionPlan = {
   createdAt?: any;
   updatedAt?: any;
 };
+
+export type OneTimeReportToolKey =
+  | "seo_health"
+  | "competitor_comparison"
+  | "ai_analysis";
+
+export type OneTimeReportPlan = {
+  id?: string;
+  toolKey: OneTimeReportToolKey;
+  planKey: string;
+  displayName: string;
+  fallbackPriceUsd: number;
+  priceInr: number;
+  taxInclusive: boolean;
+  sortOrder: number;
+  badgeLabel?: string | null;
+  summaryLine: string;
+  publicFeatures: string[];
+  maxCompetitors: number;
+  pdfExportEnabled: boolean;
+  isActive: boolean;
+  countryPricing: CountryPricing[];
+  createdAt?: any;
+  updatedAt?: any;
+};

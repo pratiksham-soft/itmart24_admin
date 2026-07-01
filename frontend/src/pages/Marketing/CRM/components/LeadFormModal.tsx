@@ -4,7 +4,7 @@ import Button from "../../../../components/ui/button/Button";
 import InputField from "../../../../components/form/input/InputField";
 import TextArea from "../../../../components/form/input/TextArea";
 import type { CRMLead, CRMSettings } from "../types/crm.types";
-import { defaultCRMSettings } from "../utils/crmHelpers";
+import { crmLeadTypes, defaultCRMSettings } from "../utils/crmHelpers";
 
 type LeadFormModalProps = {
   isOpen: boolean;
@@ -32,11 +32,12 @@ export default function LeadFormModal({
     setForm({
       firstName: initialValue?.firstName || "",
       lastName: initialValue?.lastName || "",
-      email: initialValue?.email || "",
-      phone: initialValue?.phone || "",
+      email: Array.isArray(initialValue?.emails) && initialValue.emails.length > 0 ? initialValue.emails.join(", ") : initialValue?.email || "",
+      phone: Array.isArray(initialValue?.phones) && initialValue.phones.length > 0 ? initialValue.phones.join(", ") : initialValue?.phone || "",
       companyName: initialValue?.companyName || "",
       jobTitle: initialValue?.jobTitle || "",
       website: initialValue?.website || "",
+      leadType: initialValue?.leadType || "Consumer",
       leadSource: initialValue?.leadSource || settings.leadSources[0],
       leadStatus: initialValue?.leadStatus || settings.leadStatuses[0],
       leadPriority: initialValue?.leadPriority || settings.leadPriorities[1],
@@ -96,8 +97,8 @@ export default function LeadFormModal({
           {[
             ["First Name", "firstName"],
             ["Last Name", "lastName"],
-            ["Email", "email"],
-            ["Phone", "phone"],
+            ["Email ID(s)", "email"],
+            ["Phone Number(s)", "phone"],
             ["Company", "companyName"],
             ["Job Title", "jobTitle"],
             ["Website", "website"],
@@ -114,6 +115,7 @@ export default function LeadFormModal({
               <InputField
                 type={key === "leadScore" || key === "estimatedValue" ? "number" : key === "nextFollowUpAt" ? "datetime-local" : "text"}
                 value={String(form[key] ?? "")}
+                hint={key === "email" || key === "phone" ? "Separate multiple values with commas." : undefined}
                 onChange={(event) =>
                   setForm((current) => ({
                     ...current,
@@ -124,6 +126,20 @@ export default function LeadFormModal({
             </div>
           ))}
 
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Lead Type</label>
+            <select
+              className={selectClassName}
+              value={String(form.leadType ?? "Consumer")}
+              onChange={(event) => setForm((current) => ({ ...current, leadType: event.target.value }))}
+            >
+              {crmLeadTypes.map((item) => (
+                <option key={item} value={item}>
+                  {item}
+                </option>
+              ))}
+            </select>
+          </div>
           <div>
             <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Lead Source</label>
             <select

@@ -1,4 +1,10 @@
+import fs from "fs";
+import path from "path";
+import dotenv from "dotenv";
+import pg from "pg";
 import { getUserPortalPool, normalizeDate } from "./userPortalUsers.service";
+
+const { Pool } = pg as any;
 
 type GuestReportRow = {
   id: string;
@@ -283,6 +289,21 @@ export type GuestDuplicateExclusionEntry = {
 };
 
 const DUPLICATE_EXCLUSION_TABLE = "guest_report_duplicate_exclusions";
+const USER_PORTAL_REPO_ROOT = path.resolve(__dirname, "..", "..", "..", "..", "user_portal");
+const USER_PORTAL_BACKEND_ROOT = path.join(USER_PORTAL_REPO_ROOT, "backend");
+const USER_PORTAL_ENV_FILES = [
+  path.join(USER_PORTAL_BACKEND_ROOT, ".env.development"),
+  path.join(USER_PORTAL_BACKEND_ROOT, ".env.production"),
+];
+
+type ExternalUserPortalPool = InstanceType<typeof Pool>;
+type UserPortalDbConfig = {
+  key: string;
+  databaseName: string;
+  pool: ExternalUserPortalPool;
+};
+
+let duplicateExclusionPoolsCache: UserPortalDbConfig[] | null = null;
 
 const mapGuestReportRow = (row: GuestReportRow): GuestReportEntry => ({
   id: row.id,
@@ -352,6 +373,14 @@ const normalizeDuplicateExclusionDomain = (value: string) => {
 
 const ensureGuestDuplicateExclusionsTable = async () => {
   const pool = getUserPortalPool();
+  await ensureGuestDuplicateExclusionsTableOnPool(
+    pool as unknown as ExternalUserPortalPool
+  );
+};
+
+const ensureGuestDuplicateExclusionsTableOnPool = async (
+  pool: Pick<ExternalUserPortalPool, "query">
+) => {
   await pool.query(
     `
       CREATE TABLE IF NOT EXISTS guest_report_duplicate_exclusions (
@@ -367,6 +396,120 @@ const ensureGuestDuplicateExclusionsTable = async () => {
   await pool.query(
     `CREATE UNIQUE INDEX IF NOT EXISTS idx_guest_report_duplicate_exclusions_domain_unique ON guest_report_duplicate_exclusions (normalized_domain)`
   );
+};
+
+const parseBooleanEnv = (value: string | undefined, fallback = false) => {
+  if (value == null || value === "") {
+    return fallback;
+  }
+
+  return ["1", "true", "yes", "on", "require"].includes(
+    value.trim().toLowerCase()
+  );
+};
+
+const parseIntegerEnv = (value: string | undefined, fallback: number) => {
+  const parsed = Number.parseInt(value ?? "", 10);
+  return Number.isFinite(parsed) ? parsed : fallback;
+};
+
+const parseConnectionStringPoolConfig = (connectionString: string) => {
+  const parsedUrl = new URL(connectionString);
+  const sslMode = (parsedUrl.searchParams.get("sslmode") ?? "").toLowerCase();
+  const sslEnabled =
+    parseBooleanEnv(parsedUrl.searchParams.get("ssl") ?? undefined, false) ||
+    ["require", "true", "1", "prefer", "verify-ca", "verify-full"].includes(
+      sslMode
+    );
+
+  return {
+    host: parsedUrl.hostname,
+    port: parseIntegerEnv(parsedUrl.port, 5432),
+    user: decodeURIComponent(parsedUrl.username),
+    password: decodeURIComponent(parsedUrl.password),
+    database: parsedUrl.pathname.replace(/^\//, "") || undefined,
+    ssl: sslEnabled ? { rejectUnauthorized: false } : false,
+  };
+};
+
+const createPoolFromEnvFile = (envFilePath: string) => {
+  const parsed = dotenv.parse(fs.readFileSync(envFilePath, "utf8"));
+  const databaseUrl = parsed.DATABASE_URL?.trim();
+
+  if (databaseUrl) {
+    const connectionConfig = parseConnectionStringPoolConfig(databaseUrl);
+    return new Pool({
+      host: connectionConfig.host,
+      port: connectionConfig.port,
+      user: connectionConfig.user,
+      password: connectionConfig.password,
+      database: connectionConfig.database,
+      ssl: parseBooleanEnv(parsed.DB_SSL, false)
+        ? { rejectUnauthorized: false }
+        : connectionConfig.ssl,
+      max: 2,
+      idleTimeoutMillis: 30000,
+      connectionTimeoutMillis: 15000,
+      query_timeout: 30000,
+      statement_timeout: 30000,
+      keepAlive: true,
+    });
+  }
+
+  return new Pool({
+    host: parsed.DB_HOST,
+    port: parseIntegerEnv(parsed.DB_PORT, 5432),
+    user: parsed.DB_USER,
+    password: parsed.DB_PASSWORD,
+    database: parsed.DB_NAME,
+    ssl: parseBooleanEnv(parsed.DB_SSL, false)
+      ? { rejectUnauthorized: false }
+      : false,
+    max: 2,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 15000,
+    query_timeout: 30000,
+    statement_timeout: 30000,
+    keepAlive: true,
+  });
+};
+
+const getDuplicateExclusionPools = () => {
+  if (duplicateExclusionPoolsCache) {
+    return duplicateExclusionPoolsCache;
+  }
+
+  const pools = new Map<string, UserPortalDbConfig>();
+
+  for (const envFilePath of USER_PORTAL_ENV_FILES) {
+    if (!fs.existsSync(envFilePath)) {
+      continue;
+    }
+
+    const parsed = dotenv.parse(fs.readFileSync(envFilePath, "utf8"));
+    const databaseName = String(parsed.DB_NAME ?? "").trim();
+    if (!databaseName || pools.has(databaseName)) {
+      continue;
+    }
+
+    pools.set(databaseName, {
+      key: path.basename(envFilePath),
+      databaseName,
+      pool: createPoolFromEnvFile(envFilePath),
+    });
+  }
+
+  if (pools.size === 0) {
+    const defaultPool = getUserPortalPool();
+    pools.set("default", {
+      key: "default",
+      databaseName: "default",
+      pool: defaultPool as unknown as ExternalUserPortalPool,
+    });
+  }
+
+  duplicateExclusionPoolsCache = Array.from(pools.values());
+  return duplicateExclusionPoolsCache;
 };
 
 const normalizeToolName = (reportType: string, sourceTool: string | null | undefined) => {
@@ -590,7 +733,7 @@ export const listGuestReportDuplicates = async (
 
   const result = await pool.query(
     `
-      WITH duplicate_groups AS (
+      WITH grouped_reports AS (
         SELECT
           ${normalizedDomainExpression} AS normalized_domain,
           CASE
@@ -599,16 +742,27 @@ export const listGuestReportDuplicates = async (
             WHEN report_type IN ('Competitor Comparison', 'COMPETITOR_COMPARISON') THEN 'COMPETITOR_COMPARISON'
             ELSE NULL
           END AS report_type_key,
-          COUNT(*)::int AS attempt_count,
-          MIN(${generatedAtExpression}) AS first_generated_at,
-          MAX(${generatedAtExpression}) AS latest_generated_at,
-          COUNT(DISTINCT ${optionalColumnExpression("anonymous_visitor_id")})::int AS unique_anonymous_visitors,
-          COUNT(DISTINCT ${optionalColumnExpression("session_id")})::int AS unique_sessions,
-          COUNT(DISTINCT ${ipHashExpression})::int AS unique_ip_hashes
+          ${generatedAtExpression} AS generated_at_value,
+          ${optionalColumnExpression("anonymous_visitor_id")} AS anonymous_visitor_value,
+          ${optionalColumnExpression("session_id")} AS session_value,
+          ${ipHashExpression} AS ip_hash_value
         FROM guest_report
         WHERE ${whereClauses.join(" AND ")}
+      ),
+      duplicate_groups AS (
+        SELECT
+          normalized_domain,
+          report_type_key,
+          COUNT(*)::int AS attempt_count,
+          MIN(generated_at_value) AS first_generated_at,
+          MAX(generated_at_value) AS latest_generated_at,
+          COUNT(DISTINCT anonymous_visitor_value)::int AS unique_anonymous_visitors,
+          COUNT(DISTINCT session_value)::int AS unique_sessions,
+          COUNT(DISTINCT ip_hash_value)::int AS unique_ip_hashes
+        FROM grouped_reports
+        WHERE report_type_key IS NOT NULL
         GROUP BY normalized_domain, report_type_key
-        HAVING COUNT(*) > 1 AND report_type_key IS NOT NULL
+        HAVING COUNT(*) > 1
       )
       SELECT
         g.normalized_domain,
@@ -726,118 +880,164 @@ export const listGuestReportDuplicates = async (
 export const listGuestReportDuplicateExclusions = async (): Promise<
   GuestDuplicateExclusionEntry[]
 > => {
-  const pool = getUserPortalPool();
-  await ensureGuestDuplicateExclusionsTable();
-  const result = await pool.query(
-    `
-      SELECT
-        id,
-        normalized_domain,
-        website_input,
-        notes,
-        created_at,
-        updated_at
-      FROM guest_report_duplicate_exclusions
-      ORDER BY normalized_domain ASC, created_at DESC
-    `
-  );
+  const pools = getDuplicateExclusionPools();
+  const mergedEntries = new Map<string, GuestDuplicateExclusionEntry>();
 
-  return (result.rows as Array<{
-    id: string;
-    normalized_domain: string;
-    website_input: string;
-    notes: string | null;
-    created_at: string | Date | null;
-    updated_at: string | Date | null;
-  }>).map((row) => ({
-    id: String(row.id),
-    normalizedDomain: String(row.normalized_domain),
-    websiteInput: String(row.website_input),
-    notes: normalizeText(row.notes),
-    createdAt: normalizeDate(row.created_at),
-    updatedAt: normalizeDate(row.updated_at),
-  }));
+  for (const { pool } of pools) {
+    await ensureGuestDuplicateExclusionsTableOnPool(pool);
+    const result = await pool.query(
+      `
+        SELECT
+          id,
+          normalized_domain,
+          website_input,
+          notes,
+          created_at,
+          updated_at
+        FROM guest_report_duplicate_exclusions
+        ORDER BY normalized_domain ASC, created_at DESC
+      `
+    );
+
+    for (const row of result.rows as Array<{
+      id: string;
+      normalized_domain: string;
+      website_input: string;
+      notes: string | null;
+      created_at: string | Date | null;
+      updated_at: string | Date | null;
+    }>) {
+      const normalizedDomain = String(row.normalized_domain);
+      const existingEntry = mergedEntries.get(normalizedDomain);
+      const nextEntry: GuestDuplicateExclusionEntry = {
+        id: normalizedDomain,
+        normalizedDomain,
+        websiteInput: String(row.website_input),
+        notes: normalizeText(row.notes),
+        createdAt: normalizeDate(row.created_at),
+        updatedAt: normalizeDate(row.updated_at),
+      };
+
+      if (!existingEntry) {
+        mergedEntries.set(normalizedDomain, nextEntry);
+        continue;
+      }
+
+      const existingUpdatedAt = existingEntry.updatedAt ?? "";
+      const nextUpdatedAt = nextEntry.updatedAt ?? "";
+      if (nextUpdatedAt >= existingUpdatedAt) {
+        mergedEntries.set(normalizedDomain, nextEntry);
+      }
+    }
+  }
+
+  return Array.from(mergedEntries.values()).sort((left, right) =>
+    left.normalizedDomain.localeCompare(right.normalizedDomain)
+  );
 };
 
 export const addGuestReportDuplicateExclusion = async (input: {
   website: string;
   notes?: string;
 }): Promise<GuestDuplicateExclusionEntry> => {
-  const pool = getUserPortalPool();
-  await ensureGuestDuplicateExclusionsTable();
+  const pools = getDuplicateExclusionPools();
 
   const normalizedDomain = normalizeDuplicateExclusionDomain(input.website);
   if (!normalizedDomain) {
     throw new Error("A valid website or domain is required.");
   }
 
-  const result = await pool.query(
-    `
-      INSERT INTO guest_report_duplicate_exclusions (
-        id,
-        normalized_domain,
-        website_input,
-        notes,
-        created_at,
-        updated_at
-      )
-      VALUES (gen_random_uuid(), $1, $2, $3, NOW(), NOW())
-      ON CONFLICT (normalized_domain)
-      DO UPDATE
-      SET
-        website_input = EXCLUDED.website_input,
-        notes = EXCLUDED.notes,
-        updated_at = NOW()
-      RETURNING
-        id,
-        normalized_domain,
-        website_input,
-        notes,
-        created_at,
-        updated_at
-    `,
-    [normalizedDomain, input.website.trim(), input.notes?.trim() ?? ""]
-  );
+  let latestEntry: GuestDuplicateExclusionEntry | null = null;
 
-  const row = result.rows[0] as {
-    id: string;
-    normalized_domain: string;
-    website_input: string;
-    notes: string | null;
-    created_at: string | Date | null;
-    updated_at: string | Date | null;
-  };
+  for (const { pool } of pools) {
+    await ensureGuestDuplicateExclusionsTableOnPool(pool);
+    const result = await pool.query(
+      `
+        INSERT INTO guest_report_duplicate_exclusions (
+          id,
+          normalized_domain,
+          website_input,
+          notes,
+          created_at,
+          updated_at
+        )
+        VALUES (gen_random_uuid(), $1, $2, $3, NOW(), NOW())
+        ON CONFLICT (normalized_domain)
+        DO UPDATE
+        SET
+          website_input = EXCLUDED.website_input,
+          notes = EXCLUDED.notes,
+          updated_at = NOW()
+        RETURNING
+          id,
+          normalized_domain,
+          website_input,
+          notes,
+          created_at,
+          updated_at
+      `,
+      [normalizedDomain, input.website.trim(), input.notes?.trim() ?? ""]
+    );
 
-  return {
-    id: String(row.id),
-    normalizedDomain: String(row.normalized_domain),
-    websiteInput: String(row.website_input),
-    notes: normalizeText(row.notes),
-    createdAt: normalizeDate(row.created_at),
-    updatedAt: normalizeDate(row.updated_at),
-  };
+    const row = result.rows[0] as {
+      id: string;
+      normalized_domain: string;
+      website_input: string;
+      notes: string | null;
+      created_at: string | Date | null;
+      updated_at: string | Date | null;
+    };
+
+    const nextEntry: GuestDuplicateExclusionEntry = {
+      id: normalizedDomain,
+      normalizedDomain: String(row.normalized_domain),
+      websiteInput: String(row.website_input),
+      notes: normalizeText(row.notes),
+      createdAt: normalizeDate(row.created_at),
+      updatedAt: normalizeDate(row.updated_at),
+    };
+
+    if (!latestEntry || (nextEntry.updatedAt ?? "") >= (latestEntry.updatedAt ?? "")) {
+      latestEntry = nextEntry;
+    }
+  }
+
+  if (!latestEntry) {
+    throw new Error("Failed to save excluded website.");
+  }
+
+  return latestEntry;
 };
 
 export const removeGuestReportDuplicateExclusion = async (
-  exclusionId: string
+  normalizedDomainInput: string
 ): Promise<{ id: string }> => {
-  const pool = getUserPortalPool();
-  await ensureGuestDuplicateExclusionsTable();
-  const result = await pool.query(
-    `
-      DELETE FROM guest_report_duplicate_exclusions
-      WHERE id = $1
-      RETURNING id
-    `,
-    [exclusionId]
-  );
+  const pools = getDuplicateExclusionPools();
+  const normalizedDomain = normalizeDuplicateExclusionDomain(normalizedDomainInput);
+  if (!normalizedDomain) {
+    throw new Error("Excluded website not found.");
+  }
 
-  if (!result.rowCount) {
+  let deletedCount = 0;
+
+  for (const { pool } of pools) {
+    await ensureGuestDuplicateExclusionsTableOnPool(pool);
+    const result = await pool.query(
+      `
+        DELETE FROM guest_report_duplicate_exclusions
+        WHERE normalized_domain = $1
+      `,
+      [normalizedDomain]
+    );
+    deletedCount += result.rowCount ?? 0;
+  }
+
+  if (deletedCount === 0) {
     throw new Error("Excluded website not found.");
   }
 
   return {
-    id: String(result.rows[0]?.id ?? exclusionId),
+    id: normalizedDomain,
   };
 };
 
