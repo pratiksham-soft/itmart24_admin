@@ -31,6 +31,9 @@ export type CRMListParams = {
   source?: string;
   owner?: string;
   priority?: string;
+  tags?: string;
+  companyName?: string;
+  cleanupStatus?: string;
   dateFrom?: string;
   dateTo?: string;
   sortBy?: string;
@@ -45,6 +48,7 @@ export type CRMLead = {
   phone: string | null;
   emails: string[];
   phones: string[];
+  address: string | null;
   companyName: string | null;
   jobTitle: string | null;
   website: string | null;
@@ -225,6 +229,7 @@ export type CRMCampaignRecipient = {
   email: string;
   firstName: string | null;
   lastName: string | null;
+  address: string | null;
   companyName: string | null;
   jobTitle: string | null;
   website: string | null;
@@ -247,6 +252,7 @@ export type CRMLeadEmailRecipient = {
   phone: string | null;
   emails: string[];
   phones: string[];
+  address: string | null;
   companyName: string | null;
   jobTitle: string | null;
   website: string | null;

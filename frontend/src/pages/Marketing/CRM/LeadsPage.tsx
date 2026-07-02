@@ -27,6 +27,16 @@ export default function LeadsPage() {
     { key: "status", label: "Status", options: toOptions(defaultCRMSettings.leadStatuses) },
     { key: "source", label: "Source", options: toOptions(defaultCRMSettings.leadSources) },
     { key: "priority", label: "Priority", options: toOptions(defaultCRMSettings.leadPriorities) },
+    {
+      key: "cleanupStatus",
+      label: "Cleanup Status",
+      options: toOptions(["Needs Review", "No Review Tag"]).map((option) => ({
+        ...option,
+        value: option.value === "Needs Review" ? "needs_review" : "not_review",
+      })),
+    },
+    { key: "tags", label: "Tags", type: "text" as const, placeholder: "Filter by tag" , options: [] },
+    { key: "companyName", label: "Company Name", type: "text" as const, placeholder: "Company name" , options: [] },
   ];
 
   const showBanner = (tone: "success" | "error" | "info", message: string) => {
@@ -83,6 +93,25 @@ export default function LeadsPage() {
             ),
           },
           {
+            key: "website",
+            label: "Website",
+            render: (lead) => {
+              const website = (lead as CRMLead).website;
+              return website ? (
+                <a
+                  href={website}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-brand-600 underline-offset-4 hover:underline"
+                >
+                  {website}
+                </a>
+              ) : (
+                "No website"
+              );
+            },
+          },
+          {
             key: "type",
             label: "Lead Type",
             render: (lead) => (
@@ -105,11 +134,6 @@ export default function LeadsPage() {
             key: "priority",
             label: "Priority",
             render: (lead) => <Badge color={getPriorityBadgeColor((lead as CRMLead).leadPriority)} size="sm">{(lead as CRMLead).leadPriority}</Badge>,
-          },
-          {
-            key: "value",
-            label: "Value",
-            render: (lead) => formatCurrency((lead as CRMLead).estimatedValue, (lead as CRMLead).currency),
           },
           {
             key: "followUp",
@@ -307,6 +331,10 @@ export default function LeadsPage() {
                 <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03] md:col-span-2">
                   <div className="text-sm text-gray-500 dark:text-gray-400">Phone Numbers</div>
                   <div className="mt-1 font-semibold text-gray-800 dark:text-white/90 break-words">{getLeadPhones(viewLead).join(", ") || "No phone"}</div>
+                </div>
+                <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03] md:col-span-2">
+                  <div className="text-sm text-gray-500 dark:text-gray-400">Address</div>
+                  <div className="mt-1 font-semibold text-gray-800 dark:text-white/90 break-words">{viewLead.address || "Not provided"}</div>
                 </div>
               </div>
             ) : null}

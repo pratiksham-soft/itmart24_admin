@@ -5,6 +5,8 @@ import type { CRMOption } from "../types/crm.types";
 type FilterConfig = {
   key: string;
   label: string;
+  type?: "select" | "text";
+  placeholder?: string;
   options: CRMOption[];
 };
 
@@ -37,21 +39,30 @@ export default function CRMFilters({
           onChange={(event) => onSearchChange(event.target.value)}
         />
 
-        {filterConfigs.map((config) => (
-          <select
-            key={config.key}
-            value={filterValues[config.key] || ""}
-            onChange={(event) => onFilterChange(config.key, event.target.value)}
-            className={selectClassName}
-          >
-            <option value="">{config.label}</option>
-            {config.options.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        ))}
+        {filterConfigs.map((config) =>
+          config.type === "text" ? (
+            <InputField
+              key={config.key}
+              placeholder={config.placeholder || config.label}
+              value={filterValues[config.key] || ""}
+              onChange={(event) => onFilterChange(config.key, event.target.value)}
+            />
+          ) : (
+            <select
+              key={config.key}
+              value={filterValues[config.key] || ""}
+              onChange={(event) => onFilterChange(config.key, event.target.value)}
+              className={selectClassName}
+            >
+              <option value="">{config.label}</option>
+              {config.options.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          )
+        )}
 
         <Button type="button" variant="outline" onClick={onReset}>
           Reset

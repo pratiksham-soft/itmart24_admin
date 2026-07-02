@@ -78,6 +78,7 @@ type CampaignRecipientRecord = {
   email: string;
   firstName: string | null;
   lastName: string | null;
+  address: string | null;
   companyName: string | null;
   jobTitle: string | null;
   website: string | null;
@@ -100,6 +101,7 @@ type LeadRecipientCandidate = {
   phone: string | null;
   emails: string[];
   phones: string[];
+  address: string | null;
   companyName: string | null;
   jobTitle: string | null;
   website: string | null;
@@ -203,6 +205,7 @@ const mapLeadRecipient = (row: Record<string, unknown>): LeadRecipientCandidate 
     phone: primaryPhone,
     emails,
     phones,
+    address: mapped.address ? String(mapped.address) : null,
     tags: normalizeJsonField<string[]>(mapped.tags, []),
     notes: normalizeJsonField<Array<Record<string, unknown>>>(mapped.notes, []),
   };
@@ -262,6 +265,7 @@ const renderTemplate = (
   recipient: {
     firstName?: string | null;
     lastName?: string | null;
+    address?: string | null;
     companyName?: string | null;
     jobTitle?: string | null;
     website?: string | null;
@@ -271,6 +275,7 @@ const renderTemplate = (
   [
     ["{{firstName}}", recipient.firstName || ""],
     ["{{lastName}}", recipient.lastName || ""],
+    ["{{address}}", recipient.address || ""],
     ["{{companyName}}", recipient.companyName || ""],
     ["{{jobTitle}}", recipient.jobTitle || ""],
     ["{{website}}", recipient.website || ""],
@@ -489,6 +494,7 @@ const loadLeadRecipientsByIds = async (leadIds: number[]) => {
         phone,
         emails,
         phones,
+        address,
         company_name,
         job_title,
         website,
@@ -513,21 +519,37 @@ const loadLeadRecipientsByIds = async (leadIds: number[]) => {
 
 const replaceCampaignRecipients = async (campaignId: number, leadIds: number[], recipientSelections?: RecipientSelection[]) => {
   const leads = await loadLeadRecipientsByIds(leadIds);
+  const leadById = new Map<number, LeadRecipientCandidate>(
+    leads.map((lead) => [lead.id, lead])
+  );
   const selectedRecipients =
     recipientSelections && recipientSelections.length > 0
       ? recipientSelections
+          .filter((selection) => isValidEmail(selection.email))
           .map((selection) => {
-            const lead = leads.find((entry) => entry.id === selection.leadId);
-            if (!lead) {
-              return null;
-            }
+            const lead = leadById.get(selection.leadId);
             return {
-              ...lead,
-              recipientKey: `${lead.id}::${selection.email}`,
+              id: lead?.id ?? selection.leadId,
+              recipientKey: `${selection.leadId}::${selection.email}`,
+              firstName: lead?.firstName ?? null,
+              lastName: lead?.lastName ?? null,
               email: selection.email,
+              phone: lead?.phone ?? null,
+              emails: lead ? lead.emails : [selection.email],
+              phones: lead?.phones ?? [],
+              address: lead?.address ?? null,
+              companyName: lead?.companyName ?? null,
+              jobTitle: lead?.jobTitle ?? null,
+              website: lead?.website ?? null,
+              leadType: lead?.leadType ?? null,
+              leadStatus: lead?.leadStatus ?? "Selected",
+              leadPriority: lead?.leadPriority ?? "Medium",
+              leadScore: lead?.leadScore ?? 0,
+              tags: lead?.tags ?? [],
+              notes: lead?.notes ?? [],
+              assignedTo: lead?.assignedTo ?? null,
             };
           })
-          .filter((entry): entry is LeadRecipientCandidate => entry !== null && isValidEmail(entry.email))
       : leads.flatMap((lead) => {
           const emails = Array.from(
             new Set(
@@ -560,6 +582,7 @@ const replaceCampaignRecipients = async (campaignId: number, leadIds: number[], 
             email,
             first_name,
             last_name,
+            address,
             company_name,
             job_title,
             website,
@@ -567,14 +590,15 @@ const replaceCampaignRecipients = async (campaignId: number, leadIds: number[], 
             created_at,
             updated_at
           )
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending', NOW(), NOW())
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending', NOW(), NOW())
         `,
         [
           campaignId,
-          recipient.id,
+          leadById.has(recipient.id) ? recipient.id : null,
           recipient.email,
           recipient.firstName,
           recipient.lastName,
+          recipient.address,
           recipient.companyName,
           recipient.jobTitle,
           recipient.website,
@@ -927,6 +951,7 @@ export const listLeadEmailRecipients = async (query: PaginationQuery) =>
         OR lead.last_name ILIKE ${parameter}
         OR lead.email ILIKE ${parameter}
         OR lead.emails::text ILIKE ${parameter}
+        OR lead.address ILIKE ${parameter}
         OR lead.company_name ILIKE ${parameter}
         OR lead.website ILIKE ${parameter}
         OR lead.lead_type ILIKE ${parameter}
@@ -947,6 +972,7 @@ export const listLeadEmailRecipients = async (query: PaginationQuery) =>
             lead.phone,
             lead.emails,
             lead.phones,
+            lead.address,
             lead.company_name,
             lead.job_title,
             lead.website,
@@ -1316,6 +1342,7 @@ export const previewCampaign = async (id: number, payload?: Record<string, unkno
     const sampleRecipient = {
       firstName: toTrimmedString(payload?.firstName) || "Alex",
       lastName: toTrimmedString(payload?.lastName) || "Morgan",
+      address: toTrimmedString(payload?.address) || "Bengaluru, Karnataka, India",
       companyName: toTrimmedString(payload?.companyName) || "ITMart24 Partner",
       jobTitle: toTrimmedString(payload?.jobTitle) || "Marketing Manager",
       email: toTrimmedString(payload?.email) || "alex@example.com",
@@ -1348,6 +1375,7 @@ export const sendTestCampaign = async (id: number, payload: Record<string, unkno
     const renderedSubject = renderTemplate(campaign.subject, {
       firstName: "Test",
       lastName: "Recipient",
+      address: "Kolkata, West Bengal, India",
       companyName: "ITMart24",
       jobTitle: "Marketing Lead",
       email: testEmail,
@@ -1356,6 +1384,7 @@ export const sendTestCampaign = async (id: number, payload: Record<string, unkno
     const renderedBody = renderTemplate(campaign.body, {
       firstName: "Test",
       lastName: "Recipient",
+      address: "Kolkata, West Bengal, India",
       companyName: "ITMart24",
       jobTitle: "Marketing Lead",
       email: testEmail,

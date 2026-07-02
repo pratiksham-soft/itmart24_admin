@@ -14,6 +14,7 @@
     "shopify:refresh-seo-copy": "ts-node src/scripts/refreshShopifyProductSeoCopy.ts",
     "shopify:sync-rankings": "ts-node src/scripts/syncProductRanking.ts",
     "generate:cloud-services-leads": "ts-node src/scripts/generateCloudServicesCrmLeadsCsv.ts",
+    "cleanup:map-scraper-leads": "ts-node --transpile-only src/scripts/cleanupMapScraperMarketingLeads.ts",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],

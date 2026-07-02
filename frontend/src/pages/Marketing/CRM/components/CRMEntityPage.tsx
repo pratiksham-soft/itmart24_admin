@@ -12,6 +12,8 @@ import { readErrorMessage } from "../utils/crmHelpers";
 type FilterConfig = {
   key: string;
   label: string;
+  type?: "select" | "text";
+  placeholder?: string;
   options: CRMOption[];
 };
 

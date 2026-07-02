@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import PageMeta from "../../../components/common/PageMeta";
 import InputField from "../../../components/form/input/InputField";
 import Badge from "../../../components/ui/badge/Badge";
@@ -33,6 +33,7 @@ const renderTemplate = (template: string, recipient: Partial<CRMCampaignRecipien
   [
     ["{{firstName}}", recipient.firstName ?? ""],
     ["{{lastName}}", recipient.lastName ?? ""],
+    ["{{address}}", recipient.address ?? ""],
     ["{{companyName}}", recipient.companyName ?? ""],
     ["{{jobTitle}}", recipient.jobTitle ?? ""],
     ["{{website}}", recipient.website ?? ""],
@@ -67,6 +68,7 @@ export default function EmailCampaignsPage() {
   const [totalPages, setTotalPages] = useState(0);
   const [composerCampaign, setComposerCampaign] = useState<CRMCampaign | null>(null);
   const [isComposerOpen, setIsComposerOpen] = useState(false);
+  const [detailCampaignId, setDetailCampaignId] = useState<number | null>(null);
   const [detailCampaign, setDetailCampaign] = useState<CRMCampaign | null>(null);
   const [detailRecipients, setDetailRecipients] = useState<CRMCampaignRecipient[]>([]);
   const [detailSummary, setDetailSummary] = useState<CRMCampaignRecipientSummary>({
@@ -84,6 +86,11 @@ export default function EmailCampaignsPage() {
   const [sendConfirmCampaign, setSendConfirmCampaign] = useState<CRMCampaign | null>(null);
   const [workingCampaignId, setWorkingCampaignId] = useState<number | null>(null);
   const [testEmail, setTestEmail] = useState("");
+  const detailCampaignIdRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    detailCampaignIdRef.current = detailCampaignId;
+  }, [detailCampaignId]);
 
   const showBanner = (tone: "success" | "error" | "info", message: string) => {
     setBanner({ tone, message });
@@ -112,6 +119,9 @@ export default function EmailCampaignsPage() {
   const openCampaignDetails = useCallback(async (campaignId: number, silent = false) => {
     try {
       if (!silent) {
+        setDetailCampaignId(campaignId);
+      }
+      if (!silent) {
         setLoadingDetail(true);
       }
       const [campaign, recipients, preview] = await Promise.all([
@@ -119,6 +129,9 @@ export default function EmailCampaignsPage() {
         getCampaignRecipients(campaignId, { page: detailRecipientPage, limit: 20 }),
         previewCampaign(campaignId),
       ]);
+      if (detailCampaignIdRef.current !== campaignId) {
+        return;
+      }
       setDetailCampaign(campaign);
       setDetailRecipients(recipients.items);
       setDetailSummary(recipients.summary);
@@ -156,23 +169,23 @@ export default function EmailCampaignsPage() {
 
     const intervalId = window.setInterval(() => {
       void loadCampaigns();
-      if (detailCampaign) {
-        void openCampaignDetails(detailCampaign.id, true);
+      if (detailCampaignId) {
+        void openCampaignDetails(detailCampaignId, true);
       }
     }, 5000);
 
     return () => {
       window.clearInterval(intervalId);
     };
-  }, [campaigns, detailCampaign, loadCampaigns, openCampaignDetails]);
+  }, [campaigns, detailCampaign, detailCampaignId, loadCampaigns, openCampaignDetails]);
 
   useEffect(() => {
-    if (!detailCampaign) {
+    if (!detailCampaignId) {
       return;
     }
 
-    void openCampaignDetails(detailCampaign.id, true);
-  }, [detailCampaign, detailRecipientPage, openCampaignDetails]);
+    void openCampaignDetails(detailCampaignId, true);
+  }, [detailCampaignId, detailRecipientPage, openCampaignDetails]);
 
   const selectedPreviewRecipient = useMemo(
     () => detailRecipients.find((recipient) => recipient.email) ?? null,
@@ -506,7 +519,14 @@ export default function EmailCampaignsPage() {
           setComposerCampaign(null);
         }}
         onSaved={(campaign) => {
-          showBanner("success", composerCampaign ? "Campaign draft updated successfully." : "Campaign draft created successfully.");
+          showBanner(
+            "success",
+            campaign.status === "Sending"
+              ? "Campaign saved and sending started successfully."
+              : composerCampaign
+                ? "Campaign draft updated successfully."
+                : "Campaign draft created successfully."
+          );
           setComposerCampaign(campaign);
           void loadCampaigns();
         }}
@@ -576,7 +596,25 @@ export default function EmailCampaignsPage() {
         ) : null}
       </Modal>
 
-      <Modal isOpen={Boolean(detailCampaign)} onClose={() => setDetailCampaign(null)} className="max-w-6xl p-6 lg:p-8">
+      <Modal
+        isOpen={Boolean(detailCampaignId)}
+        onClose={() => {
+          setDetailCampaignId(null);
+          setDetailCampaign(null);
+          setDetailRecipients([]);
+          setDetailPreview(null);
+          setDetailSummary({
+            total: 0,
+            pending: 0,
+            sending: 0,
+            sent: 0,
+            failed: 0,
+            skipped: 0,
+          });
+          setTestEmail("");
+        }}
+        className="max-w-6xl p-6 lg:p-8"
+      >
         {detailCampaign ? (
           <div className="space-y-6">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">

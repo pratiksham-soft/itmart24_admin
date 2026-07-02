@@ -9,6 +9,7 @@ import {
   createCampaign,
   getCampaignRecipients,
   getLeadEmailRecipients,
+  sendCampaign,
   updateCampaign,
 } from "../services/crmApi";
 import type {
@@ -48,6 +49,7 @@ const selectClassName =
 const tokenOptions = [
   "{{firstName}}",
   "{{lastName}}",
+  "{{address}}",
   "{{companyName}}",
   "{{jobTitle}}",
   "{{website}}",
@@ -82,6 +84,7 @@ const renderTemplate = (template: string, recipient: Partial<CRMLeadEmailRecipie
   [
     ["{{firstName}}", recipient.firstName ?? ""],
     ["{{lastName}}", recipient.lastName ?? ""],
+    ["{{address}}", recipient.address ?? ""],
     ["{{companyName}}", recipient.companyName ?? ""],
     ["{{jobTitle}}", recipient.jobTitle ?? ""],
     ["{{website}}", recipient.website ?? ""],
@@ -107,6 +110,7 @@ const mapRecipientToLead = (recipient: CRMCampaignRecipient): CRMLeadEmailRecipi
   phone: null,
   emails: [recipient.email],
   phones: [],
+  address: recipient.address,
   companyName: recipient.companyName,
   jobTitle: recipient.jobTitle,
   website: recipient.website,
@@ -136,6 +140,7 @@ export default function CampaignComposerModal({
   const [loadingAccounts, setLoadingAccounts] = useState(false);
   const [form, setForm] = useState<CampaignFormState>(defaultFormState([], null));
   const [saving, setSaving] = useState(false);
+  const [saveMode, setSaveMode] = useState<"draft" | "send">("draft");
   const [error, setError] = useState<string | null>(null);
   const [leadItems, setLeadItems] = useState<CRMLeadEmailRecipient[]>([]);
   const [leadPage, setLeadPage] = useState(1);
@@ -381,7 +386,7 @@ export default function CampaignComposerModal({
     }
   };
 
-  const handleSave = async () => {
+  const handleSave = async (mode: "draft" | "send" = "draft") => {
     if (!form.name.trim()) {
       setError("Campaign name is required.");
       return;
@@ -409,6 +414,7 @@ export default function CampaignComposerModal({
 
     try {
       setSaving(true);
+      setSaveMode(mode);
       setError(null);
       const payload = {
         name: form.name.trim(),
@@ -427,12 +433,14 @@ export default function CampaignComposerModal({
       const savedCampaign = initialCampaign
         ? await updateCampaign(initialCampaign.id, payload)
         : await createCampaign(payload);
-      onSaved(savedCampaign);
+      const finalCampaign = mode === "send" ? await sendCampaign(savedCampaign.id) : savedCampaign;
+      onSaved(finalCampaign);
       onClose();
     } catch (saveError) {
       setError(readErrorMessage(saveError, "Failed to save campaign."));
     } finally {
       setSaving(false);
+      setSaveMode("draft");
     }
   };
 
@@ -924,7 +932,7 @@ export default function CampaignComposerModal({
                 ) : (
                   selectedRecipientList.slice(0, 12).map((recipient) => (
                     <div
-                      key={recipient.id}
+                      key={recipient.recipientKey}
                       className="flex items-start justify-between gap-3 rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-800 dark:bg-gray-900"
                     >
                       <div>
@@ -962,8 +970,15 @@ export default function CampaignComposerModal({
           <Button type="button" variant="outline" onClick={onClose}>
             Cancel
           </Button>
-          <Button type="button" onClick={() => void handleSave()} disabled={saving}>
-            {saving ? "Saving..." : initialCampaign ? "Save Draft" : "Create Draft"}
+          <Button type="button" variant="outline" onClick={() => void handleSave("draft")} disabled={saving}>
+            {saving && saveMode === "draft" ? "Saving..." : initialCampaign ? "Save Draft" : "Create Draft"}
+          </Button>
+          <Button type="button" onClick={() => void handleSave("send")} disabled={saving}>
+            {saving && saveMode === "send"
+              ? "Starting..."
+              : initialCampaign
+                ? "Save Draft & Start Sending"
+                : "Create & Start Sending"}
           </Button>
         </div>
       </div>

@@ -25,6 +25,7 @@ export const defaultCRMSettings: CRMSettings = {
     "Vendor Signup",
     "Manual Entry",
     "Email Campaign",
+    "Map Scraper",
     "Social Media",
     "Referral",
     "Marketplace Listing",

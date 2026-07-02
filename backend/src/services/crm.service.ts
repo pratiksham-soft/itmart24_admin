@@ -17,6 +17,9 @@ type PaginationQuery = {
   source?: unknown;
   owner?: unknown;
   priority?: unknown;
+  tags?: unknown;
+  companyName?: unknown;
+  cleanupStatus?: unknown;
   dateFrom?: unknown;
   dateTo?: unknown;
   sortBy?: unknown;
@@ -125,6 +128,7 @@ const CRM_LEAD_IMPORT_HEADERS = [
   "lastName",
   "email",
   "phone",
+  "address",
   "companyName",
   "jobTitle",
   "website",
@@ -157,6 +161,7 @@ export const CRM_DEFAULTS = {
     "Vendor Signup",
     "Manual Entry",
     "Email Campaign",
+    "Map Scraper",
     "Social Media",
     "Referral",
     "Marketplace Listing",
@@ -500,6 +505,16 @@ const normalizeJsonField = <T>(value: unknown, fallback: T): T => {
   return fallback;
 };
 
+const uniqueStrings = (items: string[]) => Array.from(new Set(items.filter(Boolean)));
+
+const ensureRequiredLeadSources = (items: unknown) => {
+  const normalized = Array.isArray(items)
+    ? items.map((entry) => String(entry ?? "").trim()).filter(Boolean)
+    : [];
+
+  return uniqueStrings([...normalized, ...CRM_DEFAULTS.leadSources]);
+};
+
 const mapLead = (row: Record<string, unknown>): any => {
   const record = camelizeRow(row);
   const emails = normalizeJsonField<string[]>(record.emails, []);
@@ -509,6 +524,7 @@ const mapLead = (row: Record<string, unknown>): any => {
     leadType: record.leadType ? String(record.leadType) : null,
     email: record.email ? String(record.email) : emails[0] ?? null,
     phone: record.phone ? String(record.phone) : phones[0] ?? null,
+    address: record.address ? String(record.address) : null,
     emails,
     phones,
     tags: normalizeJsonField<string[]>(record.tags, []),
@@ -573,6 +589,9 @@ const buildPagination = (query: PaginationQuery) => {
     source: toTrimmedString(query.source),
     owner: toTrimmedString(query.owner),
     priority: toTrimmedString(query.priority),
+    tags: toTrimmedString(query.tags),
+    companyName: toTrimmedString(query.companyName),
+    cleanupStatus: toTrimmedString(query.cleanupStatus),
     dateFrom: toTrimmedString(query.dateFrom),
     dateTo: toTrimmedString(query.dateTo),
     sortBy: toTrimmedString(query.sortBy),
@@ -789,6 +808,7 @@ const sanitizeLeadPayload = async (
     phone,
     emails,
     phones,
+    address: toOptionalString(payload.address),
     companyName: companyName || null,
     jobTitle: toOptionalString(payload.jobTitle),
     website: toUrl(payload.website, "Website"),
@@ -1052,6 +1072,7 @@ const buildLeadImportPayload = async (
     phone: toOptionalString(row.phone),
     emails: splitCommaSeparatedValues(row.email),
     phones: splitCommaSeparatedValues(row.phone),
+    address: toOptionalString(row.address),
     companyName: toOptionalString(row.companyName),
     jobTitle: toOptionalString(row.jobTitle),
     website: toOptionalString(row.website),
@@ -1083,6 +1104,7 @@ const buildLeadImportUpdatePayload = (
     ...(payload.phone ? { phone: payload.phone } : {}),
     ...(payload.emails ? { emails: payload.emails } : {}),
     ...(payload.phones ? { phones: payload.phones } : {}),
+    ...(payload.address ? { address: payload.address } : {}),
     ...(payload.companyName ? { companyName: payload.companyName } : {}),
     ...(payload.jobTitle ? { jobTitle: payload.jobTitle } : {}),
     ...(payload.website ? { website: payload.website } : {}),
@@ -1669,6 +1691,7 @@ export const listLeads = async (query: PaginationQuery) =>
       "lead.emails::text",
       "lead.phone",
       "lead.phones::text",
+      "lead.address",
       "lead.company_name",
       "lead.lead_type",
       "lead.lead_source",
@@ -1679,6 +1702,20 @@ export const listLeads = async (query: PaginationQuery) =>
       { queryValue: toTrimmedString(query.source), clause: "lead.lead_source = ?" },
       { queryValue: toTrimmedString(query.owner), clause: "lead.assigned_to::text = ?" },
       { queryValue: toTrimmedString(query.priority), clause: "lead.lead_priority = ?" },
+      { queryValue: toTrimmedString(query.tags) ? `%${toTrimmedString(query.tags)}%` : "", clause: "lead.tags::text ILIKE ?" },
+      { queryValue: toTrimmedString(query.companyName) ? `%${toTrimmedString(query.companyName)}%` : "", clause: "lead.company_name ILIKE ?" },
+      {
+        queryValue:
+          toTrimmedString(query.cleanupStatus) === "needs_review" || toTrimmedString(query.cleanupStatus) === "not_review"
+            ? "%cleanup-review%"
+            : "",
+        clause:
+          toTrimmedString(query.cleanupStatus) === "needs_review"
+            ? "lead.tags::text ILIKE ?"
+            : toTrimmedString(query.cleanupStatus) === "not_review"
+              ? "lead.tags::text NOT ILIKE ?"
+              : "TRUE = TRUE",
+      },
     ],
     dateColumn: "lead.created_at",
     sortColumnMap: {
@@ -1780,16 +1817,16 @@ export const createLead = async (
   const result = await pool.query(
     `
       INSERT INTO crm_leads (
-        first_name, last_name, email, phone, emails, phones, company_name, job_title, website,
+        first_name, last_name, email, phone, emails, phones, address, company_name, job_title, website,
         lead_type, lead_source, lead_status, lead_priority, lead_score, estimated_value, currency,
         assigned_to, tags, notes, next_follow_up_at, last_activity_at,
         created_by, updated_by, created_at, updated_at
       )
       VALUES (
-        $1, $2, $3, $4, $5::jsonb, $6::jsonb, $7, $8, $9,
-        $10, $11, $12, $13, $14, $15, $16,
-        $17, $18::jsonb, $19::jsonb, $20, NOW(),
-        $21, $22, NOW(), NOW()
+        $1, $2, $3, $4, $5::jsonb, $6::jsonb, $7, $8, $9, $10,
+        $11, $12, $13, $14, $15, $16, $17,
+        $18, $19::jsonb, $20::jsonb, $21, NOW(),
+        $22, $23, NOW(), NOW()
       )
       RETURNING *
     `,
@@ -1800,6 +1837,7 @@ export const createLead = async (
       input.phone,
       JSON.stringify(input.emails),
       JSON.stringify(input.phones),
+      input.address,
       input.companyName,
       input.jobTitle,
       input.website,
@@ -1868,22 +1906,23 @@ export const updateLead = async (
           phone = $5,
           emails = $6::jsonb,
           phones = $7::jsonb,
-          company_name = $8,
-          job_title = $9,
-          website = $10,
-          lead_type = $11,
-          lead_source = $12,
-          lead_status = $13,
-          lead_priority = $14,
-          lead_score = $15,
-          estimated_value = $16,
-          currency = $17,
-          assigned_to = $18,
-          tags = $19::jsonb,
-          notes = $20::jsonb,
-          next_follow_up_at = $21,
+          address = $8,
+          company_name = $9,
+          job_title = $10,
+          website = $11,
+          lead_type = $12,
+          lead_source = $13,
+          lead_status = $14,
+          lead_priority = $15,
+          lead_score = $16,
+          estimated_value = $17,
+          currency = $18,
+          assigned_to = $19,
+          tags = $20::jsonb,
+          notes = $21::jsonb,
+          next_follow_up_at = $22,
           last_activity_at = NOW(),
-          updated_by = $22,
+          updated_by = $23,
           updated_at = NOW()
       WHERE id = $1 AND deleted_at IS NULL
       RETURNING *
@@ -1896,6 +1935,7 @@ export const updateLead = async (
       input.phone,
       JSON.stringify(input.emails),
       JSON.stringify(input.phones),
+      input.address,
       input.companyName,
       input.jobTitle,
       input.website,
@@ -3540,6 +3580,7 @@ export const getCRMSettings = async () => {
   return {
     ...CRM_DEFAULTS,
     ...storedSettings,
+    leadSources: ensureRequiredLeadSources(storedSettings.leadSources),
   };
 };
 
@@ -3551,9 +3592,7 @@ export const updateCRMSettings = async (
     leadStatuses: Array.isArray(payload.leadStatuses)
       ? payload.leadStatuses
       : CRM_DEFAULTS.leadStatuses,
-    leadSources: Array.isArray(payload.leadSources)
-      ? payload.leadSources
-      : CRM_DEFAULTS.leadSources,
+    leadSources: ensureRequiredLeadSources(payload.leadSources),
     dealStages: Array.isArray(payload.dealStages)
       ? payload.dealStages
       : CRM_DEFAULTS.dealStages,

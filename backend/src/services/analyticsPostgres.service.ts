@@ -609,6 +609,7 @@ const TABLE_STATEMENTS = [
       phone TEXT,
       emails JSONB NOT NULL DEFAULT '[]'::jsonb,
       phones JSONB NOT NULL DEFAULT '[]'::jsonb,
+      address TEXT,
       company_name TEXT,
       job_title TEXT,
       website TEXT,
@@ -881,6 +882,7 @@ const TABLE_STATEMENTS = [
       email TEXT NOT NULL,
       first_name TEXT,
       last_name TEXT,
+      address TEXT,
       company_name TEXT,
       job_title TEXT,
       website TEXT,
@@ -912,6 +914,14 @@ const TABLE_STATEMENTS = [
   `
     ALTER TABLE crm_leads
     ADD COLUMN IF NOT EXISTS phones JSONB NOT NULL DEFAULT '[]'::jsonb
+  `,
+  `
+    ALTER TABLE crm_leads
+    ADD COLUMN IF NOT EXISTS address TEXT
+  `,
+  `
+    ALTER TABLE crm_campaign_recipients
+    ADD COLUMN IF NOT EXISTS address TEXT
   `,
   `
     CREATE INDEX IF NOT EXISTS idx_crm_leads_email ON crm_leads (email) WHERE deleted_at IS NULL
