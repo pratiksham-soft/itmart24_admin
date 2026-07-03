@@ -41,6 +41,8 @@ type CRMEntityPageProps<T> = {
   banner?: BannerState;
   reloadKey?: number;
   headerActionsFooter?: ReactNode;
+  filterSecondaryActionLabel?: string;
+  onFilterSecondaryAction?: (params: CRMListParams) => Promise<void> | void;
 };
 
 export default function CRMEntityPage<T>({
@@ -63,6 +65,8 @@ export default function CRMEntityPage<T>({
   banner,
   reloadKey = 0,
   headerActionsFooter,
+  filterSecondaryActionLabel,
+  onFilterSecondaryAction,
 }: CRMEntityPageProps<T>) {
   const [items, setItems] = useState<T[]>([]);
   const [loading, setLoading] = useState(true);
@@ -74,6 +78,7 @@ export default function CRMEntityPage<T>({
   const [error, setError] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<T | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [runningFilterSecondaryAction, setRunningFilterSecondaryAction] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -177,6 +182,27 @@ export default function CRMEntityPage<T>({
           setFilterValues({});
           setPage(1);
         }}
+        secondaryActionLabel={filterSecondaryActionLabel}
+        onSecondaryAction={() => {
+          if (!onFilterSecondaryAction) {
+            return;
+          }
+
+          void (async () => {
+            try {
+              setRunningFilterSecondaryAction(true);
+              await onFilterSecondaryAction({
+                q: searchValue,
+                ...filterValues,
+              });
+            } catch (actionError) {
+              setError(readErrorMessage(actionError, "Failed to complete action."));
+            } finally {
+              setRunningFilterSecondaryAction(false);
+            }
+          })();
+        }}
+        secondaryActionLoading={runningFilterSecondaryAction}
       />
 
       <CRMTable

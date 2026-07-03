@@ -6,7 +6,7 @@ import LeadFormModal from "./components/LeadFormModal";
 import LeadImportModal from "./components/LeadImportModal";
 import CRMEntityPage from "./components/CRMEntityPage";
 import { addLeadNote, addLeadTask, convertLead, createLead, deleteLead, getLeadCustomPortfolio, getLeads, updateLead } from "./services/crmApi";
-import type { BannerState, CRMCustomPortfolioLead, CRMLead, CRMLeadImportResult } from "./types/crm.types";
+import type { BannerState, CRMCustomPortfolioLead, CRMLead, CRMLeadEmailCleanupResult, CRMLeadImportResult, CRMListParams } from "./types/crm.types";
 import { crmLeadTypes, defaultCRMSettings, formatCurrency, formatDateTime, formatLeadType, fullLeadName, getLeadTypeBadgeColor, getPriorityBadgeColor, getStatusBadgeColor, isOverdue, readErrorMessage, toOptions } from "./utils/crmHelpers";
 import { Modal } from "../../../components/ui/modal";
 import ActivityTimeline from "./components/ActivityTimeline";
@@ -50,6 +50,132 @@ export default function LeadsPage() {
   const getLeadPhones = (lead: CRMLead) =>
     Array.isArray(lead.phones) && lead.phones.length > 0 ? lead.phones : lead.phone ? [lead.phone] : [];
 
+  const getCampaignSafetyBadge = (lead: CRMLead) => {
+    if (!lead.email) {
+      return { label: "No Email", color: "warning" as const };
+    }
+    if (lead.unsubscribed) {
+      return { label: "Unsubscribed", color: "error" as const };
+    }
+    if (lead.bounced) {
+      return { label: "Bounced", color: "error" as const };
+    }
+    if (lead.spamComplaint || lead.doNotContact || lead.emailRiskLevel === "blocked") {
+      return { label: "Blocked", color: "error" as const };
+    }
+    if (lead.campaignReady) {
+      return { label: "Ready", color: "success" as const };
+    }
+    return { label: "Needs Review", color: "warning" as const };
+  };
+
+  const escapeCsvValue = (value: unknown) => {
+    const normalized = String(value ?? "");
+    if (/[",\n]/.test(normalized)) {
+      return `"${normalized.replace(/"/g, '""')}"`;
+    }
+    return normalized;
+  };
+
+  const downloadCsv = (filename: string, content: string) => {
+    const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+  };
+
+  const handleExportCsv = async (params: CRMListParams) => {
+    const pageSize = 200;
+    const firstPage = await getLeads({
+      ...params,
+      page: 1,
+      limit: pageSize,
+    });
+
+    let allLeads = [...firstPage.items];
+
+    for (let currentPage = 2; currentPage <= Math.max(firstPage.pagination.totalPages, 1); currentPage += 1) {
+      const response = await getLeads({
+        ...params,
+        page: currentPage,
+        limit: pageSize,
+      });
+      allLeads = [...allLeads, ...response.items];
+    }
+
+    const headers = [
+      "First Name",
+      "Last Name",
+      "Emails",
+      "Phones",
+      "Address",
+      "Company Name",
+      "Job Title",
+      "Website",
+      "Lead Type",
+      "Lead Source",
+      "Lead Status",
+      "Lead Priority",
+      "Lead Score",
+      "Estimated Value",
+      "Currency",
+      "Assigned To",
+      "Tags",
+      "Next Follow Up",
+      "Last Activity",
+      "Created At",
+      "Updated At",
+      "Email Consent Status",
+      "Unsubscribed",
+      "Bounced",
+      "Spam Complaint",
+      "Do Not Contact",
+    ];
+
+    const rows = allLeads.map((lead) =>
+      [
+        lead.firstName,
+        lead.lastName,
+        getLeadEmails(lead).join(", "),
+        getLeadPhones(lead).join(", "),
+        lead.address,
+        lead.companyName,
+        lead.jobTitle,
+        lead.website,
+        lead.leadType,
+        lead.leadSource,
+        lead.leadStatus,
+        lead.leadPriority,
+        lead.leadScore,
+        lead.estimatedValue,
+        lead.currency,
+        lead.assignedTo,
+        (lead.tags ?? []).join(", "),
+        lead.nextFollowUpAt,
+        lead.lastActivityAt,
+        lead.createdAt,
+        lead.updatedAt,
+        lead.emailConsentStatus,
+        lead.unsubscribed ? "true" : "false",
+        lead.bounced ? "true" : "false",
+        lead.spamComplaint ? "true" : "false",
+        lead.doNotContact ? "true" : "false",
+      ]
+        .map(escapeCsvValue)
+        .join(",")
+    );
+
+    const csvContent = [headers.map(escapeCsvValue).join(","), ...rows].join("\n");
+    const filename = `crm-leads-${new Date().toISOString().slice(0, 10)}.csv`;
+    downloadCsv(filename, csvContent);
+    showBanner("success", `Exported ${allLeads.length} lead${allLeads.length === 1 ? "" : "s"} to CSV.`);
+  };
+
   return (
     <>
       <PageMeta title="CRM Leads | ITMart24 Admin" description="Manage lead capture, qualification, follow-up notes, and conversion." />
@@ -78,38 +204,36 @@ export default function LeadsPage() {
                     </span>
                   ) : null}
                 </div>
-                <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">{getLeadEmails(lead as CRMLead).join(", ") || "No email"}</div>
+                <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">{(lead as CRMLead).companyName || "No company"}</div>
               </div>
             ),
           },
           {
-            key: "company",
-            label: "Company",
+            key: "email",
+            label: "Email",
             render: (lead) => (
               <div>
-                <div>{(lead as CRMLead).companyName || "Not linked"}</div>
-                <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">{(lead as CRMLead).jobTitle || "No title"}</div>
+                <div>{(lead as CRMLead).email || "No email"}</div>
+                <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  {(lead as CRMLead).emailType || "unknown"}{(lead as CRMLead).emailRiskLevel ? ` | ${(lead as CRMLead).emailRiskLevel}` : ""}
+                </div>
               </div>
             ),
           },
           {
-            key: "website",
-            label: "Website",
-            render: (lead) => {
-              const website = (lead as CRMLead).website;
-              return website ? (
-                <a
-                  href={website}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-brand-600 underline-offset-4 hover:underline"
-                >
-                  {website}
-                </a>
-              ) : (
-                "No website"
-              );
-            },
+            key: "tags",
+            label: "Tags",
+            render: (lead) =>
+              (lead as CRMLead).tags.length > 0 ? (
+                <div className="flex flex-wrap gap-1.5">
+                  {(lead as CRMLead).tags.slice(0, 3).map((tag) => (
+                    <Badge key={tag} color="light" size="sm">{tag}</Badge>
+                  ))}
+                  {(lead as CRMLead).tags.length > 3 ? (
+                    <span className="text-xs text-gray-500 dark:text-gray-400">+{(lead as CRMLead).tags.length - 3} more</span>
+                  ) : null}
+                </div>
+              ) : "No tags",
           },
           {
             key: "type",
@@ -121,9 +245,17 @@ export default function LeadsPage() {
             ),
           },
           {
-            key: "source",
-            label: "Source",
-            render: (lead) => <Badge color={getStatusBadgeColor((lead as CRMLead).leadSource)} size="sm">{(lead as CRMLead).leadSource}</Badge>,
+            key: "campaignSafety",
+            label: "Campaign Safety",
+            render: (lead) => {
+              const badge = getCampaignSafetyBadge(lead as CRMLead);
+              return (
+                <div className="flex flex-wrap gap-2">
+                  <Badge color={badge.color} size="sm">{badge.label}</Badge>
+                  {(lead as CRMLead).agencyOutreachReady ? <Badge color="success" size="sm">Agency Ready</Badge> : null}
+                </div>
+              );
+            },
           },
           {
             key: "status",
@@ -194,6 +326,8 @@ export default function LeadsPage() {
         }}
         banner={banner}
         reloadKey={reloadKey}
+        filterSecondaryActionLabel="Export CSV"
+        onFilterSecondaryAction={handleExportCsv}
         headerActionsFooter={
           <a
             href="/samples/crm-leads-sample.csv"
@@ -215,6 +349,13 @@ export default function LeadsPage() {
           );
           setReloadKey((current) => current + 1);
         }}
+        onEmailCleanupApplied={(result: CRMLeadEmailCleanupResult) => {
+          showBanner(
+            "success",
+            `Email cleanup completed. Updated ${result.updatedRows}, unmatched ${result.unmatchedRows}, skipped ${result.skippedRows}, failed ${result.failedRows}.`
+          );
+          setReloadKey((current) => current + 1);
+        }}
       />
 
       <Modal isOpen={Boolean(viewLead)} onClose={() => setViewLead(null)} className="max-w-5xl p-6 lg:p-8">
@@ -229,7 +370,7 @@ export default function LeadsPage() {
                   </Badge>
                 </div>
                 <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                  {viewLead.companyName || "No company"} · {viewLead.email || "No email"} · {viewLead.phone || "No phone"}
+                  {viewLead.companyName || "No company"} | {viewLead.email || "No email"} | {viewLead.phone || "No phone"}
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -303,38 +444,88 @@ export default function LeadsPage() {
             </div>
 
             {detailTab === "overview" ? (
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
-                  <div className="text-sm text-gray-500 dark:text-gray-400">Lead Type</div>
-                  <div className="mt-1 font-semibold text-gray-800 dark:text-white/90">{formatLeadType(viewLead.leadType)}</div>
+              <div className="space-y-4">
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                  <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
+                    <div className="text-sm text-gray-500 dark:text-gray-400">Campaign Safety</div>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <Badge color={getCampaignSafetyBadge(viewLead).color} size="sm">{getCampaignSafetyBadge(viewLead).label}</Badge>
+                      {viewLead.agencyOutreachReady ? <Badge color="success" size="sm">Agency Ready</Badge> : null}
+                      {viewLead.emailRiskLevel ? <Badge color="light" size="sm">{viewLead.emailRiskLevel}</Badge> : null}
+                    </div>
+                  </div>
+                  <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
+                    <div className="text-sm text-gray-500 dark:text-gray-400">Email Type</div>
+                    <div className="mt-1 font-semibold text-gray-800 dark:text-white/90">{viewLead.emailType || "unknown"}</div>
+                  </div>
+                  <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
+                    <div className="text-sm text-gray-500 dark:text-gray-400">Email Domain</div>
+                    <div className="mt-1 font-semibold text-gray-800 dark:text-white/90">{viewLead.emailDomain || "Not available"}</div>
+                  </div>
                 </div>
-                <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
-                  <div className="text-sm text-gray-500 dark:text-gray-400">Status</div>
-                  <div className="mt-1 font-semibold text-gray-800 dark:text-white/90">{viewLead.leadStatus}</div>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
+                    <div className="text-sm text-gray-500 dark:text-gray-400">Lead Type</div>
+                    <div className="mt-1 font-semibold text-gray-800 dark:text-white/90">{formatLeadType(viewLead.leadType)}</div>
+                  </div>
+                  <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
+                    <div className="text-sm text-gray-500 dark:text-gray-400">Status</div>
+                    <div className="mt-1 font-semibold text-gray-800 dark:text-white/90">{viewLead.leadStatus}</div>
+                  </div>
+                  <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
+                    <div className="text-sm text-gray-500 dark:text-gray-400">Priority</div>
+                    <div className="mt-1 font-semibold text-gray-800 dark:text-white/90">{viewLead.leadPriority}</div>
+                  </div>
+                  <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
+                    <div className="text-sm text-gray-500 dark:text-gray-400">Lead Source</div>
+                    <div className="mt-1 font-semibold text-gray-800 dark:text-white/90">{viewLead.leadSource}</div>
+                  </div>
+                  <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
+                    <div className="text-sm text-gray-500 dark:text-gray-400">Estimated Value</div>
+                    <div className="mt-1 font-semibold text-gray-800 dark:text-white/90">{formatCurrency(viewLead.estimatedValue, viewLead.currency)}</div>
+                  </div>
+                  <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
+                    <div className="text-sm text-gray-500 dark:text-gray-400">Lifecycle Stage</div>
+                    <div className="mt-1 font-semibold text-gray-800 dark:text-white/90">{viewLead.lifecycleStage || "Not set"}</div>
+                  </div>
+                  <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03] md:col-span-2">
+                    <div className="text-sm text-gray-500 dark:text-gray-400">Emails</div>
+                    <div className="mt-1 font-semibold text-gray-800 dark:text-white/90 break-words">{getLeadEmails(viewLead).join(", ") || "No email"}</div>
+                  </div>
+                  <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03] md:col-span-2">
+                    <div className="text-sm text-gray-500 dark:text-gray-400">Phone Numbers</div>
+                    <div className="mt-1 font-semibold text-gray-800 dark:text-white/90 break-words">{getLeadPhones(viewLead).join(", ") || "No phone"}</div>
+                  </div>
+                  <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03] md:col-span-2">
+                    <div className="text-sm text-gray-500 dark:text-gray-400">Address</div>
+                    <div className="mt-1 font-semibold text-gray-800 dark:text-white/90 break-words">{viewLead.address || "Not provided"}</div>
+                  </div>
                 </div>
-                <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
-                  <div className="text-sm text-gray-500 dark:text-gray-400">Priority</div>
-                  <div className="mt-1 font-semibold text-gray-800 dark:text-white/90">{viewLead.leadPriority}</div>
-                </div>
-                <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
-                  <div className="text-sm text-gray-500 dark:text-gray-400">Lead Source</div>
-                  <div className="mt-1 font-semibold text-gray-800 dark:text-white/90">{viewLead.leadSource}</div>
-                </div>
-                <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
-                  <div className="text-sm text-gray-500 dark:text-gray-400">Estimated Value</div>
-                  <div className="mt-1 font-semibold text-gray-800 dark:text-white/90">{formatCurrency(viewLead.estimatedValue, viewLead.currency)}</div>
-                </div>
-                <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03] md:col-span-2">
-                  <div className="text-sm text-gray-500 dark:text-gray-400">Emails</div>
-                  <div className="mt-1 font-semibold text-gray-800 dark:text-white/90 break-words">{getLeadEmails(viewLead).join(", ") || "No email"}</div>
-                </div>
-                <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03] md:col-span-2">
-                  <div className="text-sm text-gray-500 dark:text-gray-400">Phone Numbers</div>
-                  <div className="mt-1 font-semibold text-gray-800 dark:text-white/90 break-words">{getLeadPhones(viewLead).join(", ") || "No phone"}</div>
-                </div>
-                <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03] md:col-span-2">
-                  <div className="text-sm text-gray-500 dark:text-gray-400">Address</div>
-                  <div className="mt-1 font-semibold text-gray-800 dark:text-white/90 break-words">{viewLead.address || "Not provided"}</div>
+
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                  {[
+                    ["Email Consent", viewLead.emailConsentStatus || "unknown"],
+                    ["Unsubscribed", viewLead.unsubscribed ? "Yes" : "No"],
+                    ["Bounced", viewLead.bounced ? `Yes${viewLead.bounceType ? ` (${viewLead.bounceType})` : ""}` : "No"],
+                    ["Spam Complaint", viewLead.spamComplaint ? "Yes" : "No"],
+                    ["Do Not Contact", viewLead.doNotContact ? "Yes" : "No"],
+                    ["Emails Sent", String(viewLead.emailSentCount ?? 0)],
+                    ["Emails Opened", String(viewLead.emailOpenCount ?? 0)],
+                    ["Emails Clicked", String(viewLead.emailClickCount ?? 0)],
+                    ["Emails Replied", String(viewLead.emailReplyCount ?? 0)],
+                    ["Last Campaign", viewLead.lastCampaignName || "Not available"],
+                    ["Last Campaign Status", viewLead.lastCampaignStatus || "Not available"],
+                    ["Last Sent", formatDateTime(viewLead.lastEmailSentAt ?? null)],
+                    ["Last Opened", formatDateTime(viewLead.lastEmailOpenedAt ?? null)],
+                    ["Last Clicked", formatDateTime(viewLead.lastEmailClickedAt ?? null)],
+                    ["Last Replied", formatDateTime(viewLead.lastEmailRepliedAt ?? null)],
+                  ].map(([label, value]) => (
+                    <div key={label} className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
+                      <div className="text-sm text-gray-500 dark:text-gray-400">{label}</div>
+                      <div className="mt-1 font-semibold text-gray-800 dark:text-white/90 break-words">{value}</div>
+                    </div>
+                  ))}
                 </div>
               </div>
             ) : null}

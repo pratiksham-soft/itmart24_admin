@@ -44,14 +44,22 @@ export type CRMLead = {
   id: number;
   firstName: string | null;
   lastName: string | null;
+  contactName?: string | null;
   email: string | null;
   phone: string | null;
   emails: string[];
   phones: string[];
   address: string | null;
   companyName: string | null;
+  country?: string | null;
+  city?: string | null;
+  state?: string | null;
+  industry?: string | null;
+  category?: string | null;
+  subCategory?: string | null;
   jobTitle: string | null;
   website: string | null;
+  lifecycleStage?: string | null;
   leadType: string | null;
   leadSource: string;
   leadStatus: string;
@@ -62,6 +70,40 @@ export type CRMLead = {
   assignedTo: number | null;
   tags: string[];
   notes: Array<Record<string, unknown>>;
+  unsubscribed?: boolean;
+  bounced?: boolean;
+  bounceType?: string | null;
+  spamComplaint?: boolean;
+  doNotContact?: boolean;
+  emailConsentStatus?: string;
+  lastEmailSentAt?: string | null;
+  emailSentCount?: number;
+  lastEmailOpenedAt?: string | null;
+  emailOpenCount?: number;
+  lastEmailClickedAt?: string | null;
+  emailClickCount?: number;
+  lastEmailRepliedAt?: string | null;
+  emailReplyCount?: number;
+  lastCampaignName?: string | null;
+  lastCampaignStatus?: string | null;
+  lastCampaignId?: string | null;
+  hasEmail?: boolean;
+  hasValidEmail?: boolean;
+  emailDomain?: string | null;
+  emailType?: string | null;
+  isFreeEmailProvider?: boolean;
+  isCompanyDomainEmail?: boolean;
+  isSupportEmail?: boolean;
+  isInfoEmail?: boolean;
+  isContactEmail?: boolean;
+  isSalesEmail?: boolean;
+  isHelloEmail?: boolean;
+  isMarketingEmail?: boolean;
+  campaignReady?: boolean;
+  canEmail?: boolean;
+  agencyOutreachReady?: boolean;
+  needsEmailReview?: boolean;
+  emailRiskLevel?: "low" | "medium" | "high" | "blocked" | string;
   nextFollowUpAt: string | null;
   lastActivityAt: string | null;
   convertedContactId?: number | null;
@@ -194,13 +236,23 @@ export type CRMActivity = {
 export type CRMCampaign = {
   id: number;
   name: string;
+  segmentName?: string | null;
   senderAccountId: number | null;
   senderEmail: string | null;
+  fromName?: string | null;
+  replyTo?: string | null;
   subject: string;
   body: string;
+  bodyHtml?: string | null;
+  bodyText?: string | null;
   bodyMode: "html" | "text";
   status: string;
   delaySeconds: number;
+  delayMinSeconds?: number;
+  delayMaxSeconds?: number;
+  trackOpens?: boolean;
+  trackClicks?: boolean;
+  unsubscribeRequired?: boolean;
   recipientType: string;
   segmentId: number | null;
   totalRecipients: number;
@@ -235,10 +287,32 @@ export type CRMCampaignRecipient = {
   website: string | null;
   leadType?: string | null;
   status: string;
+  blockedReason?: string | null;
+  skipReason?: string | null;
+  messageId?: string | null;
+  providerMessageId?: string | null;
+  trackingToken?: string | null;
   personalizedSubject: string | null;
   personalizedBodyHtml: string | null;
   errorMessage: string | null;
   sentAt: string | null;
+  deliveredAt?: string | null;
+  firstOpenedAt?: string | null;
+  lastOpenedAt?: string | null;
+  openCount?: number;
+  firstClickedAt?: string | null;
+  lastClickedAt?: string | null;
+  clickCount?: number;
+  repliedAt?: string | null;
+  bounceAt?: string | null;
+  bounceType?: string | null;
+  bounceReason?: string | null;
+  complainedAt?: string | null;
+  unsubscribedAt?: string | null;
+  failedAt?: string | null;
+  failureReason?: string | null;
+  lastEventType?: string | null;
+  lastEventAt?: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -263,6 +337,9 @@ export type CRMLeadEmailRecipient = {
   tags: string[];
   notes: Array<Record<string, unknown>>;
   assignedTo: number | null;
+  emailType?: string | null;
+  emailRiskLevel?: string;
+  campaignReady?: boolean;
 };
 
 export type CRMCampaignSummary = {
@@ -280,12 +357,87 @@ export type CRMCampaignRecipientSummary = {
   sent: number;
   failed: number;
   skipped: number;
+  blocked?: number;
+  opened?: number;
+  clicked?: number;
+  replied?: number;
+  bounced?: number;
+  unsubscribed?: number;
+  complained?: number;
+};
+
+export type CRMCampaignTrackingOverview = {
+  totalRecipients: number;
+  pending: number;
+  skipped: number;
+  blocked: number;
+  queued: number;
+  sent: number;
+  delivered: number;
+  openedUnique: number;
+  openedTotal: number;
+  clickedUnique: number;
+  clickedTotal: number;
+  replied: number;
+  bounced: number;
+  hardBounced: number;
+  softBounced: number;
+  complained: number;
+  unsubscribed: number;
+  failed: number;
+  sendRate: number;
+  openRate: number;
+  clickRate: number;
+  replyRate: number;
+  bounceRate: number;
+  complaintRate: number;
+  unsubscribeRate: number;
+};
+
+export type CRMCampaignAudiencePreview = {
+  totalLeads: number;
+  sendableLeads: number;
+  blockedLeads: number;
+  invalidEmailLeads: number;
+  unsubscribedLeads: number;
+  bouncedLeads: number;
+  spamComplaintLeads: number;
+  doNotContactLeads: number;
+  riskDistribution: Array<{ label: string; count: number }>;
+};
+
+export type CRMCampaignTrackingEvent = {
+  id: number;
+  campaignId: number | null;
+  recipientId: number | null;
+  leadId: number | null;
+  eventType: string;
+  eventSource: string;
+  email: string | null;
+  ipAddress: string | null;
+  userAgent: string | null;
+  url: string | null;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+};
+
+export type CRMCampaignTrackingClick = {
+  id: number;
+  campaignId: number;
+  recipientId: number;
+  leadId: number | null;
+  originalUrl: string;
+  trackingUrl: string | null;
+  clickedAt: string;
+  ipAddress: string | null;
+  userAgent: string | null;
 };
 
 export type CRMSegmentCondition = {
   field: string;
   operator: string;
-  value: string;
+  value: string | string[] | boolean | number | null;
+  secondValue?: string | number | null;
 };
 
 export type CRMSegment = {
@@ -295,8 +447,48 @@ export type CRMSegment = {
   entityType: string;
   conditions: CRMSegmentCondition[];
   matchType: string;
+  limit?: number | null;
+  sortBy?: string | null;
+  sortDirection?: "asc" | "desc";
+  randomize?: boolean;
   createdAt: string;
   updatedAt: string;
+};
+
+export type CRMCampaignSegmentAudiencePreview = {
+  segment: Record<string, unknown>;
+  summary: {
+    matchedLeads: number;
+    campaignReady: number;
+    sendable: number;
+    blocked: number;
+    missingEmail: number;
+    invalidEmail: number;
+    unsubscribed: number;
+    bounced: number;
+    spamComplaint: number;
+    doNotContact: number;
+    appliedLimit: number | null;
+  };
+  recipients: Array<{
+    leadId: number;
+    email: string;
+    companyName: string | null;
+    firstName: string | null;
+    lastName: string | null;
+    website: string | null;
+    emailType: string | null;
+    emailRiskLevel: string;
+    campaignReady: boolean;
+  }>;
+  blockedRecipients: Array<{
+    leadId: number;
+    email: string | null;
+    companyName: string | null;
+    firstName: string | null;
+    lastName: string | null;
+    reason: string;
+  }>;
 };
 
 export type CRMSettings = {
@@ -377,6 +569,27 @@ export type CRMPreviewResponse = {
 export type CRMSegmentPreview = {
   count: number;
   items: Array<Record<string, unknown>>;
+  emailTypeDistribution: Array<{ label: string; count: number }>;
+  emailRiskDistribution: Array<{ label: string; count: number }>;
+  countryDistribution: Array<{ label: string; count: number }>;
+  campaignReadinessSummary: {
+    campaignReadyCount: number;
+    agencyOutreachReadyCount: number;
+    sendableCount: number;
+    blockedLeadCount: number;
+    missingEmailCount: number;
+    invalidEmailCount: number;
+    unsubscribedCount: number;
+    bouncedCount: number;
+    spamComplaintCount: number;
+    doNotContactCount: number;
+    freeMailboxCount: number;
+    supportEmailCount: number;
+  };
+  appliedLimit: number | null;
+  sortBy: string | null;
+  sortDirection: "asc" | "desc";
+  randomize: boolean;
 };
 
 export type CRMApiResponse<T> = {
@@ -406,6 +619,11 @@ export type CRMLeadImportPreviewRow = {
   firstName: string | null;
   lastName: string | null;
   email: string | null;
+  selectedEmail: string | null;
+  selectedEmailType: string | null;
+  originalEmailValues: string[];
+  excludedEmails: string[];
+  duplicateEmailsRemoved: number;
   companyName: string | null;
   leadType: string | null;
   leadStatus: string;
@@ -421,6 +639,12 @@ export type CRMLeadImportPreview = {
   willCreate: number;
   willUpdate: number;
   willSkip: number;
+  validBestEmailsSelected: number;
+  gmailSelectedCount: number;
+  supportSelectedCount: number;
+  noSafeEmailCount: number;
+  duplicateEmailsRemovedCount: number;
+  excludedBadEmailsCount: number;
   errors: CRMLeadImportError[];
   duplicates: CRMLeadImportDuplicate[];
   previewRows: CRMLeadImportPreviewRow[];
@@ -433,6 +657,49 @@ export type CRMLeadImportResult = {
   updated: number;
   skipped: number;
   failed: number;
+  errors: CRMLeadImportError[];
+  warnings: string[];
+};
+
+export type CRMLeadEmailCleanupSampleMatched = {
+  row: number;
+  leadId: number;
+  companyName: string | null;
+  website: string | null;
+  currentEmail: string | null;
+  bestEmail: string;
+  bestEmailType: string | null;
+  sendStatus: string | null;
+  matchMethod: "id" | "company_website" | "email";
+};
+
+export type CRMLeadEmailCleanupSampleUnmatched = {
+  row: number;
+  companyName: string | null;
+  website: string | null;
+  bestEmail: string | null;
+  reason: string;
+};
+
+export type CRMLeadEmailCleanupPreview = {
+  totalRows: number;
+  matchedRows: number;
+  unmatchedRows: number;
+  willUpdate: number;
+  skippedRows: number;
+  errors: CRMLeadImportError[];
+  sampleMatchedRecords: CRMLeadEmailCleanupSampleMatched[];
+  sampleUnmatchedRecords: CRMLeadEmailCleanupSampleUnmatched[];
+  warnings: string[];
+};
+
+export type CRMLeadEmailCleanupResult = {
+  totalRows: number;
+  matchedRows: number;
+  unmatchedRows: number;
+  updatedRows: number;
+  skippedRows: number;
+  failedRows: number;
   errors: CRMLeadImportError[];
   warnings: string[];
 };

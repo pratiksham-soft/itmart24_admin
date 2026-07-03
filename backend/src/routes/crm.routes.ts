@@ -3,6 +3,7 @@ import multer from "multer";
 import { requireAdminAuth, type AuthenticatedAdminRequest } from "../middleware/adminAuth.middleware";
 import {
   addLeadNote,
+  applyLeadEmailCleanup,
   completeTask,
   convertLead,
   createActivity,
@@ -37,8 +38,10 @@ import {
   listLeads,
   listSegments,
   listTasks,
+  previewLeadEmailCleanup,
   previewLeadImport,
   previewSegment,
+  previewSegmentDefinition,
   updateCompany,
   updateContact,
   updateCRMSettings,
@@ -54,12 +57,17 @@ import {
   deleteCampaign,
   duplicateCampaign,
   getCampaignById,
+  getCampaignClickList,
+  getCampaignEventList,
   getCampaignRecipients,
+  getCampaignTrackingData,
   listCampaigns,
   listLeadEmailRecipients,
   previewCampaign,
+  previewCampaignSegmentAudience,
   sendCampaign,
   sendTestCampaign,
+  updateCampaignRecipientTracking,
   updateCampaign,
 } from "../services/crmEmailCampaign.service";
 
@@ -113,7 +121,14 @@ const sendError = (res: any, error: unknown, fallback: string) => {
       : message.includes("required") ||
           message.includes("valid") ||
           message.includes("must") ||
-          message.includes("No active email account")
+          message.includes("No active email account") ||
+          message.includes("unavailable or inactive") ||
+          message.includes("already sending") ||
+          message.includes("cannot be re-sent") ||
+          message.includes("Only sending campaigns can be cancelled") ||
+          message.includes("Add at least one valid recipient") ||
+          message.includes("safe campaign-ready email address") ||
+          message.includes("no sendable recipients")
         ? 400
         : 500;
 
@@ -193,6 +208,42 @@ router.post("/leads/import", async (req, res) => {
   } catch (error) {
     console.error("CRM lead import error:", error);
     sendError(res, error, "Failed to import leads.");
+  }
+});
+
+router.post("/leads/email-cleanup/preview", async (req, res) => {
+  try {
+    await runLeadImportUpload(req, res);
+    const uploadRequest = req as typeof req & { file?: Express.Multer.File };
+    if (!uploadRequest.file?.buffer) {
+      throw new Error("CSV file is required.");
+    }
+
+    const data = await previewLeadEmailCleanup(uploadRequest.file.buffer, req.body ?? {}, getActor(req));
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error("CRM lead email cleanup preview error:", error);
+    sendError(res, error, "Failed to preview lead email cleanup.");
+  }
+});
+
+router.post("/leads/email-cleanup/apply", async (req, res) => {
+  try {
+    await runLeadImportUpload(req, res);
+    const uploadRequest = req as typeof req & { file?: Express.Multer.File };
+    if (!uploadRequest.file?.buffer) {
+      throw new Error("CSV file is required.");
+    }
+
+    const data = await applyLeadEmailCleanup(uploadRequest.file.buffer, req.body ?? {}, getActor(req));
+    res.json({
+      success: true,
+      data,
+      message: "Lead email cleanup applied successfully",
+    });
+  } catch (error) {
+    console.error("CRM lead email cleanup apply error:", error);
+    sendError(res, error, "Failed to apply lead email cleanup.");
   }
 });
 
@@ -620,6 +671,56 @@ router.get("/campaigns/:id/recipients", async (req, res) => {
   }
 });
 
+router.get("/campaigns/segments/:segmentId/audience-preview", async (req, res) => {
+  try {
+    const data = await previewCampaignSegmentAudience(toPositiveId(req.params.segmentId));
+    res.json({ success: true, data });
+  } catch (error) {
+    sendError(res, error, "Failed to preview campaign segment audience.");
+  }
+});
+
+router.get("/campaigns/:id/tracking", async (req, res) => {
+  try {
+    const data = await getCampaignTrackingData(toPositiveId(req.params.id));
+    res.json({ success: true, data });
+  } catch (error) {
+    sendError(res, error, "Failed to fetch campaign tracking.");
+  }
+});
+
+router.get("/campaigns/:id/events", async (req, res) => {
+  try {
+    const data = await getCampaignEventList(toPositiveId(req.params.id), req.query);
+    res.json({ success: true, ...data });
+  } catch (error) {
+    sendError(res, error, "Failed to fetch campaign events.");
+  }
+});
+
+router.get("/campaigns/:id/clicks", async (req, res) => {
+  try {
+    const data = await getCampaignClickList(toPositiveId(req.params.id), req.query);
+    res.json({ success: true, ...data });
+  } catch (error) {
+    sendError(res, error, "Failed to fetch campaign clicks.");
+  }
+});
+
+router.post("/campaigns/:id/recipients/:recipientId/actions/:action", async (req, res) => {
+  try {
+    const item = await updateCampaignRecipientTracking(
+      toPositiveId(req.params.id),
+      toPositiveId(req.params.recipientId),
+      String(req.params.action) as "bounced" | "replied" | "complained" | "unsubscribed" | "do_not_contact",
+      req.body ?? {}
+    );
+    res.json({ success: true, item });
+  } catch (error) {
+    sendError(res, error, "Failed to update campaign recipient.");
+  }
+});
+
 router.get("/segments", async (req, res) => {
   try {
     const data = await listSegments(req.query);
@@ -648,6 +749,15 @@ router.post("/segments", async (req, res) => {
     res.status(201).json({ success: true, item });
   } catch (error) {
     sendError(res, error, "Failed to create segment.");
+  }
+});
+
+router.post("/segments/preview", async (req, res) => {
+  try {
+    const preview = await previewSegmentDefinition(req.body ?? {});
+    res.json({ success: true, preview });
+  } catch (error) {
+    sendError(res, error, "Failed to preview segment.");
   }
 });
 

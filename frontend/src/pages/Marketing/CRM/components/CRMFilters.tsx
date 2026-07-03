@@ -17,6 +17,9 @@ type CRMFiltersProps = {
   filterConfigs: FilterConfig[];
   onFilterChange: (key: string, value: string) => void;
   onReset: () => void;
+  secondaryActionLabel?: string;
+  onSecondaryAction?: () => void;
+  secondaryActionLoading?: boolean;
 };
 
 const selectClassName =
@@ -29,10 +32,13 @@ export default function CRMFilters({
   filterConfigs,
   onFilterChange,
   onReset,
+  secondaryActionLabel,
+  onSecondaryAction,
+  secondaryActionLoading = false,
 }: CRMFiltersProps) {
   return (
     <div className="mb-6 rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,2fr)_repeat(4,minmax(0,1fr))_auto]">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,2fr)_repeat(4,minmax(0,1fr))_auto_auto]">
         <InputField
           placeholder="Search by name, email, company, source, type..."
           value={searchValue}
@@ -63,6 +69,12 @@ export default function CRMFilters({
             </select>
           )
         )}
+
+        {secondaryActionLabel && onSecondaryAction ? (
+          <Button type="button" variant="outline" onClick={onSecondaryAction} disabled={secondaryActionLoading}>
+            {secondaryActionLoading ? "Exporting..." : secondaryActionLabel}
+          </Button>
+        ) : null}
 
         <Button type="button" variant="outline" onClick={onReset}>
           Reset

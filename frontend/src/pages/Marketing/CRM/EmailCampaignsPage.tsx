@@ -10,15 +10,23 @@ import {
   deleteCampaign,
   duplicateCampaign,
   getCampaign,
+  getCampaignClicks,
   getCampaignDashboardData,
+  getCampaignEvents,
   getCampaignRecipients,
+  getCampaignTracking,
   previewCampaign,
   sendCampaign,
   sendTestCampaign,
+  updateCampaignRecipientAction,
 } from "./services/crmApi";
 import type {
   BannerState,
   CRMCampaign,
+  CRMCampaignAudiencePreview,
+  CRMCampaignTrackingClick,
+  CRMCampaignTrackingEvent,
+  CRMCampaignTrackingOverview,
   CRMCampaignRecipient,
   CRMCampaignRecipientSummary,
   CRMCampaignSummary,
@@ -29,7 +37,14 @@ import { formatDateTime, getStatusBadgeColor, readErrorMessage } from "./utils/c
 const selectClassName =
   "h-11 rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 shadow-theme-xs focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/20 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90";
 
-const renderTemplate = (template: string, recipient: Partial<CRMCampaignRecipient>) =>
+const PREVIEW_UNSUBSCRIBE_URL =
+  "https://admin.itmart24.com/api/public/crm/email-track/unsubscribe/preview-token";
+
+const renderTemplate = (
+  template: string,
+  recipient: Partial<CRMCampaignRecipient>,
+  extra?: { unsubscribeUrl?: string }
+) =>
   [
     ["{{firstName}}", recipient.firstName ?? ""],
     ["{{lastName}}", recipient.lastName ?? ""],
@@ -38,6 +53,9 @@ const renderTemplate = (template: string, recipient: Partial<CRMCampaignRecipien
     ["{{jobTitle}}", recipient.jobTitle ?? ""],
     ["{{website}}", recipient.website ?? ""],
     ["{{email}}", recipient.email ?? ""],
+    ["{{unsubscribeUrl}}", extra?.unsubscribeUrl ?? PREVIEW_UNSUBSCRIBE_URL],
+    ["{{unsubscribeLink}}", extra?.unsubscribeUrl ?? PREVIEW_UNSUBSCRIBE_URL],
+    ["{{unsubscribe_url}}", extra?.unsubscribeUrl ?? PREVIEW_UNSUBSCRIBE_URL],
   ].reduce((content, [token, value]) => content.split(token).join(value), template);
 
 const formatDuration = (count: number, delaySeconds: number) => {
@@ -79,6 +97,11 @@ export default function EmailCampaignsPage() {
     failed: 0,
     skipped: 0,
   });
+  const [detailTrackingOverview, setDetailTrackingOverview] = useState<CRMCampaignTrackingOverview | null>(null);
+  const [detailAudiencePreview, setDetailAudiencePreview] = useState<CRMCampaignAudiencePreview | null>(null);
+  const [detailEvents, setDetailEvents] = useState<CRMCampaignTrackingEvent[]>([]);
+  const [detailClicks, setDetailClicks] = useState<CRMCampaignTrackingClick[]>([]);
+  const [sendPreview, setSendPreview] = useState<CRMCampaignAudiencePreview | null>(null);
   const [detailPreview, setDetailPreview] = useState<CRMPreviewResponse | null>(null);
   const [detailRecipientPage, setDetailRecipientPage] = useState(1);
   const [detailRecipientTotalPages, setDetailRecipientTotalPages] = useState(0);
@@ -95,6 +118,36 @@ export default function EmailCampaignsPage() {
   const showBanner = (tone: "success" | "error" | "info", message: string) => {
     setBanner({ tone, message });
     window.setTimeout(() => setBanner(null), 4000);
+  };
+
+  const closeDetailModal = () => {
+    setDetailCampaignId(null);
+    setDetailCampaign(null);
+    setDetailRecipients([]);
+    setDetailPreview(null);
+    setDetailSummary({
+      total: 0,
+      pending: 0,
+      sending: 0,
+      sent: 0,
+      failed: 0,
+      skipped: 0,
+    });
+    setDetailTrackingOverview(null);
+    setDetailAudiencePreview(null);
+    setDetailEvents([]);
+    setDetailClicks([]);
+    setTestEmail("");
+  };
+
+  const openSendConfirmation = async (campaign: CRMCampaign) => {
+    setSendConfirmCampaign(campaign);
+    try {
+      const tracking = await getCampaignTracking(campaign.id);
+      setSendPreview(tracking.audiencePreview);
+    } catch {
+      setSendPreview(null);
+    }
   };
 
   const loadCampaigns = useCallback(async () => {
@@ -124,10 +177,13 @@ export default function EmailCampaignsPage() {
       if (!silent) {
         setLoadingDetail(true);
       }
-      const [campaign, recipients, preview] = await Promise.all([
+      const [campaign, recipients, preview, tracking, events, clicks] = await Promise.all([
         getCampaign(campaignId),
         getCampaignRecipients(campaignId, { page: detailRecipientPage, limit: 20 }),
         previewCampaign(campaignId),
+        getCampaignTracking(campaignId),
+        getCampaignEvents(campaignId, { page: 1, limit: 20 }),
+        getCampaignClicks(campaignId, { page: 1, limit: 20 }),
       ]);
       if (detailCampaignIdRef.current !== campaignId) {
         return;
@@ -137,6 +193,10 @@ export default function EmailCampaignsPage() {
       setDetailSummary(recipients.summary);
       setDetailRecipientTotalPages(recipients.pagination.totalPages);
       setDetailPreview(preview);
+      setDetailTrackingOverview(tracking.overview);
+      setDetailAudiencePreview(tracking.audiencePreview);
+      setDetailEvents(events.items);
+      setDetailClicks(clicks.items);
     } catch (error) {
       if (!silent) {
         showBanner("error", readErrorMessage(error, "Failed to load campaign details."));
@@ -194,12 +254,55 @@ export default function EmailCampaignsPage() {
 
   const renderedDetailSubject =
     detailCampaign && selectedPreviewRecipient
-      ? renderTemplate(detailCampaign.subject, selectedPreviewRecipient)
+      ? renderTemplate(detailCampaign.subject, selectedPreviewRecipient, {
+          unsubscribeUrl: PREVIEW_UNSUBSCRIBE_URL,
+        })
       : detailPreview?.subject ?? detailCampaign?.subject ?? "";
   const renderedDetailBody =
     detailCampaign && selectedPreviewRecipient
-      ? renderTemplate(detailCampaign.body, selectedPreviewRecipient)
+      ? renderTemplate(detailCampaign.body, selectedPreviewRecipient, {
+          unsubscribeUrl: PREVIEW_UNSUBSCRIBE_URL,
+        })
       : detailPreview?.body ?? detailCampaign?.body ?? "";
+
+  const refreshDetailTracking = useCallback(async (campaignId: number) => {
+    const [tracking, recipients, events, clicks] = await Promise.all([
+      getCampaignTracking(campaignId),
+      getCampaignRecipients(campaignId, { page: detailRecipientPage, limit: 20 }),
+      getCampaignEvents(campaignId, { page: 1, limit: 20 }),
+      getCampaignClicks(campaignId, { page: 1, limit: 20 }),
+    ]);
+    setDetailTrackingOverview(tracking.overview);
+    setDetailAudiencePreview(tracking.audiencePreview);
+    setDetailRecipients(recipients.items);
+    setDetailSummary(recipients.summary);
+    setDetailRecipientTotalPages(recipients.pagination.totalPages);
+    setDetailEvents(events.items);
+    setDetailClicks(clicks.items);
+  }, [detailRecipientPage]);
+
+  const handleRecipientAction = useCallback(
+    async (
+      recipient: CRMCampaignRecipient,
+      action: "bounced" | "replied" | "complained" | "unsubscribed" | "do_not_contact"
+    ) => {
+      if (!detailCampaign) {
+        return;
+      }
+
+      try {
+        setWorkingCampaignId(detailCampaign.id);
+        await updateCampaignRecipientAction(detailCampaign.id, recipient.id, action);
+        await refreshDetailTracking(detailCampaign.id);
+        showBanner("success", `Recipient updated: ${action.replace(/_/g, " ")}.`);
+      } catch (error) {
+        showBanner("error", readErrorMessage(error, "Failed to update recipient."));
+      } finally {
+        setWorkingCampaignId(null);
+      }
+    },
+    [detailCampaign, refreshDetailTracking]
+  );
 
   return (
     <>
@@ -328,6 +431,9 @@ export default function EmailCampaignsPage() {
                       <td className="px-3 py-4">
                         <div className="font-semibold text-gray-800 dark:text-white/90">{campaign.name}</div>
                         <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">{campaign.subject}</div>
+                        {campaign.segmentName ? (
+                          <div className="mt-1 text-xs text-blue-light-600 dark:text-blue-light-300">Segment: {campaign.segmentName}</div>
+                        ) : null}
                       </td>
                       <td className="px-3 py-4 text-gray-700 dark:text-gray-300">
                         {campaign.senderEmail || "No sender"}
@@ -406,10 +512,10 @@ export default function EmailCampaignsPage() {
                             <Button
                               type="button"
                               size="sm"
-                              onClick={() => setSendConfirmCampaign(campaign)}
+                            onClick={() => void openSendConfirmation(campaign)}
                               disabled={workingCampaignId === campaign.id}
                             >
-                              Send Draft
+                              Start Sending
                             </Button>
                           ) : null}
                           {campaign.status === "Sending" ? (
@@ -521,18 +627,21 @@ export default function EmailCampaignsPage() {
         onSaved={(campaign) => {
           showBanner(
             "success",
-            campaign.status === "Sending"
-              ? "Campaign saved and sending started successfully."
-              : composerCampaign
-                ? "Campaign draft updated successfully."
-                : "Campaign draft created successfully."
+            composerCampaign ? "Campaign draft updated successfully." : "Campaign draft created successfully."
           );
           setComposerCampaign(campaign);
           void loadCampaigns();
         }}
       />
 
-      <Modal isOpen={Boolean(sendConfirmCampaign)} onClose={() => setSendConfirmCampaign(null)} className="max-w-3xl p-6 lg:p-8">
+      <Modal
+        isOpen={Boolean(sendConfirmCampaign)}
+        onClose={() => {
+          setSendConfirmCampaign(null);
+          setSendPreview(null);
+        }}
+        className="max-w-3xl p-6 lg:p-8"
+      >
         {sendConfirmCampaign ? (
           <div className="space-y-6">
             <div>
@@ -568,8 +677,31 @@ export default function EmailCampaignsPage() {
               <div className="mt-2 font-semibold text-gray-800 dark:text-white/90">{sendConfirmCampaign.subject}</div>
             </div>
 
+            {sendPreview ? (
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                {[
+                  ["Sendable", sendPreview.sendableLeads],
+                  ["Blocked", sendPreview.blockedLeads],
+                  ["Invalid Email", sendPreview.invalidEmailLeads],
+                  ["Unsubscribed", sendPreview.unsubscribedLeads],
+                ].map(([label, value]) => (
+                  <div key={String(label)} className="rounded-2xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-900">
+                    <div className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">{label}</div>
+                    <div className="mt-2 text-2xl font-semibold text-gray-800 dark:text-white/90">{value}</div>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+
             <div className="flex justify-end gap-3 border-t border-gray-200 pt-5 dark:border-gray-800">
-              <Button type="button" variant="outline" onClick={() => setSendConfirmCampaign(null)}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setSendConfirmCampaign(null);
+                  setSendPreview(null);
+                }}
+              >
                 Cancel
               </Button>
               <Button
@@ -580,6 +712,7 @@ export default function EmailCampaignsPage() {
                     setWorkingCampaignId(sendConfirmCampaign.id);
                     await sendCampaign(sendConfirmCampaign.id);
                     setSendConfirmCampaign(null);
+                    setSendPreview(null);
                     showBanner("success", "Campaign sending started. Delivery progress will update automatically.");
                     await loadCampaigns();
                   } catch (error) {
@@ -598,21 +731,7 @@ export default function EmailCampaignsPage() {
 
       <Modal
         isOpen={Boolean(detailCampaignId)}
-        onClose={() => {
-          setDetailCampaignId(null);
-          setDetailCampaign(null);
-          setDetailRecipients([]);
-          setDetailPreview(null);
-          setDetailSummary({
-            total: 0,
-            pending: 0,
-            sending: 0,
-            sent: 0,
-            failed: 0,
-            skipped: 0,
-          });
-          setTestEmail("");
-        }}
+        onClose={closeDetailModal}
         className="max-w-6xl p-6 lg:p-8"
       >
         {detailCampaign ? (
@@ -623,10 +742,38 @@ export default function EmailCampaignsPage() {
                 <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
                   Sender: {detailCampaign.senderEmail || "Not set"} · Created {formatDateTime(detailCampaign.createdAt)}
                 </p>
+                <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                  Unsubscribe protection: {detailCampaign.unsubscribeRequired === false ? "Optional" : "Enabled"}
+                </div>
               </div>
-              <Badge color={getStatusBadgeColor(detailCampaign.status)} size="sm">
-                {detailCampaign.status}
-              </Badge>
+              <div className="flex flex-wrap items-center gap-3 pr-12 sm:pr-14">
+                <Badge color={getStatusBadgeColor(detailCampaign.status)} size="sm">
+                  {detailCampaign.status}
+                </Badge>
+                {detailCampaign.status === "Draft" ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => void openSendConfirmation(detailCampaign)}
+                    disabled={workingCampaignId === detailCampaign.id}
+                  >
+                    Start Sending
+                  </Button>
+                ) : null}
+                {detailCampaign.status === "Draft" ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setComposerCampaign(detailCampaign);
+                      setIsComposerOpen(true);
+                    }}
+                  >
+                    Edit Draft
+                  </Button>
+                ) : null}
+              </div>
             </div>
 
             {loadingDetail ? (
@@ -669,6 +816,22 @@ export default function EmailCampaignsPage() {
                     />
                   </div>
                 </div>
+
+                {detailTrackingOverview || detailAudiencePreview ? (
+                  <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                    {[
+                      ["Blocked", detailAudiencePreview?.blockedLeads ?? 0],
+                      ["Opened", detailTrackingOverview?.openedUnique ?? 0],
+                      ["Clicked", detailTrackingOverview?.clickedUnique ?? 0],
+                      ["Unsubscribed", detailTrackingOverview?.unsubscribed ?? 0],
+                    ].map(([label, value]) => (
+                      <div key={String(label)} className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
+                        <div className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">{label}</div>
+                        <div className="mt-2 text-2xl font-semibold text-gray-800 dark:text-white/90">{value}</div>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
 
                 <div className="grid gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
                   <div className="space-y-4">
@@ -738,13 +901,16 @@ export default function EmailCampaignsPage() {
                               <th className="px-3 py-2 font-medium">Recipient</th>
                               <th className="px-3 py-2 font-medium">Email</th>
                               <th className="px-3 py-2 font-medium">Status</th>
+                              <th className="px-3 py-2 font-medium">Opens</th>
+                              <th className="px-3 py-2 font-medium">Clicks</th>
                               <th className="px-3 py-2 font-medium">Sent At</th>
+                              <th className="px-3 py-2 font-medium">Actions</th>
                             </tr>
                           </thead>
                           <tbody>
                             {detailRecipients.length === 0 ? (
                               <tr>
-                                <td className="px-3 py-6 text-gray-500 dark:text-gray-400" colSpan={4}>
+                                <td className="px-3 py-6 text-gray-500 dark:text-gray-400" colSpan={7}>
                                   No recipients found for this campaign.
                                 </td>
                               </tr>
@@ -763,7 +929,19 @@ export default function EmailCampaignsPage() {
                                       {recipient.status}
                                     </Badge>
                                   </td>
+                                  <td className="px-3 py-2 text-gray-700 dark:text-gray-300">{recipient.openCount ?? 0}</td>
+                                  <td className="px-3 py-2 text-gray-700 dark:text-gray-300">{recipient.clickCount ?? 0}</td>
                                   <td className="px-3 py-2 text-gray-700 dark:text-gray-300">{formatDateTime(recipient.sentAt)}</td>
+                                  <td className="px-3 py-2">
+                                    <div className="flex flex-wrap gap-2">
+                                      <Button type="button" size="sm" variant="outline" onClick={() => void handleRecipientAction(recipient, "replied")}>
+                                        Replied
+                                      </Button>
+                                      <Button type="button" size="sm" variant="outline" onClick={() => void handleRecipientAction(recipient, "bounced")}>
+                                        Bounced
+                                      </Button>
+                                    </div>
+                                  </td>
                                 </tr>
                               ))
                             )}
@@ -797,6 +975,49 @@ export default function EmailCampaignsPage() {
                           </Button>
                         </div>
                       </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid gap-6 xl:grid-cols-2">
+                  <div className="rounded-3xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">
+                    <div className="mb-3 text-sm font-semibold text-gray-800 dark:text-white/90">Recent Events</div>
+                    <div className="space-y-3">
+                      {detailEvents.length === 0 ? (
+                        <div className="rounded-2xl border border-dashed border-gray-300 px-4 py-6 text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400">
+                          No tracking events yet.
+                        </div>
+                      ) : (
+                        detailEvents.map((event) => (
+                          <div key={event.id} className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-800 dark:bg-gray-900">
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="font-medium text-gray-800 dark:text-white/90">{event.eventType}</div>
+                              <div className="text-xs text-gray-500 dark:text-gray-400">{formatDateTime(event.createdAt)}</div>
+                            </div>
+                            <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                              {event.email || "Unknown recipient"} · {event.eventSource}
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="rounded-3xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">
+                    <div className="mb-3 text-sm font-semibold text-gray-800 dark:text-white/90">Recent Clicks</div>
+                    <div className="space-y-3">
+                      {detailClicks.length === 0 ? (
+                        <div className="rounded-2xl border border-dashed border-gray-300 px-4 py-6 text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400">
+                          No tracked clicks yet.
+                        </div>
+                      ) : (
+                        detailClicks.map((click) => (
+                          <div key={click.id} className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-800 dark:bg-gray-900">
+                            <div className="font-medium text-gray-800 dark:text-white/90 break-all">{click.originalUrl}</div>
+                            <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">{formatDateTime(click.clickedAt)}</div>
+                          </div>
+                        ))
+                      )}
                     </div>
                   </div>
                 </div>

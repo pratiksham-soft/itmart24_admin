@@ -9,13 +9,16 @@ import {
   createCampaign,
   getCampaignRecipients,
   getLeadEmailRecipients,
-  sendCampaign,
+  getSegments,
+  previewCampaignSegmentAudience,
   updateCampaign,
 } from "../services/crmApi";
 import type {
   CRMCampaign,
+  CRMCampaignSegmentAudiencePreview,
   CRMCampaignRecipient,
   CRMLeadEmailRecipient,
+  CRMSegment,
 } from "../types/crm.types";
 import {
   crmLeadTypes,
@@ -43,6 +46,8 @@ type CampaignFormState = {
   delaySeconds: number;
 };
 
+type AudienceSource = "manual" | "segment";
+
 const selectClassName =
   "h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 shadow-theme-xs focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/20 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90";
 
@@ -54,7 +59,11 @@ const tokenOptions = [
   "{{jobTitle}}",
   "{{website}}",
   "{{email}}",
+  "{{unsubscribeUrl}}",
 ];
+
+const PREVIEW_UNSUBSCRIBE_URL =
+  "https://admin.itmart24.com/api/public/crm/email-track/unsubscribe/preview-token";
 
 const htmlSnippets = [
   { label: "Bold", value: "<strong>Bold text</strong>" },
@@ -80,7 +89,11 @@ const defaultFormState = (accounts: EmailAccount[], campaign?: CRMCampaign | nul
   delaySeconds: campaign?.delaySeconds ?? 10,
 });
 
-const renderTemplate = (template: string, recipient: Partial<CRMLeadEmailRecipient>) =>
+const renderTemplate = (
+  template: string,
+  recipient: Partial<CRMLeadEmailRecipient>,
+  extra?: { unsubscribeUrl?: string }
+) =>
   [
     ["{{firstName}}", recipient.firstName ?? ""],
     ["{{lastName}}", recipient.lastName ?? ""],
@@ -89,6 +102,9 @@ const renderTemplate = (template: string, recipient: Partial<CRMLeadEmailRecipie
     ["{{jobTitle}}", recipient.jobTitle ?? ""],
     ["{{website}}", recipient.website ?? ""],
     ["{{email}}", recipient.email ?? ""],
+    ["{{unsubscribeUrl}}", extra?.unsubscribeUrl ?? PREVIEW_UNSUBSCRIBE_URL],
+    ["{{unsubscribeLink}}", extra?.unsubscribeUrl ?? PREVIEW_UNSUBSCRIBE_URL],
+    ["{{unsubscribe_url}}", extra?.unsubscribeUrl ?? PREVIEW_UNSUBSCRIBE_URL],
   ].reduce((content, [token, value]) => content.split(token).join(value), template);
 
 const formatDuration = (recipientCount: number, delaySeconds: number) => {
@@ -121,6 +137,36 @@ const mapRecipientToLead = (recipient: CRMCampaignRecipient): CRMLeadEmailRecipi
   tags: [],
   notes: [],
   assignedTo: null,
+  emailType: null,
+  emailRiskLevel: recipient.status,
+  campaignReady: recipient.status !== "blocked",
+});
+
+const mapSegmentRecipientToLead = (
+  recipient: CRMCampaignSegmentAudiencePreview["recipients"][number]
+): CRMLeadEmailRecipient => ({
+  id: recipient.leadId,
+  recipientKey: `${recipient.leadId}::${recipient.email.toLowerCase()}`,
+  firstName: recipient.firstName,
+  lastName: recipient.lastName,
+  email: recipient.email,
+  phone: null,
+  emails: [recipient.email],
+  phones: [],
+  address: null,
+  companyName: recipient.companyName,
+  jobTitle: null,
+  website: recipient.website,
+  leadType: null,
+  leadStatus: "Segment",
+  leadPriority: "Medium",
+  leadScore: 0,
+  tags: [],
+  notes: [],
+  assignedTo: null,
+  emailType: recipient.emailType,
+  emailRiskLevel: recipient.emailRiskLevel,
+  campaignReady: recipient.campaignReady,
 });
 
 export default function CampaignComposerModal({
@@ -137,10 +183,16 @@ export default function CampaignComposerModal({
   const buildRecipientKey = (leadId: number, email: string) => `${leadId}::${email.trim().toLowerCase()}`;
 
   const [accounts, setAccounts] = useState<EmailAccount[]>([]);
+  const [segments, setSegments] = useState<CRMSegment[]>([]);
   const [loadingAccounts, setLoadingAccounts] = useState(false);
+  const [loadingSegments, setLoadingSegments] = useState(false);
+  const [loadingSegmentPreview, setLoadingSegmentPreview] = useState(false);
   const [form, setForm] = useState<CampaignFormState>(defaultFormState([], null));
+  const [audienceSource, setAudienceSource] = useState<AudienceSource>(initialCampaign?.segmentId ? "segment" : "manual");
+  const [selectedSegmentId, setSelectedSegmentId] = useState<string>(initialCampaign?.segmentId ? String(initialCampaign.segmentId) : "");
+  const [segmentPreview, setSegmentPreview] = useState<CRMCampaignSegmentAudiencePreview | null>(null);
   const [saving, setSaving] = useState(false);
-  const [saveMode, setSaveMode] = useState<"draft" | "send">("draft");
+  const [saveMode, setSaveMode] = useState<"draft">("draft");
   const [error, setError] = useState<string | null>(null);
   const [leadItems, setLeadItems] = useState<CRMLeadEmailRecipient[]>([]);
   const [leadPage, setLeadPage] = useState(1);
@@ -170,12 +222,19 @@ export default function CampaignComposerModal({
     const load = async () => {
       try {
         setLoadingAccounts(true);
-        const nextAccounts = await fetchEmailAccounts();
+        setLoadingSegments(true);
+        const [nextAccounts, nextSegments] = await Promise.all([
+          fetchEmailAccounts(),
+          getSegments({ page: 1, limit: 200 }),
+        ]);
         if (!isMounted) {
           return;
         }
         setAccounts(nextAccounts.filter((account) => account.isActive));
+        setSegments(nextSegments.items.filter((segment) => String(segment.entityType) === "leads"));
         setForm(defaultFormState(nextAccounts.filter((account) => account.isActive), initialCampaign));
+        setAudienceSource(initialCampaign?.segmentId ? "segment" : "manual");
+        setSelectedSegmentId(initialCampaign?.segmentId ? String(initialCampaign.segmentId) : "");
       } catch (loadError) {
         if (!isMounted) {
           return;
@@ -184,6 +243,7 @@ export default function CampaignComposerModal({
       } finally {
         if (isMounted) {
           setLoadingAccounts(false);
+          setLoadingSegments(false);
         }
       }
     };
@@ -260,6 +320,9 @@ export default function CampaignComposerModal({
         companyName: "",
       });
       setError(null);
+      setSegmentPreview(null);
+      setSelectedSegmentId(initialCampaign?.segmentId ? String(initialCampaign.segmentId) : "");
+      setAudienceSource(initialCampaign?.segmentId ? "segment" : "manual");
       return;
     }
 
@@ -309,6 +372,61 @@ export default function CampaignComposerModal({
     };
   }, [initialCampaign, isOpen]);
 
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+
+    if (audienceSource !== "segment") {
+      setSegmentPreview(null);
+      return;
+    }
+
+    if (!selectedSegmentId) {
+      setSegmentPreview(null);
+      setSelectedRecipients({});
+      setPreviewRecipientId(null);
+      return;
+    }
+
+    let isMounted = true;
+    const loadSegmentAudience = async () => {
+      try {
+        setLoadingSegmentPreview(true);
+        const preview = await previewCampaignSegmentAudience(Number(selectedSegmentId));
+        if (!isMounted) {
+          return;
+        }
+        setSegmentPreview(preview);
+        const mappedRecipients = Object.fromEntries(
+          preview.recipients.map((recipient) => {
+            const lead = mapSegmentRecipientToLead(recipient);
+            return [lead.recipientKey, lead];
+          })
+        );
+        setSelectedRecipients(mappedRecipients);
+        setPreviewRecipientId(Object.keys(mappedRecipients)[0] ?? null);
+      } catch (loadError) {
+        if (!isMounted) {
+          return;
+        }
+        setSegmentPreview(null);
+        setSelectedRecipients({});
+        setPreviewRecipientId(null);
+        setError(readErrorMessage(loadError, "Failed to load selected segment."));
+      } finally {
+        if (isMounted) {
+          setLoadingSegmentPreview(false);
+        }
+      }
+    };
+
+    void loadSegmentAudience();
+    return () => {
+      isMounted = false;
+    };
+  }, [audienceSource, isOpen, selectedSegmentId]);
+
   const selectedRecipientList = useMemo(
     () =>
       Object.values(selectedRecipients).sort((left, right) =>
@@ -323,9 +441,11 @@ export default function CampaignComposerModal({
     null;
 
   const renderedSubject = previewRecipient
-    ? renderTemplate(form.subject, previewRecipient)
+    ? renderTemplate(form.subject, previewRecipient, { unsubscribeUrl: PREVIEW_UNSUBSCRIBE_URL })
     : form.subject;
-  const renderedBody = previewRecipient ? renderTemplate(form.body, previewRecipient) : form.body;
+  const renderedBody = previewRecipient
+    ? renderTemplate(form.body, previewRecipient, { unsubscribeUrl: PREVIEW_UNSUBSCRIBE_URL })
+    : form.body;
 
   const toggleRecipient = (lead: CRMLeadEmailRecipient, email = lead.email) => {
     const normalizedEmail = email.trim().toLowerCase();
@@ -386,7 +506,7 @@ export default function CampaignComposerModal({
     }
   };
 
-  const handleSave = async (mode: "draft" | "send" = "draft") => {
+  const handleSave = async () => {
     if (!form.name.trim()) {
       setError("Campaign name is required.");
       return;
@@ -403,8 +523,12 @@ export default function CampaignComposerModal({
       setError("Email body is required.");
       return;
     }
+    if (audienceSource === "segment" && !selectedSegmentId) {
+      setError("Select a saved segment.");
+      return;
+    }
     if (selectedRecipientList.length === 0) {
-      setError("Select at least one valid recipient.");
+      setError(audienceSource === "segment" ? "Selected segment has no sendable recipients." : "Select at least one valid recipient.");
       return;
     }
     if (form.delaySeconds < 5 || form.delaySeconds > 300) {
@@ -414,7 +538,7 @@ export default function CampaignComposerModal({
 
     try {
       setSaving(true);
-      setSaveMode(mode);
+      setSaveMode("draft");
       setError(null);
       const payload = {
         name: form.name.trim(),
@@ -423,18 +547,23 @@ export default function CampaignComposerModal({
         body: form.body,
         bodyMode: form.bodyMode,
         delaySeconds: form.delaySeconds,
-        recipientLeadIds: Array.from(new Set(selectedRecipientList.map((lead) => lead.id))),
-        recipientSelections: selectedRecipientList.map((lead) => ({
-          leadId: lead.id,
-          email: lead.email,
-        })),
+        audienceSource,
+        segmentId: audienceSource === "segment" ? Number(selectedSegmentId) : null,
+        recipientLeadIds:
+          audienceSource === "manual" ? Array.from(new Set(selectedRecipientList.map((lead) => lead.id))) : [],
+        recipientSelections:
+          audienceSource === "manual"
+            ? selectedRecipientList.map((lead) => ({
+                leadId: lead.id,
+                email: lead.email,
+              }))
+            : [],
       };
 
       const savedCampaign = initialCampaign
         ? await updateCampaign(initialCampaign.id, payload)
         : await createCampaign(payload);
-      const finalCampaign = mode === "send" ? await sendCampaign(savedCampaign.id) : savedCampaign;
-      onSaved(finalCampaign);
+      onSaved(savedCampaign);
       onClose();
     } catch (saveError) {
       setError(readErrorMessage(saveError, "Failed to save campaign."));
@@ -500,6 +629,117 @@ export default function CampaignComposerModal({
                   ))}
                 </select>
               </div>
+            </div>
+
+            <div className="rounded-3xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">
+              <div className="mb-4">
+                <div className="text-sm font-semibold text-gray-800 dark:text-white/90">Audience</div>
+                <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  Choose a saved CRM segment for campaign-safe recipients or switch to manual lead selection.
+                </div>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Audience Source</label>
+                  <select
+                    className={selectClassName}
+                    value={audienceSource}
+                    onChange={(event) => {
+                      const nextSource = event.target.value as AudienceSource;
+                      setAudienceSource(nextSource);
+                      setError(null);
+                      if (nextSource === "manual") {
+                        setSegmentPreview(null);
+                        setSelectedSegmentId("");
+                        setSelectedRecipients({});
+                        setPreviewRecipientId(null);
+                      } else if (!selectedSegmentId && segments[0]) {
+                        setSelectedSegmentId(String(segments[0].id));
+                      }
+                    }}
+                  >
+                    <option value="segment">Saved Segment</option>
+                    <option value="manual">Manual Leads</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Segment Selector</label>
+                  <select
+                    className={selectClassName}
+                    value={selectedSegmentId}
+                    onChange={(event) => {
+                      setSelectedSegmentId(event.target.value);
+                      setError(null);
+                    }}
+                    disabled={audienceSource !== "segment" || loadingSegments}
+                  >
+                    <option value="">{loadingSegments ? "Loading segments..." : "Select saved segment"}</option>
+                    {segments.map((segment) => (
+                      <option key={segment.id} value={segment.id}>
+                        {segment.name} ({segment.conditions.length} conditions)
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {audienceSource === "segment" ? (
+                <div className="mt-4 space-y-4">
+                  {loadingSegmentPreview ? (
+                    <div className="rounded-2xl border border-dashed border-gray-300 px-4 py-6 text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400">
+                      Loading segment audience preview...
+                    </div>
+                  ) : segmentPreview ? (
+                    <>
+                      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+                        {[
+                          ["Matched leads", segmentPreview.summary.matchedLeads],
+                          ["Campaign ready", segmentPreview.summary.campaignReady],
+                          ["Sendable", segmentPreview.summary.sendable],
+                          ["Blocked", segmentPreview.summary.blocked],
+                          ["Applied limit", segmentPreview.summary.appliedLimit ?? "No limit"],
+                        ].map(([label, value]) => (
+                          <div key={String(label)} className="rounded-2xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-900">
+                            <div className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">{label}</div>
+                            <div className="mt-2 text-xl font-semibold text-gray-800 dark:text-white/90">{String(value)}</div>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+                        {[
+                          ["Missing email", segmentPreview.summary.missingEmail],
+                          ["Invalid email", segmentPreview.summary.invalidEmail],
+                          ["Unsubscribed", segmentPreview.summary.unsubscribed],
+                          ["Bounced", segmentPreview.summary.bounced],
+                          ["Spam complaint", segmentPreview.summary.spamComplaint],
+                          ["Do not contact", segmentPreview.summary.doNotContact],
+                        ].map(([label, value]) => (
+                          <div key={String(label)} className="rounded-2xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-900">
+                            <div className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">{label}</div>
+                            <div className="mt-2 text-lg font-semibold text-gray-800 dark:text-white/90">{String(value)}</div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {segmentPreview.summary.blocked > 0 ? (
+                        <div className="rounded-2xl bg-warning-50 px-4 py-3 text-sm text-warning-700">
+                          {segmentPreview.summary.blocked} blocked lead{segmentPreview.summary.blocked === 1 ? "" : "s"} will be excluded from sending, but you can still save the draft with the sendable recipients.
+                        </div>
+                      ) : null}
+                    </>
+                  ) : (
+                    <div className="rounded-2xl border border-dashed border-gray-300 px-4 py-6 text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400">
+                      Select a saved segment to preview the campaign-safe audience.
+                    </div>
+                  )}
+                </div>
+              ) : null}
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Delay Between Emails</label>
                 <InputField
@@ -544,6 +784,9 @@ export default function CampaignComposerModal({
                     </button>
                   ))}
                 </div>
+              </div>
+              <div className="mb-3 text-xs text-gray-500 dark:text-gray-400">
+                Use <code>{"{{unsubscribeUrl}}"}</code> for opt-out links. Backward-compatible tags <code>{"{{unsubscribeLink}}"}</code> and <code>{"{{unsubscribe_url}}"}</code> also work.
               </div>
               <InputField
                 value={form.subject}
@@ -615,11 +858,19 @@ export default function CampaignComposerModal({
                 <div>
                   <div className="text-sm font-semibold text-gray-800 dark:text-white/90">Recipients</div>
                   <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                    Select CRM lead email addresses. Selected: {selectedRecipientList.length}.
+                    {audienceSource === "segment"
+                      ? "Recipients are loaded automatically from the saved segment preview."
+                      : `Select CRM lead email addresses. Selected: ${selectedRecipientList.length}.`}
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  <Button type="button" variant="outline" size="sm" onClick={() => void handleSelectAllFiltered()}>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => void handleSelectAllFiltered()}
+                    disabled={audienceSource !== "manual"}
+                  >
                     Select All Filtered
                   </Button>
                   <Button
@@ -630,12 +881,15 @@ export default function CampaignComposerModal({
                       setSelectedRecipients({});
                       setPreviewRecipientId(null);
                     }}
+                    disabled={audienceSource !== "manual"}
                   >
                     Clear Selection
                   </Button>
                 </div>
               </div>
 
+              {audienceSource === "manual" ? (
+                <>
               <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-7">
                 <InputField
                   placeholder="Search name, company, email, website, tags"
@@ -865,6 +1119,12 @@ export default function CampaignComposerModal({
                   </Button>
                 </div>
               </div>
+                </>
+              ) : (
+                <div className="rounded-2xl border border-dashed border-gray-300 px-4 py-6 text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400">
+                  The selected saved segment controls the recipient list automatically. Change the segment above to refresh this audience.
+                </div>
+              )}
             </div>
           </div>
 
@@ -914,6 +1174,7 @@ export default function CampaignComposerModal({
                     setSelectedRecipients({});
                     setPreviewRecipientId(null);
                   }}
+                  disabled={audienceSource !== "manual"}
                   className="text-sm font-medium text-brand-600 hover:underline"
                 >
                   Clear all
@@ -970,15 +1231,17 @@ export default function CampaignComposerModal({
           <Button type="button" variant="outline" onClick={onClose}>
             Cancel
           </Button>
-          <Button type="button" variant="outline" onClick={() => void handleSave("draft")} disabled={saving}>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => void handleSave()}
+            disabled={
+              saving ||
+              loadingSegmentPreview ||
+              (audienceSource === "segment" && (!selectedSegmentId || (segmentPreview?.summary.sendable ?? 0) === 0))
+            }
+          >
             {saving && saveMode === "draft" ? "Saving..." : initialCampaign ? "Save Draft" : "Create Draft"}
-          </Button>
-          <Button type="button" onClick={() => void handleSave("send")} disabled={saving}>
-            {saving && saveMode === "send"
-              ? "Starting..."
-              : initialCampaign
-                ? "Save Draft & Start Sending"
-                : "Create & Start Sending"}
           </Button>
         </div>
       </div>

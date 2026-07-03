@@ -613,6 +613,13 @@ const TABLE_STATEMENTS = [
       company_name TEXT,
       job_title TEXT,
       website TEXT,
+      country TEXT,
+      city TEXT,
+      state TEXT,
+      industry TEXT,
+      category TEXT,
+      sub_category TEXT,
+      lifecycle_stage TEXT,
       lead_type TEXT,
       lead_source TEXT NOT NULL DEFAULT 'Other',
       lead_status TEXT NOT NULL DEFAULT 'New',
@@ -623,6 +630,23 @@ const TABLE_STATEMENTS = [
       assigned_to BIGINT REFERENCES admins(id) ON DELETE SET NULL,
       tags JSONB NOT NULL DEFAULT '[]'::jsonb,
       notes JSONB NOT NULL DEFAULT '[]'::jsonb,
+      unsubscribed BOOLEAN NOT NULL DEFAULT FALSE,
+      bounced BOOLEAN NOT NULL DEFAULT FALSE,
+      bounce_type TEXT,
+      spam_complaint BOOLEAN NOT NULL DEFAULT FALSE,
+      do_not_contact BOOLEAN NOT NULL DEFAULT FALSE,
+      email_consent_status TEXT NOT NULL DEFAULT 'unknown',
+      last_email_sent_at TIMESTAMP,
+      email_sent_count INTEGER NOT NULL DEFAULT 0,
+      last_email_opened_at TIMESTAMP,
+      email_open_count INTEGER NOT NULL DEFAULT 0,
+      last_email_clicked_at TIMESTAMP,
+      email_click_count INTEGER NOT NULL DEFAULT 0,
+      last_email_replied_at TIMESTAMP,
+      email_reply_count INTEGER NOT NULL DEFAULT 0,
+      last_campaign_name TEXT,
+      last_campaign_status TEXT,
+      last_campaign_id TEXT,
       next_follow_up_at TIMESTAMP,
       last_activity_at TIMESTAMP,
       converted_contact_id BIGINT,
@@ -774,6 +798,10 @@ const TABLE_STATEMENTS = [
       entity_type TEXT NOT NULL,
       conditions JSONB NOT NULL DEFAULT '[]'::jsonb,
       match_type TEXT NOT NULL DEFAULT 'all',
+      segment_limit INTEGER,
+      sort_by TEXT,
+      sort_direction TEXT NOT NULL DEFAULT 'desc',
+      randomize BOOLEAN NOT NULL DEFAULT FALSE,
       created_by BIGINT REFERENCES admins(id) ON DELETE SET NULL,
       updated_by BIGINT REFERENCES admins(id) ON DELETE SET NULL,
       created_at TIMESTAMP NOT NULL DEFAULT NOW(),
@@ -840,11 +868,55 @@ const TABLE_STATEMENTS = [
   `,
   `
     ALTER TABLE crm_campaigns
+    ADD COLUMN IF NOT EXISTS from_name TEXT
+  `,
+  `
+    ALTER TABLE crm_campaigns
+    ADD COLUMN IF NOT EXISTS reply_to TEXT
+  `,
+  `
+    ALTER TABLE crm_campaigns
     ADD COLUMN IF NOT EXISTS body_mode TEXT NOT NULL DEFAULT 'html'
   `,
   `
     ALTER TABLE crm_campaigns
+    ADD COLUMN IF NOT EXISTS body_html TEXT
+  `,
+  `
+    ALTER TABLE crm_campaigns
+    ADD COLUMN IF NOT EXISTS body_text TEXT
+  `,
+  `
+    ALTER TABLE crm_campaigns
+    ADD COLUMN IF NOT EXISTS campaign_type TEXT NOT NULL DEFAULT 'cold_outreach'
+  `,
+  `
+    ALTER TABLE crm_campaigns
+    ADD COLUMN IF NOT EXISTS send_limit INTEGER
+  `,
+  `
+    ALTER TABLE crm_campaigns
     ADD COLUMN IF NOT EXISTS delay_seconds INTEGER NOT NULL DEFAULT 10
+  `,
+  `
+    ALTER TABLE crm_campaigns
+    ADD COLUMN IF NOT EXISTS delay_min_seconds INTEGER NOT NULL DEFAULT 45
+  `,
+  `
+    ALTER TABLE crm_campaigns
+    ADD COLUMN IF NOT EXISTS delay_max_seconds INTEGER NOT NULL DEFAULT 90
+  `,
+  `
+    ALTER TABLE crm_campaigns
+    ADD COLUMN IF NOT EXISTS track_opens BOOLEAN NOT NULL DEFAULT TRUE
+  `,
+  `
+    ALTER TABLE crm_campaigns
+    ADD COLUMN IF NOT EXISTS track_clicks BOOLEAN NOT NULL DEFAULT TRUE
+  `,
+  `
+    ALTER TABLE crm_campaigns
+    ADD COLUMN IF NOT EXISTS unsubscribe_required BOOLEAN NOT NULL DEFAULT TRUE
   `,
   `
     ALTER TABLE crm_campaigns
@@ -920,8 +992,310 @@ const TABLE_STATEMENTS = [
     ADD COLUMN IF NOT EXISTS address TEXT
   `,
   `
+    ALTER TABLE crm_leads
+    ADD COLUMN IF NOT EXISTS country TEXT
+  `,
+  `
+    ALTER TABLE crm_leads
+    ADD COLUMN IF NOT EXISTS city TEXT
+  `,
+  `
+    ALTER TABLE crm_leads
+    ADD COLUMN IF NOT EXISTS state TEXT
+  `,
+  `
+    ALTER TABLE crm_leads
+    ADD COLUMN IF NOT EXISTS industry TEXT
+  `,
+  `
+    ALTER TABLE crm_leads
+    ADD COLUMN IF NOT EXISTS category TEXT
+  `,
+  `
+    ALTER TABLE crm_leads
+    ADD COLUMN IF NOT EXISTS sub_category TEXT
+  `,
+  `
+    ALTER TABLE crm_leads
+    ADD COLUMN IF NOT EXISTS lifecycle_stage TEXT
+  `,
+  `
+    ALTER TABLE crm_leads
+    ADD COLUMN IF NOT EXISTS unsubscribed BOOLEAN NOT NULL DEFAULT FALSE
+  `,
+  `
+    ALTER TABLE crm_leads
+    ADD COLUMN IF NOT EXISTS bounced BOOLEAN NOT NULL DEFAULT FALSE
+  `,
+  `
+    ALTER TABLE crm_leads
+    ADD COLUMN IF NOT EXISTS bounce_type TEXT
+  `,
+  `
+    ALTER TABLE crm_leads
+    ADD COLUMN IF NOT EXISTS spam_complaint BOOLEAN NOT NULL DEFAULT FALSE
+  `,
+  `
+    ALTER TABLE crm_leads
+    ADD COLUMN IF NOT EXISTS do_not_contact BOOLEAN NOT NULL DEFAULT FALSE
+  `,
+  `
+    ALTER TABLE crm_leads
+    ADD COLUMN IF NOT EXISTS email_consent_status TEXT NOT NULL DEFAULT 'unknown'
+  `,
+  `
+    ALTER TABLE crm_leads
+    ADD COLUMN IF NOT EXISTS last_email_sent_at TIMESTAMP
+  `,
+  `
+    ALTER TABLE crm_leads
+    ADD COLUMN IF NOT EXISTS email_sent_count INTEGER NOT NULL DEFAULT 0
+  `,
+  `
+    ALTER TABLE crm_leads
+    ADD COLUMN IF NOT EXISTS last_email_opened_at TIMESTAMP
+  `,
+  `
+    ALTER TABLE crm_leads
+    ADD COLUMN IF NOT EXISTS email_open_count INTEGER NOT NULL DEFAULT 0
+  `,
+  `
+    ALTER TABLE crm_leads
+    ADD COLUMN IF NOT EXISTS last_email_clicked_at TIMESTAMP
+  `,
+  `
+    ALTER TABLE crm_leads
+    ADD COLUMN IF NOT EXISTS email_click_count INTEGER NOT NULL DEFAULT 0
+  `,
+  `
+    ALTER TABLE crm_leads
+    ADD COLUMN IF NOT EXISTS last_email_replied_at TIMESTAMP
+  `,
+  `
+    ALTER TABLE crm_leads
+    ADD COLUMN IF NOT EXISTS email_reply_count INTEGER NOT NULL DEFAULT 0
+  `,
+  `
+    ALTER TABLE crm_leads
+    ADD COLUMN IF NOT EXISTS last_campaign_name TEXT
+  `,
+  `
+    ALTER TABLE crm_leads
+    ADD COLUMN IF NOT EXISTS last_campaign_status TEXT
+  `,
+  `
+    ALTER TABLE crm_leads
+    ADD COLUMN IF NOT EXISTS last_campaign_id TEXT
+  `,
+  `
+    UPDATE crm_leads
+    SET unsubscribed = FALSE
+    WHERE unsubscribed IS NULL
+  `,
+  `
+    UPDATE crm_leads
+    SET bounced = FALSE
+    WHERE bounced IS NULL
+  `,
+  `
+    UPDATE crm_leads
+    SET spam_complaint = FALSE
+    WHERE spam_complaint IS NULL
+  `,
+  `
+    UPDATE crm_leads
+    SET do_not_contact = FALSE
+    WHERE do_not_contact IS NULL
+  `,
+  `
+    UPDATE crm_leads
+    SET email_sent_count = 0
+    WHERE email_sent_count IS NULL
+  `,
+  `
+    UPDATE crm_leads
+    SET email_open_count = 0
+    WHERE email_open_count IS NULL
+  `,
+  `
+    UPDATE crm_leads
+    SET email_click_count = 0
+    WHERE email_click_count IS NULL
+  `,
+  `
+    UPDATE crm_leads
+    SET email_reply_count = 0
+    WHERE email_reply_count IS NULL
+  `,
+  `
+    UPDATE crm_leads
+    SET email_consent_status = 'unknown'
+    WHERE email_consent_status IS NULL OR BTRIM(email_consent_status) = ''
+  `,
+  `
+    ALTER TABLE crm_segments
+    ADD COLUMN IF NOT EXISTS segment_limit INTEGER
+  `,
+  `
+    ALTER TABLE crm_segments
+    ADD COLUMN IF NOT EXISTS sort_by TEXT
+  `,
+  `
+    ALTER TABLE crm_segments
+    ADD COLUMN IF NOT EXISTS sort_direction TEXT NOT NULL DEFAULT 'desc'
+  `,
+  `
+    ALTER TABLE crm_segments
+    ADD COLUMN IF NOT EXISTS randomize BOOLEAN NOT NULL DEFAULT FALSE
+  `,
+  `
     ALTER TABLE crm_campaign_recipients
     ADD COLUMN IF NOT EXISTS address TEXT
+  `,
+  `
+    ALTER TABLE crm_campaign_recipients
+    ADD COLUMN IF NOT EXISTS contact_name TEXT
+  `,
+  `
+    ALTER TABLE crm_campaign_recipients
+    ADD COLUMN IF NOT EXISTS blocked_reason TEXT
+  `,
+  `
+    ALTER TABLE crm_campaign_recipients
+    ADD COLUMN IF NOT EXISTS skip_reason TEXT
+  `,
+  `
+    ALTER TABLE crm_campaign_recipients
+    ADD COLUMN IF NOT EXISTS message_id TEXT
+  `,
+  `
+    ALTER TABLE crm_campaign_recipients
+    ADD COLUMN IF NOT EXISTS provider_message_id TEXT
+  `,
+  `
+    ALTER TABLE crm_campaign_recipients
+    ADD COLUMN IF NOT EXISTS tracking_token TEXT
+  `,
+  `
+    ALTER TABLE crm_campaign_recipients
+    ADD COLUMN IF NOT EXISTS delivered_at TIMESTAMP
+  `,
+  `
+    ALTER TABLE crm_campaign_recipients
+    ADD COLUMN IF NOT EXISTS first_opened_at TIMESTAMP
+  `,
+  `
+    ALTER TABLE crm_campaign_recipients
+    ADD COLUMN IF NOT EXISTS last_opened_at TIMESTAMP
+  `,
+  `
+    ALTER TABLE crm_campaign_recipients
+    ADD COLUMN IF NOT EXISTS open_count INTEGER NOT NULL DEFAULT 0
+  `,
+  `
+    ALTER TABLE crm_campaign_recipients
+    ADD COLUMN IF NOT EXISTS first_clicked_at TIMESTAMP
+  `,
+  `
+    ALTER TABLE crm_campaign_recipients
+    ADD COLUMN IF NOT EXISTS last_clicked_at TIMESTAMP
+  `,
+  `
+    ALTER TABLE crm_campaign_recipients
+    ADD COLUMN IF NOT EXISTS click_count INTEGER NOT NULL DEFAULT 0
+  `,
+  `
+    ALTER TABLE crm_campaign_recipients
+    ADD COLUMN IF NOT EXISTS replied_at TIMESTAMP
+  `,
+  `
+    ALTER TABLE crm_campaign_recipients
+    ADD COLUMN IF NOT EXISTS bounce_at TIMESTAMP
+  `,
+  `
+    ALTER TABLE crm_campaign_recipients
+    ADD COLUMN IF NOT EXISTS bounce_type TEXT
+  `,
+  `
+    ALTER TABLE crm_campaign_recipients
+    ADD COLUMN IF NOT EXISTS bounce_reason TEXT
+  `,
+  `
+    ALTER TABLE crm_campaign_recipients
+    ADD COLUMN IF NOT EXISTS complained_at TIMESTAMP
+  `,
+  `
+    ALTER TABLE crm_campaign_recipients
+    ADD COLUMN IF NOT EXISTS unsubscribed_at TIMESTAMP
+  `,
+  `
+    ALTER TABLE crm_campaign_recipients
+    ADD COLUMN IF NOT EXISTS failed_at TIMESTAMP
+  `,
+  `
+    ALTER TABLE crm_campaign_recipients
+    ADD COLUMN IF NOT EXISTS failure_reason TEXT
+  `,
+  `
+    ALTER TABLE crm_campaign_recipients
+    ADD COLUMN IF NOT EXISTS last_event_type TEXT
+  `,
+  `
+    ALTER TABLE crm_campaign_recipients
+    ADD COLUMN IF NOT EXISTS last_event_at TIMESTAMP
+  `,
+  `
+    CREATE TABLE IF NOT EXISTS crm_email_events (
+      id BIGSERIAL PRIMARY KEY,
+      campaign_id BIGINT REFERENCES crm_campaigns(id) ON DELETE CASCADE,
+      recipient_id BIGINT REFERENCES crm_campaign_recipients(id) ON DELETE CASCADE,
+      lead_id BIGINT REFERENCES crm_leads(id) ON DELETE SET NULL,
+      event_type TEXT NOT NULL,
+      event_source TEXT NOT NULL DEFAULT 'internal',
+      email TEXT,
+      ip_address TEXT,
+      user_agent TEXT,
+      url TEXT,
+      metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `,
+  `
+    CREATE TABLE IF NOT EXISTS crm_email_clicks (
+      id BIGSERIAL PRIMARY KEY,
+      campaign_id BIGINT NOT NULL REFERENCES crm_campaigns(id) ON DELETE CASCADE,
+      recipient_id BIGINT NOT NULL REFERENCES crm_campaign_recipients(id) ON DELETE CASCADE,
+      lead_id BIGINT REFERENCES crm_leads(id) ON DELETE SET NULL,
+      original_url TEXT NOT NULL,
+      tracking_url TEXT,
+      clicked_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      ip_address TEXT,
+      user_agent TEXT
+    )
+  `,
+  `
+    CREATE TABLE IF NOT EXISTS crm_email_unsubscribes (
+      id BIGSERIAL PRIMARY KEY,
+      lead_id BIGINT REFERENCES crm_leads(id) ON DELETE SET NULL,
+      email TEXT NOT NULL,
+      campaign_id BIGINT REFERENCES crm_campaigns(id) ON DELETE SET NULL,
+      recipient_id BIGINT REFERENCES crm_campaign_recipients(id) ON DELETE SET NULL,
+      reason TEXT,
+      unsubscribed_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      source TEXT NOT NULL DEFAULT 'unsubscribe_link'
+    )
+  `,
+  `
+    CREATE TABLE IF NOT EXISTS crm_email_links (
+      id BIGSERIAL PRIMARY KEY,
+      campaign_id BIGINT NOT NULL REFERENCES crm_campaigns(id) ON DELETE CASCADE,
+      recipient_id BIGINT NOT NULL REFERENCES crm_campaign_recipients(id) ON DELETE CASCADE,
+      lead_id BIGINT REFERENCES crm_leads(id) ON DELETE SET NULL,
+      click_token TEXT NOT NULL UNIQUE,
+      original_url TEXT NOT NULL,
+      tracking_url TEXT,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )
   `,
   `
     CREATE INDEX IF NOT EXISTS idx_crm_leads_email ON crm_leads (email) WHERE deleted_at IS NULL
@@ -930,7 +1304,40 @@ const TABLE_STATEMENTS = [
     CREATE INDEX IF NOT EXISTS idx_crm_leads_status_source ON crm_leads (lead_status, lead_source, created_at DESC) WHERE deleted_at IS NULL
   `,
   `
+    CREATE INDEX IF NOT EXISTS idx_crm_leads_created_at ON crm_leads (created_at DESC) WHERE deleted_at IS NULL
+  `,
+  `
+    CREATE INDEX IF NOT EXISTS idx_crm_leads_lead_type ON crm_leads (lead_type, created_at DESC) WHERE deleted_at IS NULL
+  `,
+  `
+    CREATE INDEX IF NOT EXISTS idx_crm_leads_lead_status ON crm_leads (lead_status, created_at DESC) WHERE deleted_at IS NULL
+  `,
+  `
+    CREATE INDEX IF NOT EXISTS idx_crm_leads_lead_source ON crm_leads (lead_source, created_at DESC) WHERE deleted_at IS NULL
+  `,
+  `
+    CREATE INDEX IF NOT EXISTS idx_crm_leads_lifecycle_stage ON crm_leads (lifecycle_stage, created_at DESC) WHERE deleted_at IS NULL
+  `,
+  `
     CREATE INDEX IF NOT EXISTS idx_crm_leads_assigned_to ON crm_leads (assigned_to, next_follow_up_at, created_at DESC) WHERE deleted_at IS NULL
+  `,
+  `
+    CREATE INDEX IF NOT EXISTS idx_crm_leads_unsubscribed ON crm_leads (unsubscribed, created_at DESC) WHERE deleted_at IS NULL
+  `,
+  `
+    CREATE INDEX IF NOT EXISTS idx_crm_leads_bounced ON crm_leads (bounced, created_at DESC) WHERE deleted_at IS NULL
+  `,
+  `
+    CREATE INDEX IF NOT EXISTS idx_crm_leads_spam_complaint ON crm_leads (spam_complaint, created_at DESC) WHERE deleted_at IS NULL
+  `,
+  `
+    CREATE INDEX IF NOT EXISTS idx_crm_leads_do_not_contact ON crm_leads (do_not_contact, created_at DESC) WHERE deleted_at IS NULL
+  `,
+  `
+    CREATE INDEX IF NOT EXISTS idx_crm_leads_last_email_sent_at ON crm_leads (last_email_sent_at DESC) WHERE deleted_at IS NULL
+  `,
+  `
+    CREATE INDEX IF NOT EXISTS idx_crm_leads_tags_gin ON crm_leads USING GIN (tags)
   `,
   `
     CREATE INDEX IF NOT EXISTS idx_crm_contacts_email ON crm_contacts (email) WHERE deleted_at IS NULL
@@ -957,13 +1364,54 @@ const TABLE_STATEMENTS = [
     CREATE INDEX IF NOT EXISTS idx_crm_campaigns_sender_account ON crm_campaigns (sender_account_id, created_at DESC) WHERE deleted_at IS NULL
   `,
   `
+    CREATE INDEX IF NOT EXISTS idx_crm_campaign_recipients_campaign_id ON crm_campaign_recipients (campaign_id)
+  `,
+  `
     CREATE INDEX IF NOT EXISTS idx_crm_campaign_recipients_campaign_status ON crm_campaign_recipients (campaign_id, status, created_at DESC)
+  `,
+  `
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_crm_campaign_recipients_tracking_token
+    ON crm_campaign_recipients (tracking_token)
+    WHERE tracking_token IS NOT NULL
   `,
   `
     CREATE INDEX IF NOT EXISTS idx_crm_campaign_recipients_email ON crm_campaign_recipients (email)
   `,
   `
     CREATE INDEX IF NOT EXISTS idx_crm_campaign_recipients_lead_id ON crm_campaign_recipients (lead_id)
+  `,
+  `
+    CREATE INDEX IF NOT EXISTS idx_crm_campaign_recipients_status ON crm_campaign_recipients (status)
+  `,
+  `
+    CREATE INDEX IF NOT EXISTS idx_crm_email_events_campaign_id ON crm_email_events (campaign_id)
+  `,
+  `
+    CREATE INDEX IF NOT EXISTS idx_crm_email_events_recipient_id ON crm_email_events (recipient_id)
+  `,
+  `
+    CREATE INDEX IF NOT EXISTS idx_crm_email_events_event_type ON crm_email_events (event_type)
+  `,
+  `
+    CREATE INDEX IF NOT EXISTS idx_crm_email_events_created_at ON crm_email_events (created_at DESC)
+  `,
+  `
+    CREATE INDEX IF NOT EXISTS idx_crm_email_clicks_campaign_id ON crm_email_clicks (campaign_id)
+  `,
+  `
+    CREATE INDEX IF NOT EXISTS idx_crm_email_clicks_recipient_id ON crm_email_clicks (recipient_id)
+  `,
+  `
+    CREATE INDEX IF NOT EXISTS idx_crm_email_links_campaign_id ON crm_email_links (campaign_id)
+  `,
+  `
+    CREATE INDEX IF NOT EXISTS idx_crm_email_links_recipient_id ON crm_email_links (recipient_id)
+  `,
+  `
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_crm_email_links_click_token ON crm_email_links (click_token)
+  `,
+  `
+    CREATE INDEX IF NOT EXISTS idx_crm_email_unsubscribes_email ON crm_email_unsubscribes (email)
   `,
   `
     CREATE INDEX IF NOT EXISTS idx_crm_segments_entity_type ON crm_segments (entity_type, created_at DESC) WHERE deleted_at IS NULL

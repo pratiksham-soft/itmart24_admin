@@ -1,5 +1,19 @@
 import { ensureTables, getAnalyticsPool } from "./analyticsPostgres.service";
 import { listEmailAccounts, sendEmailMessage } from "./adminEmail.service";
+import {
+  canSendEmailToLead,
+  computeLeadCampaignSafetyState,
+  evaluateLeadSegmentAudience,
+} from "./crm.service";
+import {
+  applyRecipientEvent,
+  buildTrackedCampaignContent,
+  getCampaignAudiencePreview,
+  getCampaignTrackingOverview,
+  listCampaignClicks,
+  listCampaignEvents,
+  markCampaignRecipientAction,
+} from "./crmEmailTracking.service";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -31,6 +45,13 @@ type CampaignPayload = {
   delaySeconds?: unknown;
   recipientLeadIds?: unknown;
   recipientSelections?: unknown;
+  trackOpens?: unknown;
+  trackClicks?: unknown;
+  unsubscribeRequired?: unknown;
+  replyTo?: unknown;
+  fromName?: unknown;
+  segmentId?: unknown;
+  audienceSource?: unknown;
 };
 
 type RecipientSelection = {
@@ -38,18 +59,64 @@ type RecipientSelection = {
   email: string;
 };
 
+type SegmentAudiencePreview = {
+  segment: Record<string, unknown>;
+  summary: {
+    matchedLeads: number;
+    campaignReady: number;
+    sendable: number;
+    blocked: number;
+    missingEmail: number;
+    invalidEmail: number;
+    unsubscribed: number;
+    bounced: number;
+    spamComplaint: number;
+    doNotContact: number;
+    appliedLimit: number | null;
+  };
+  recipients: Array<{
+    leadId: number;
+    email: string;
+    companyName: string | null;
+    firstName: string | null;
+    lastName: string | null;
+    website: string | null;
+    emailType: string | null;
+    emailRiskLevel: string;
+    campaignReady: boolean;
+  }>;
+  blockedRecipients: Array<{
+    leadId: number;
+    email: string | null;
+    companyName: string | null;
+    firstName: string | null;
+    lastName: string | null;
+    reason: string;
+  }>;
+};
+
 type CampaignRecord = {
   id: number;
   name: string;
+  segmentName?: string | null;
   senderAccountId: number | null;
   senderEmail: string | null;
   subject: string;
   body: string;
   bodyMode: "html" | "text";
+  bodyHtml?: string | null;
+  bodyText?: string | null;
   status: string;
   recipientType: string;
   segmentId: number | null;
   delaySeconds: number;
+  delayMinSeconds?: number;
+  delayMaxSeconds?: number;
+  trackOpens?: boolean;
+  trackClicks?: boolean;
+  unsubscribeRequired?: boolean;
+  fromName?: string | null;
+  replyTo?: string | null;
   totalRecipients: number;
   recipientCount: number;
   sentCount: number;
@@ -84,10 +151,32 @@ type CampaignRecipientRecord = {
   website: string | null;
   leadType?: string | null;
   status: string;
+  blockedReason?: string | null;
+  skipReason?: string | null;
+  messageId?: string | null;
+  providerMessageId?: string | null;
+  trackingToken?: string | null;
   personalizedSubject: string | null;
   personalizedBodyHtml: string | null;
   errorMessage: string | null;
   sentAt: string | null;
+  deliveredAt?: string | null;
+  firstOpenedAt?: string | null;
+  lastOpenedAt?: string | null;
+  openCount?: number;
+  firstClickedAt?: string | null;
+  lastClickedAt?: string | null;
+  clickCount?: number;
+  repliedAt?: string | null;
+  bounceAt?: string | null;
+  bounceType?: string | null;
+  bounceReason?: string | null;
+  complainedAt?: string | null;
+  unsubscribedAt?: string | null;
+  failedAt?: string | null;
+  failureReason?: string | null;
+  lastEventType?: string | null;
+  lastEventAt?: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -112,6 +201,17 @@ type LeadRecipientCandidate = {
   tags: string[];
   notes: Array<Record<string, unknown>>;
   assignedTo: number | null;
+  unsubscribed?: boolean;
+  bounced?: boolean;
+  bounceType?: string | null;
+  spamComplaint?: boolean;
+  doNotContact?: boolean;
+  emailConsentStatus?: string;
+  emailDomain?: string | null;
+  emailType?: string | null;
+  emailRiskLevel?: string;
+  hasValidEmail?: boolean;
+  campaignReady?: boolean;
 };
 
 const DEFAULT_PAGE_SIZE = 10;
@@ -161,6 +261,16 @@ const readErrorMessage = (error: unknown, fallback: string) =>
   error instanceof Error && error.message ? error.message : fallback;
 const isValidEmail = (value: string | null | undefined) =>
   Boolean(value && EMAIL_REGEX.test(String(value).trim().toLowerCase()));
+const toBoolean = (value: unknown, fallback = false) => {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (!normalized) {
+    return fallback;
+  }
+  return ["true", "1", "yes", "y", "on"].includes(normalized);
+};
 
 const camelizeRow = (row: Record<string, unknown>) => {
   const mapped: Record<string, unknown> = {};
@@ -183,13 +293,42 @@ const normalizeJsonField = <T>(value: unknown, fallback: T): T => {
   return fallback;
 };
 
-const mapCampaign = (row: Record<string, unknown>): CampaignRecord =>
-  camelizeRow(row) as CampaignRecord;
+const mapCampaign = (row: Record<string, unknown>): CampaignRecord => {
+  const mapped = camelizeRow(row);
+
+  return {
+    ...(mapped as CampaignRecord),
+    id: Number(mapped.id ?? 0),
+    senderAccountId:
+      mapped.senderAccountId == null ? null : Number(mapped.senderAccountId),
+    segmentId: mapped.segmentId == null ? null : Number(mapped.segmentId),
+    delaySeconds: Number(mapped.delaySeconds ?? 0),
+    delayMinSeconds: Number(mapped.delayMinSeconds ?? mapped.delaySeconds ?? 45),
+    delayMaxSeconds: Number(mapped.delayMaxSeconds ?? mapped.delaySeconds ?? 90),
+    trackOpens: Boolean(mapped.trackOpens ?? true),
+    trackClicks: Boolean(mapped.trackClicks ?? true),
+    unsubscribeRequired: Boolean(mapped.unsubscribeRequired ?? true),
+    totalRecipients: Number(mapped.totalRecipients ?? 0),
+    recipientCount: Number(mapped.recipientCount ?? 0),
+    sentCount: Number(mapped.sentCount ?? 0),
+    failedCount: Number(mapped.failedCount ?? 0),
+    skippedCount: Number(mapped.skippedCount ?? 0),
+    openedCount: Number(mapped.openedCount ?? 0),
+    clickedCount: Number(mapped.clickedCount ?? 0),
+    createdBy: mapped.createdBy == null ? null : Number(mapped.createdBy),
+    updatedBy: mapped.updatedBy == null ? null : Number(mapped.updatedBy),
+  };
+};
 
 const mapCampaignRecipient = (row: Record<string, unknown>): CampaignRecipientRecord =>
   ({
     ...(camelizeRow(row) as CampaignRecipientRecord),
+    id: Number(row.id ?? 0),
+    campaignId: Number(row.campaign_id ?? 0),
+    leadId: row.lead_id == null ? null : Number(row.lead_id),
     recipientKey: `${Number(row.lead_id ?? 0)}::${String(row.email ?? "").toLowerCase()}`,
+    openCount: Number(row.open_count ?? 0),
+    clickCount: Number(row.click_count ?? 0),
   });
 
 const mapLeadRecipient = (row: Record<string, unknown>): LeadRecipientCandidate => {
@@ -198,6 +337,15 @@ const mapLeadRecipient = (row: Record<string, unknown>): LeadRecipientCandidate 
   const phones = normalizeJsonField<string[]>(mapped.phones, []);
   const primaryEmail = String(mapped.email ?? emails[0] ?? "");
   const primaryPhone = mapped.phone ? String(mapped.phone) : phones[0] ?? null;
+  const safety = computeLeadCampaignSafetyState({
+    ...mapped,
+    tags: normalizeJsonField<string[]>(mapped.tags, []),
+    unsubscribed: Boolean(mapped.unsubscribed),
+    bounced: Boolean(mapped.bounced),
+    spamComplaint: Boolean(mapped.spamComplaint),
+    doNotContact: Boolean(mapped.doNotContact),
+    emailConsentStatus: mapped.emailConsentStatus,
+  });
   return {
     ...(mapped as LeadRecipientCandidate),
     recipientKey: `${Number(mapped.id ?? 0)}::${primaryEmail.toLowerCase()}`,
@@ -208,6 +356,17 @@ const mapLeadRecipient = (row: Record<string, unknown>): LeadRecipientCandidate 
     address: mapped.address ? String(mapped.address) : null,
     tags: normalizeJsonField<string[]>(mapped.tags, []),
     notes: normalizeJsonField<Array<Record<string, unknown>>>(mapped.notes, []),
+    unsubscribed: Boolean(mapped.unsubscribed),
+    bounced: Boolean(mapped.bounced),
+    bounceType: mapped.bounceType ? String(mapped.bounceType) : null,
+    spamComplaint: Boolean(mapped.spamComplaint),
+    doNotContact: Boolean(mapped.doNotContact),
+    emailConsentStatus: safety.emailConsentStatus,
+    emailDomain: safety.emailDomain,
+    emailType: safety.emailType,
+    emailRiskLevel: safety.emailRiskLevel,
+    hasValidEmail: safety.hasValidEmail,
+    campaignReady: safety.campaignReady,
   };
 };
 
@@ -334,9 +493,10 @@ const loadCampaignById = async (id: number) => {
   const pool = await getAnalyticsPool();
   const result = await pool.query(
     `
-      SELECT *
-      FROM crm_campaigns
-      WHERE id = $1 AND deleted_at IS NULL
+      SELECT campaign.*, segment.name AS segment_name
+      FROM crm_campaigns campaign
+      LEFT JOIN crm_segments segment ON segment.id = campaign.segment_id
+      WHERE campaign.id = $1 AND campaign.deleted_at IS NULL
       LIMIT 1
     `,
     [id]
@@ -442,10 +602,6 @@ const sanitizeCampaignPayload = async (payload: CampaignPayload) => {
     ? Math.max(MIN_DELAY_SECONDS, Math.min(MAX_DELAY_SECONDS, Math.round(delaySecondsRaw)))
     : 10;
   const recipientSelections = sanitizeRecipientSelections(payload.recipientSelections);
-  const recipientLeadIds =
-    recipientSelections.length > 0
-      ? Array.from(new Set(recipientSelections.map((selection) => selection.leadId)))
-      : sanitizeLeadIds(payload.recipientLeadIds);
 
   if (!name) {
     throw new Error("Campaign name is required.");
@@ -464,6 +620,18 @@ const sanitizeCampaignPayload = async (payload: CampaignPayload) => {
   }
 
   const senderAccount = await loadSenderAccount(senderAccountId);
+  const segmentId = toNumberOrNull(payload.segmentId);
+  const audienceSourceRaw = toTrimmedString(payload.audienceSource).toLowerCase();
+  const audienceSource = audienceSourceRaw === "saved_segment" || audienceSourceRaw === "segment" ? "segment" : "manual";
+  if (audienceSource === "segment" && !segmentId) {
+    throw new Error("Saved segment is required.");
+  }
+  const recipientLeadIds =
+    audienceSource === "segment"
+      ? []
+      : recipientSelections.length > 0
+        ? Array.from(new Set(recipientSelections.map((selection) => selection.leadId)))
+        : sanitizeLeadIds(payload.recipientLeadIds);
 
   return {
     name,
@@ -475,6 +643,129 @@ const sanitizeCampaignPayload = async (payload: CampaignPayload) => {
     delaySeconds,
     recipientLeadIds,
     recipientSelections,
+    trackOpens: toBoolean(payload.trackOpens, true),
+    trackClicks: toBoolean(payload.trackClicks, true),
+    unsubscribeRequired: toBoolean(payload.unsubscribeRequired, true),
+    replyTo: toOptionalString(payload.replyTo),
+    fromName: toOptionalString(payload.fromName) ?? senderAccount.displayName ?? null,
+    segmentId,
+    audienceSource,
+  };
+};
+
+const getBlockedReason = (lead: LeadRecipientCandidate | undefined, email: string) => {
+  if (!lead) {
+    return "Lead record is unavailable.";
+  }
+  if (!isValidEmail(email)) {
+    return "Recipient email is missing or invalid.";
+  }
+  if (lead.unsubscribed || lead.emailConsentStatus === "unsubscribed") {
+    return "Lead has unsubscribed from email.";
+  }
+  if (lead.doNotContact || lead.emailConsentStatus === "do_not_contact") {
+    return "Lead is marked as do not contact.";
+  }
+  if (lead.spamComplaint) {
+    return "Lead is blocked because of a spam complaint.";
+  }
+  if (lead.bounced) {
+    return `Lead is blocked because of a ${lead.bounceType || "previous"} bounce.`;
+  }
+  if (!lead.hasValidEmail) {
+    return "Lead does not have a valid campaign email.";
+  }
+  if (lead.emailRiskLevel === "blocked") {
+    return "Lead is blocked by email risk rules.";
+  }
+  if (!lead.campaignReady) {
+    return "Lead is not campaign ready yet.";
+  }
+  return "Lead is blocked by campaign safety rules.";
+};
+
+const mapSegmentLeadToRecipient = (row: Record<string, unknown>): LeadRecipientCandidate => {
+  const mapped = camelizeRow(row);
+  const emails = normalizeJsonField<string[]>(mapped.emails, []);
+  const phones = normalizeJsonField<string[]>(mapped.phones, []);
+  return {
+    id: Number(mapped.id ?? 0),
+    recipientKey: `${Number(mapped.id ?? 0)}::${String(mapped.email ?? "").trim().toLowerCase()}`,
+    firstName: mapped.firstName ? String(mapped.firstName) : null,
+    lastName: mapped.lastName ? String(mapped.lastName) : null,
+    email: String(mapped.email ?? "").trim().toLowerCase(),
+    phone: mapped.phone ? String(mapped.phone) : phones[0] ?? null,
+    emails,
+    phones,
+    address: mapped.address ? String(mapped.address) : null,
+    companyName: mapped.companyName ? String(mapped.companyName) : null,
+    jobTitle: mapped.jobTitle ? String(mapped.jobTitle) : null,
+    website: mapped.website ? String(mapped.website) : null,
+    leadType: mapped.leadType ? String(mapped.leadType) : null,
+    leadStatus: mapped.leadStatus ? String(mapped.leadStatus) : "Selected",
+    leadPriority: mapped.leadPriority ? String(mapped.leadPriority) : "Medium",
+    leadScore: Number(mapped.leadScore ?? 0),
+    tags: normalizeJsonField<string[]>(mapped.tags, []),
+    notes: normalizeJsonField<Array<Record<string, unknown>>>(mapped.notes, []),
+    assignedTo: mapped.assignedTo == null ? null : Number(mapped.assignedTo),
+    unsubscribed: Boolean(mapped.unsubscribed),
+    bounced: Boolean(mapped.bounced),
+    bounceType: mapped.bounceType ? String(mapped.bounceType) : null,
+    spamComplaint: Boolean(mapped.spamComplaint),
+    doNotContact: Boolean(mapped.doNotContact),
+    emailConsentStatus: mapped.emailConsentStatus ? String(mapped.emailConsentStatus) : "unknown",
+    emailDomain: mapped.emailDomain ? String(mapped.emailDomain) : null,
+    emailType: mapped.emailType ? String(mapped.emailType) : null,
+    emailRiskLevel: mapped.emailRiskLevel ? String(mapped.emailRiskLevel) : "blocked",
+    hasValidEmail: Boolean(mapped.hasValidEmail),
+    campaignReady: Boolean(mapped.campaignReady),
+  };
+};
+
+const buildSegmentAudiencePreview = async (segmentId: number): Promise<SegmentAudiencePreview> => {
+  const evaluation = await evaluateLeadSegmentAudience(segmentId);
+  const matchedLeads = evaluation.leads.map(mapSegmentLeadToRecipient);
+  const recipients = matchedLeads
+    .filter((lead) => canSendEmailToLead(lead))
+    .map((lead) => ({
+      leadId: lead.id,
+      email: lead.email,
+      companyName: lead.companyName ?? null,
+      firstName: lead.firstName ?? null,
+      lastName: lead.lastName ?? null,
+      website: lead.website ?? null,
+      emailType: lead.emailType ?? null,
+      emailRiskLevel: lead.emailRiskLevel ?? "blocked",
+      campaignReady: Boolean(lead.campaignReady),
+    }));
+  const blockedRecipients = matchedLeads
+    .filter((lead) => !canSendEmailToLead(lead))
+    .map((lead) => ({
+      leadId: lead.id,
+      email: lead.email || null,
+      companyName: lead.companyName ?? null,
+      firstName: lead.firstName ?? null,
+      lastName: lead.lastName ?? null,
+      reason: getBlockedReason(lead, lead.email),
+    }));
+
+  return {
+    segment: evaluation.segment as Record<string, unknown>,
+    summary: {
+      matchedLeads: evaluation.preview.count,
+      campaignReady: evaluation.preview.campaignReadinessSummary.campaignReadyCount,
+      sendable: recipients.length,
+      blocked: blockedRecipients.length,
+      missingEmail: evaluation.preview.campaignReadinessSummary.missingEmailCount,
+      invalidEmail: evaluation.preview.campaignReadinessSummary.invalidEmailCount,
+      unsubscribed: evaluation.preview.campaignReadinessSummary.unsubscribedCount,
+      bounced: evaluation.preview.campaignReadinessSummary.bouncedCount,
+      spamComplaint: evaluation.preview.campaignReadinessSummary.spamComplaintCount,
+      doNotContact: evaluation.preview.campaignReadinessSummary.doNotContactCount,
+      appliedLimit: evaluation.preview.appliedLimit,
+    },
+    recipients,
+    blockedRecipients,
   };
 };
 
@@ -504,7 +795,13 @@ const loadLeadRecipientsByIds = async (leadIds: number[]) => {
         lead_score,
         tags,
         notes,
-        assigned_to
+        assigned_to,
+        unsubscribed,
+        bounced,
+        bounce_type,
+        spam_complaint,
+        do_not_contact,
+        email_consent_status
       FROM crm_leads
       WHERE deleted_at IS NULL
         AND id = ANY($1::bigint[])
@@ -563,8 +860,27 @@ const replaceCampaignRecipients = async (campaignId: number, leadIds: number[], 
           }));
         });
 
-  if (selectedRecipients.length === 0) {
-    throw new Error("At least one selected lead must have a valid email address.");
+  const recipientsWithSafety = selectedRecipients.map((recipient) => {
+    const lead = leadById.get(recipient.id);
+    const isSendable = Boolean(
+      lead &&
+        canSendEmailToLead({
+          ...lead,
+          email: recipient.email,
+        })
+    );
+    return {
+      ...recipient,
+      lead,
+      isSendable,
+      blockedReason: isSendable ? null : getBlockedReason(lead, recipient.email),
+    };
+  });
+
+  const sendableRecipients = recipientsWithSafety.filter((recipient) => recipient.isSendable);
+
+  if (sendableRecipients.length === 0) {
+    throw new Error("At least one selected lead must have a safe campaign-ready email address.");
   }
 
   const client = await (await getAnalyticsPool()).connect();
@@ -573,7 +889,7 @@ const replaceCampaignRecipients = async (campaignId: number, leadIds: number[], 
     await client.query("BEGIN");
     await client.query("DELETE FROM crm_campaign_recipients WHERE campaign_id = $1", [campaignId]);
 
-    for (const recipient of selectedRecipients) {
+    for (const recipient of recipientsWithSafety) {
       await client.query(
         `
           INSERT INTO crm_campaign_recipients (
@@ -587,10 +903,11 @@ const replaceCampaignRecipients = async (campaignId: number, leadIds: number[], 
             job_title,
             website,
             status,
+            blocked_reason,
             created_at,
             updated_at
           )
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending', NOW(), NOW())
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), NOW())
         `,
         [
           campaignId,
@@ -602,6 +919,8 @@ const replaceCampaignRecipients = async (campaignId: number, leadIds: number[], 
           recipient.companyName,
           recipient.jobTitle,
           recipient.website,
+          recipient.isSendable ? "pending" : "blocked",
+          recipient.blockedReason,
         ]
       );
     }
@@ -610,7 +929,7 @@ const replaceCampaignRecipients = async (campaignId: number, leadIds: number[], 
       `
         UPDATE crm_campaigns
         SET total_recipients = $2,
-            recipient_count = $2,
+            recipient_count = $3,
             sent_count = 0,
             failed_count = 0,
             skipped_count = 0,
@@ -619,7 +938,7 @@ const replaceCampaignRecipients = async (campaignId: number, leadIds: number[], 
             updated_at = NOW()
         WHERE id = $1
       `,
-      [campaignId, selectedRecipients.length]
+      [campaignId, recipientsWithSafety.length, sendableRecipients.length]
     );
     await client.query("COMMIT");
   } catch (error) {
@@ -629,7 +948,100 @@ const replaceCampaignRecipients = async (campaignId: number, leadIds: number[], 
     client.release();
   }
 
-  return selectedRecipients.length;
+  return recipientsWithSafety.length;
+};
+
+const replaceCampaignRecipientsFromSegmentAudience = async (
+  campaignId: number,
+  audiencePreview: SegmentAudiencePreview
+) => {
+  const client = await (await getAnalyticsPool()).connect();
+
+  try {
+    await client.query("BEGIN");
+    await client.query("DELETE FROM crm_campaign_recipients WHERE campaign_id = $1", [campaignId]);
+
+    for (const recipient of audiencePreview.recipients) {
+      await client.query(
+        `
+          INSERT INTO crm_campaign_recipients (
+            campaign_id,
+            lead_id,
+            email,
+            first_name,
+            last_name,
+            company_name,
+            website,
+            status,
+            created_at,
+            updated_at
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending', NOW(), NOW())
+        `,
+        [
+          campaignId,
+          recipient.leadId,
+          recipient.email,
+          recipient.firstName,
+          recipient.lastName,
+          recipient.companyName,
+          recipient.website,
+        ]
+      );
+    }
+
+    for (const recipient of audiencePreview.blockedRecipients) {
+      await client.query(
+        `
+          INSERT INTO crm_campaign_recipients (
+            campaign_id,
+            lead_id,
+            email,
+            first_name,
+            last_name,
+            company_name,
+            status,
+            blocked_reason,
+            created_at,
+            updated_at
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, 'blocked', $7, NOW(), NOW())
+        `,
+        [
+          campaignId,
+          recipient.leadId,
+          recipient.email,
+          recipient.firstName,
+          recipient.lastName,
+          recipient.companyName,
+          recipient.reason,
+        ]
+      );
+    }
+
+    await client.query(
+      `
+        UPDATE crm_campaigns
+        SET total_recipients = $2,
+            recipient_count = $3,
+            sent_count = 0,
+            failed_count = 0,
+            skipped_count = 0,
+            last_error = NULL,
+            last_activity_at = NOW(),
+            updated_at = NOW()
+        WHERE id = $1
+      `,
+      [campaignId, audiencePreview.recipients.length + audiencePreview.blockedRecipients.length, audiencePreview.recipients.length]
+    );
+
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
 };
 
 const syncCampaignCounts = async (campaignId: number) => {
@@ -638,9 +1050,10 @@ const syncCampaignCounts = async (campaignId: number) => {
     `
       SELECT
         COUNT(*)::int AS total_recipients,
-        COUNT(*) FILTER (WHERE status = 'sent')::int AS sent_count,
+        COUNT(*) FILTER (WHERE status IN ('sent', 'delivered', 'opened', 'clicked', 'replied', 'bounced', 'complained', 'unsubscribed'))::int AS sent_count,
         COUNT(*) FILTER (WHERE status = 'failed')::int AS failed_count,
-        COUNT(*) FILTER (WHERE status = 'skipped')::int AS skipped_count
+        COUNT(*) FILTER (WHERE status IN ('skipped', 'blocked'))::int AS skipped_count,
+        COUNT(*) FILTER (WHERE status NOT IN ('blocked'))::int AS recipient_count
       FROM crm_campaign_recipients
       WHERE campaign_id = $1
     `,
@@ -652,10 +1065,10 @@ const syncCampaignCounts = async (campaignId: number) => {
     `
       UPDATE crm_campaigns
       SET total_recipients = $2,
-          recipient_count = $2,
-          sent_count = $3,
-          failed_count = $4,
-          skipped_count = $5,
+          recipient_count = $3,
+          sent_count = $4,
+          failed_count = $5,
+          skipped_count = $6,
           last_activity_at = NOW(),
           updated_at = NOW()
       WHERE id = $1
@@ -663,6 +1076,7 @@ const syncCampaignCounts = async (campaignId: number) => {
     [
       campaignId,
       Number(summary.total_recipients ?? 0),
+      Number(summary.recipient_count ?? 0),
       Number(summary.sent_count ?? 0),
       Number(summary.failed_count ?? 0),
       Number(summary.skipped_count ?? 0),
@@ -677,10 +1091,17 @@ const getRecipientSummary = async (campaignId: number) => {
       SELECT
         COUNT(*)::int AS total,
         COUNT(*) FILTER (WHERE status = 'pending')::int AS pending,
-        COUNT(*) FILTER (WHERE status = 'sending')::int AS sending,
-        COUNT(*) FILTER (WHERE status = 'sent')::int AS sent,
+        COUNT(*) FILTER (WHERE status IN ('sending', 'queued'))::int AS sending,
+        COUNT(*) FILTER (WHERE status IN ('sent', 'delivered', 'opened', 'clicked', 'replied', 'bounced', 'complained', 'unsubscribed'))::int AS sent,
         COUNT(*) FILTER (WHERE status = 'failed')::int AS failed,
-        COUNT(*) FILTER (WHERE status = 'skipped')::int AS skipped
+        COUNT(*) FILTER (WHERE status IN ('skipped', 'blocked'))::int AS skipped,
+        COUNT(*) FILTER (WHERE status = 'blocked')::int AS blocked,
+        COUNT(*) FILTER (WHERE first_opened_at IS NOT NULL OR status IN ('opened', 'clicked', 'replied'))::int AS opened,
+        COUNT(*) FILTER (WHERE first_clicked_at IS NOT NULL OR status IN ('clicked', 'replied'))::int AS clicked,
+        COUNT(*) FILTER (WHERE replied_at IS NOT NULL OR status = 'replied')::int AS replied,
+        COUNT(*) FILTER (WHERE bounce_at IS NOT NULL OR status = 'bounced')::int AS bounced,
+        COUNT(*) FILTER (WHERE unsubscribed_at IS NOT NULL OR status = 'unsubscribed')::int AS unsubscribed,
+        COUNT(*) FILTER (WHERE complained_at IS NOT NULL OR status = 'complained')::int AS complained
       FROM crm_campaign_recipients
       WHERE campaign_id = $1
     `,
@@ -694,6 +1115,13 @@ const getRecipientSummary = async (campaignId: number) => {
     sent: Number(row.sent ?? 0),
     failed: Number(row.failed ?? 0),
     skipped: Number(row.skipped ?? 0),
+    blocked: Number(row.blocked ?? 0),
+    opened: Number(row.opened ?? 0),
+    clicked: Number(row.clicked ?? 0),
+    replied: Number(row.replied ?? 0),
+    bounced: Number(row.bounced ?? 0),
+    unsubscribed: Number(row.unsubscribed ?? 0),
+    complained: Number(row.complained ?? 0),
   };
 };
 
@@ -707,7 +1135,7 @@ const finalizeCampaignStatus = async (campaignId: number) => {
   const nextStatus =
     campaign.status === "Cancelled"
       ? "Cancelled"
-      : summary.sent > 0 || (summary.failed > 0 && summary.sent + summary.failed === summary.total)
+      : summary.sent > 0 || (summary.failed > 0 && summary.sent + summary.failed + summary.skipped === summary.total)
         ? summary.sent > 0
           ? "Completed"
           : "Failed"
@@ -770,14 +1198,66 @@ const processCampaignInBackground = async (campaignId: number, actor: AdminActor
       }
 
       const recipient = await loadCampaignRecipientById(campaignId, recipients[index].id);
-      if (!recipient || !isValidEmail(recipient.email) || recipient.status === "sent") {
+      if (
+        !recipient ||
+        !isValidEmail(recipient.email) ||
+        ["sent", "delivered", "opened", "clicked", "replied", "unsubscribed", "complained"].includes(recipient.status)
+      ) {
+        continue;
+      }
+      if (recipient.status === "blocked") {
         continue;
       }
 
-      const personalizedSubject = renderTemplate(freshCampaign.subject, recipient);
-      const personalizedBody = renderTemplate(freshCampaign.body, recipient);
-      const bodyText =
-        freshCampaign.bodyMode === "html" ? stripHtmlToText(personalizedBody) : personalizedBody;
+      let lead: LeadRecipientCandidate | undefined;
+      if (recipient.leadId) {
+        [lead] = await loadLeadRecipientsByIds([recipient.leadId]);
+        if (!lead || !canSendEmailToLead({ ...lead, email: recipient.email })) {
+          await applyRecipientEvent(
+            {
+              id: recipient.id,
+              campaign_id: campaignId,
+              lead_id: recipient.leadId,
+              email: recipient.email,
+              campaign_name: freshCampaign.name,
+            },
+            "blocked",
+            "internal",
+            {
+              blockedReason: getBlockedReason(lead, recipient.email),
+            }
+          );
+          continue;
+        }
+      }
+
+      const trackedContent = await buildTrackedCampaignContent(
+        {
+          id: freshCampaign.id,
+          name: freshCampaign.name,
+          subject: freshCampaign.subject,
+          body: freshCampaign.body,
+          bodyHtml: freshCampaign.bodyHtml ?? (freshCampaign.bodyMode === "html" ? freshCampaign.body : null),
+          bodyText: freshCampaign.bodyText ?? (freshCampaign.bodyMode === "text" ? freshCampaign.body : null),
+          bodyMode: freshCampaign.bodyMode,
+          trackOpens: freshCampaign.trackOpens,
+          trackClicks: freshCampaign.trackClicks,
+          unsubscribeRequired: freshCampaign.unsubscribeRequired,
+        },
+        {
+          id: recipient.id,
+          campaignId,
+          leadId: recipient.leadId,
+          email: recipient.email,
+          firstName: recipient.firstName,
+          lastName: recipient.lastName,
+          contactName: [recipient.firstName, recipient.lastName].filter(Boolean).join(" ") || null,
+          companyName: recipient.companyName,
+          website: recipient.website,
+          jobTitle: recipient.jobTitle,
+          trackingToken: recipient.trackingToken,
+        }
+      );
 
       try {
         await pool.query(
@@ -790,16 +1270,16 @@ const processCampaignInBackground = async (campaignId: number, actor: AdminActor
                 updated_at = NOW()
             WHERE campaign_id = $1 AND id = $2
           `,
-          [campaignId, recipient.id, personalizedSubject, personalizedBody]
+          [campaignId, recipient.id, trackedContent.subject, trackedContent.bodyHtml ?? trackedContent.bodyText]
         );
 
-        await sendEmailMessage(
+        const sendResult = await sendEmailMessage(
           senderAccountId,
           {
             to: recipient.email,
-            subject: personalizedSubject,
-            bodyText,
-            bodyHtml: freshCampaign.bodyMode === "html" ? personalizedBody : undefined,
+            subject: trackedContent.subject,
+            bodyText: trackedContent.bodyText,
+            bodyHtml: trackedContent.bodyHtml ?? undefined,
           },
           actor.id
         );
@@ -807,14 +1287,31 @@ const processCampaignInBackground = async (campaignId: number, actor: AdminActor
         await pool.query(
           `
             UPDATE crm_campaign_recipients
-            SET status = 'sent',
-                personalized_subject = $3,
+            SET personalized_subject = $3,
                 personalized_body_html = $4,
-                sent_at = NOW(),
+                tracking_token = COALESCE(tracking_token, $5),
                 updated_at = NOW()
             WHERE campaign_id = $1 AND id = $2
           `,
-          [campaignId, recipient.id, personalizedSubject, personalizedBody]
+          [campaignId, recipient.id, trackedContent.subject, trackedContent.bodyHtml ?? trackedContent.bodyText, trackedContent.trackingToken]
+        );
+
+        await applyRecipientEvent(
+          {
+            id: recipient.id,
+            campaign_id: campaignId,
+            lead_id: recipient.leadId,
+            email: recipient.email,
+            campaign_name: freshCampaign.name,
+          },
+          "sent",
+          "smtp",
+          {
+            metadata: {
+              messageId: sendResult.messageId ?? null,
+              providerMessageId: sendResult.messageId ?? null,
+            },
+          }
         );
 
         await pool.query(
@@ -828,7 +1325,9 @@ const processCampaignInBackground = async (campaignId: number, actor: AdminActor
           `,
           [campaignId]
         );
+
       } catch (error) {
+        const errorMessage = readErrorMessage(error, "Failed to send email.");
         await pool.query(
           `
             UPDATE crm_campaign_recipients
@@ -842,10 +1341,25 @@ const processCampaignInBackground = async (campaignId: number, actor: AdminActor
           [
             campaignId,
             recipient.id,
-            personalizedSubject,
-            personalizedBody,
-            readErrorMessage(error, "Failed to send email."),
+            trackedContent.subject,
+            trackedContent.bodyHtml ?? trackedContent.bodyText,
+            errorMessage,
           ]
+        );
+
+        await applyRecipientEvent(
+          {
+            id: recipient.id,
+            campaign_id: campaignId,
+            lead_id: recipient.leadId,
+            email: recipient.email,
+            campaign_name: freshCampaign.name,
+          },
+          "failed",
+          "smtp",
+          {
+            failureReason: errorMessage,
+          }
         );
 
         await pool.query(
@@ -857,7 +1371,7 @@ const processCampaignInBackground = async (campaignId: number, actor: AdminActor
                 updated_at = NOW()
             WHERE id = $1
           `,
-          [campaignId, readErrorMessage(error, "Failed to send email.")]
+          [campaignId, errorMessage]
         );
       }
 
@@ -1070,8 +1584,9 @@ export const listCampaigns = async (query: PaginationQuery) =>
     const [itemsResult, countResult, summaryResult] = await Promise.all([
       pool.query(
         `
-          SELECT *
+          SELECT campaign.*, segment.name AS segment_name
           FROM crm_campaigns campaign
+          LEFT JOIN crm_segments segment ON segment.id = campaign.segment_id
           WHERE ${whereClause}
           ORDER BY campaign.updated_at DESC, campaign.id DESC
           LIMIT $${values.length + 1}
@@ -1135,12 +1650,22 @@ export const createCampaign = async (payload: CampaignPayload, actor: AdminActor
           name,
           sender_account_id,
           sender_email,
+          from_name,
+          reply_to,
           subject,
           body,
+          body_html,
+          body_text,
           body_mode,
           status,
           recipient_type,
+          segment_id,
           delay_seconds,
+          delay_min_seconds,
+          delay_max_seconds,
+          track_opens,
+          track_clicks,
+          unsubscribe_required,
           total_recipients,
           recipient_count,
           sent_count,
@@ -1153,7 +1678,7 @@ export const createCampaign = async (payload: CampaignPayload, actor: AdminActor
           updated_at
         )
         VALUES (
-          $1, $2, $3, $4, $5, $6, 'Draft', 'leads', $7, 0, 0, 0, 0, 0, $8, $9, NOW(), NOW(), NOW()
+          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'Draft', $11, $12, $13, $14, $15, $16, $17, $18, 0, 0, 0, 0, 0, $19, $20, NOW(), NOW(), NOW()
         )
         RETURNING *
       `,
@@ -1161,17 +1686,36 @@ export const createCampaign = async (payload: CampaignPayload, actor: AdminActor
         input.name,
         input.senderAccountId,
         input.senderEmail,
+        input.fromName,
+        input.replyTo,
         input.subject,
         input.body,
+        input.bodyMode === "html" ? input.body : null,
+        input.bodyMode === "text" ? input.body : stripHtmlToText(input.body),
         input.bodyMode,
+        input.audienceSource === "segment" ? "segments" : "leads",
+        input.segmentId,
         input.delaySeconds,
+        input.delaySeconds,
+        input.delaySeconds,
+        input.trackOpens,
+        input.trackClicks,
+        input.unsubscribeRequired,
         actor.id,
         actor.id,
       ]
     );
 
     const campaign = mapCampaign(result.rows[0] as Record<string, unknown>);
-    await replaceCampaignRecipients(campaign.id, input.recipientLeadIds, input.recipientSelections);
+    if (input.audienceSource === "segment" && input.segmentId) {
+      const audiencePreview = await buildSegmentAudiencePreview(input.segmentId);
+      if (audiencePreview.recipients.length === 0) {
+        throw new Error("Selected segment has no sendable recipients.");
+      }
+      await replaceCampaignRecipientsFromSegmentAudience(campaign.id, audiencePreview);
+    } else {
+      await replaceCampaignRecipients(campaign.id, input.recipientLeadIds, input.recipientSelections);
+    }
 
     await insertActivity({
       activityType: "Campaign Created",
@@ -1202,17 +1746,28 @@ export const updateCampaign = async (id: number, payload: CampaignPayload, actor
         SET name = $2,
             sender_account_id = $3,
             sender_email = $4,
-            subject = $5,
-            body = $6,
-            body_mode = $7,
+            from_name = $5,
+            reply_to = $6,
+            subject = $7,
+            body = $8,
+            body_html = $9,
+            body_text = $10,
+            body_mode = $11,
             status = 'Draft',
-            delay_seconds = $8,
+            recipient_type = $12,
+            segment_id = $13,
+            delay_seconds = $14,
+            delay_min_seconds = $15,
+            delay_max_seconds = $16,
+            track_opens = $17,
+            track_clicks = $18,
+            unsubscribe_required = $19,
             cancelled_at = NULL,
             completed_at = NULL,
             started_at = NULL,
             sent_at = NULL,
             last_error = NULL,
-            updated_by = $9,
+            updated_by = $20,
             last_activity_at = NOW(),
             updated_at = NOW()
         WHERE id = $1 AND deleted_at IS NULL
@@ -1222,15 +1777,34 @@ export const updateCampaign = async (id: number, payload: CampaignPayload, actor
         input.name,
         input.senderAccountId,
         input.senderEmail,
+        input.fromName,
+        input.replyTo,
         input.subject,
         input.body,
+        input.bodyMode === "html" ? input.body : null,
+        input.bodyMode === "text" ? input.body : stripHtmlToText(input.body),
         input.bodyMode,
+        input.audienceSource === "segment" ? "segments" : "leads",
+        input.segmentId,
         input.delaySeconds,
+        input.delaySeconds,
+        input.delaySeconds,
+        input.trackOpens,
+        input.trackClicks,
+        input.unsubscribeRequired,
         actor.id,
       ]
     );
 
-    await replaceCampaignRecipients(id, input.recipientLeadIds, input.recipientSelections);
+    if (input.audienceSource === "segment" && input.segmentId) {
+      const audiencePreview = await buildSegmentAudiencePreview(input.segmentId);
+      if (audiencePreview.recipients.length === 0) {
+        throw new Error("Selected segment has no sendable recipients.");
+      }
+      await replaceCampaignRecipientsFromSegmentAudience(id, audiencePreview);
+    } else {
+      await replaceCampaignRecipients(id, input.recipientLeadIds, input.recipientSelections);
+    }
     return loadCampaignById(id);
   });
 
@@ -1273,12 +1847,22 @@ export const duplicateCampaign = async (id: number, actor: AdminActor) =>
           name,
           sender_account_id,
           sender_email,
+          from_name,
+          reply_to,
           subject,
           body,
+          body_html,
+          body_text,
           body_mode,
           status,
           recipient_type,
+          segment_id,
           delay_seconds,
+          delay_min_seconds,
+          delay_max_seconds,
+          track_opens,
+          track_clicks,
+          unsubscribe_required,
           total_recipients,
           recipient_count,
           sent_count,
@@ -1291,7 +1875,7 @@ export const duplicateCampaign = async (id: number, actor: AdminActor) =>
           updated_at
         )
         VALUES (
-          $1, $2, $3, $4, $5, $6, 'Draft', 'leads', $7, 0, 0, 0, 0, 0, $8, $9, NOW(), NOW(), NOW()
+          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'Draft', $11, $12, $13, $14, $15, $16, $17, $18, 0, 0, 0, 0, 0, $19, $20, NOW(), NOW(), NOW()
         )
         RETURNING *
       `,
@@ -1299,36 +1883,55 @@ export const duplicateCampaign = async (id: number, actor: AdminActor) =>
         `${existing.name} Copy`,
         existing.senderAccountId,
         existing.senderEmail,
+        existing.fromName ?? null,
+        existing.replyTo ?? null,
         existing.subject,
         existing.body,
+        existing.bodyHtml ?? (existing.bodyMode === "html" ? existing.body : null),
+        existing.bodyText ?? (existing.bodyMode === "text" ? existing.body : stripHtmlToText(existing.body)),
         existing.bodyMode,
+        existing.recipientType,
+        existing.segmentId,
         existing.delaySeconds,
+        existing.delayMinSeconds ?? existing.delaySeconds,
+        existing.delayMaxSeconds ?? existing.delaySeconds,
+        existing.trackOpens ?? true,
+        existing.trackClicks ?? true,
+        existing.unsubscribeRequired ?? true,
         actor.id,
         actor.id,
       ]
     );
 
     const duplicate = mapCampaign(result.rows[0] as Record<string, unknown>);
-    const recipientRows = await pool.query(
-      `
-        SELECT lead_id, email
-        FROM crm_campaign_recipients
-        WHERE campaign_id = $1
-          AND lead_id IS NOT NULL
-        ORDER BY id ASC
-      `,
-      [id]
-    );
-    const recipientSelections = recipientRows.rows
-      .map((row: Record<string, unknown>) => ({
-        leadId: Number((row as { lead_id?: unknown }).lead_id),
-        email: toTrimmedString((row as { email?: unknown }).email).toLowerCase(),
-      }))
-      .filter((entry: RecipientSelection) => Number.isFinite(entry.leadId) && entry.leadId > 0 && isValidEmail(entry.email));
-    const leadIds = recipientSelections
-      .map((entry: RecipientSelection) => entry.leadId)
-      .filter((entry: number) => Number.isFinite(entry) && entry > 0);
-    await replaceCampaignRecipients(duplicate.id, leadIds, recipientSelections);
+    if (existing.recipientType === "segments" && existing.segmentId) {
+      const audiencePreview = await buildSegmentAudiencePreview(existing.segmentId);
+      if (audiencePreview.recipients.length === 0) {
+        throw new Error("Selected segment has no sendable recipients.");
+      }
+      await replaceCampaignRecipientsFromSegmentAudience(duplicate.id, audiencePreview);
+    } else {
+      const recipientRows = await pool.query(
+        `
+          SELECT lead_id, email
+          FROM crm_campaign_recipients
+          WHERE campaign_id = $1
+            AND lead_id IS NOT NULL
+          ORDER BY id ASC
+        `,
+        [id]
+      );
+      const recipientSelections = recipientRows.rows
+        .map((row: Record<string, unknown>) => ({
+          leadId: Number((row as { lead_id?: unknown }).lead_id),
+          email: toTrimmedString((row as { email?: unknown }).email).toLowerCase(),
+        }))
+        .filter((entry: RecipientSelection) => Number.isFinite(entry.leadId) && entry.leadId > 0 && isValidEmail(entry.email));
+      const leadIds = recipientSelections
+        .map((entry: RecipientSelection) => entry.leadId)
+        .filter((entry: number) => Number.isFinite(entry) && entry > 0);
+      await replaceCampaignRecipients(duplicate.id, leadIds, recipientSelections);
+    }
     return loadCampaignById(duplicate.id);
   });
 
@@ -1420,10 +2023,26 @@ export const sendCampaign = async (id: number, actor: AdminActor) =>
     if (!campaign.senderAccountId) {
       throw new Error("Campaign sender account is required.");
     }
+    if (!campaign.senderEmail) {
+      throw new Error("Campaign from email is required.");
+    }
+    if (!toTrimmedString(campaign.subject)) {
+      throw new Error("Campaign subject is required.");
+    }
+    if (!toTrimmedString(campaign.body)) {
+      throw new Error("Campaign body is required.");
+    }
+    if (campaign.unsubscribeRequired === false) {
+      throw new Error("Unsubscribe link is required before sending campaigns.");
+    }
 
     const summary = await getRecipientSummary(id);
+    const audiencePreview = await getCampaignAudiencePreview(id);
     if (summary.total === 0) {
       throw new Error("Add at least one valid recipient before sending this campaign.");
+    }
+    if (audiencePreview.sendableLeads <= 0) {
+      throw new Error("This campaign has no sendable leads after safety checks.");
     }
 
     await loadSenderAccount(campaign.senderAccountId);
@@ -1452,11 +2071,30 @@ export const sendCampaign = async (id: number, actor: AdminActor) =>
         UPDATE crm_campaign_recipients
         SET status = 'pending',
             error_message = NULL,
+            failure_reason = NULL,
+            skip_reason = NULL,
             sent_at = NULL,
+            delivered_at = NULL,
+            first_opened_at = NULL,
+            last_opened_at = NULL,
+            open_count = 0,
+            first_clicked_at = NULL,
+            last_clicked_at = NULL,
+            click_count = 0,
+            replied_at = NULL,
+            bounce_at = NULL,
+            bounce_type = NULL,
+            bounce_reason = NULL,
+            complained_at = NULL,
+            unsubscribed_at = NULL,
+            failed_at = NULL,
+            last_event_type = NULL,
+            last_event_at = NULL,
             personalized_subject = NULL,
             personalized_body_html = NULL,
             updated_at = NOW()
         WHERE campaign_id = $1
+          AND status <> 'blocked'
       `,
       [id]
     );
@@ -1553,4 +2191,53 @@ export const getCampaignRecipients = async (id: number, query: PaginationQuery) 
       },
       summary: await getRecipientSummary(id),
     };
+  });
+
+export const previewCampaignSegmentAudience = async (segmentId: number) =>
+  withSchemaRecovery(async () => buildSegmentAudiencePreview(segmentId));
+
+export const getCampaignTrackingData = async (id: number) =>
+  withSchemaRecovery(async () => {
+    const campaign = await loadCampaignById(id);
+    if (!campaign) {
+      throw new Error("Campaign not found.");
+    }
+
+    return {
+      overview: await getCampaignTrackingOverview(id),
+      audiencePreview: await getCampaignAudiencePreview(id),
+    };
+  });
+
+export const getCampaignEventList = async (id: number, query: PaginationQuery) =>
+  withSchemaRecovery(async () => {
+    const campaign = await loadCampaignById(id);
+    if (!campaign) {
+      throw new Error("Campaign not found.");
+    }
+    const page = toPositiveInteger(query.page, 1);
+    const limit = Math.min(MAX_PAGE_SIZE, toPositiveInteger(query.limit, 25));
+    return listCampaignEvents(id, page, limit);
+  });
+
+export const getCampaignClickList = async (id: number, query: PaginationQuery) =>
+  withSchemaRecovery(async () => {
+    const campaign = await loadCampaignById(id);
+    if (!campaign) {
+      throw new Error("Campaign not found.");
+    }
+    const page = toPositiveInteger(query.page, 1);
+    const limit = Math.min(MAX_PAGE_SIZE, toPositiveInteger(query.limit, 25));
+    return listCampaignClicks(id, page, limit);
+  });
+
+export const updateCampaignRecipientTracking = async (
+  campaignId: number,
+  recipientId: number,
+  action: "bounced" | "replied" | "complained" | "unsubscribed" | "do_not_contact",
+  payload: Record<string, unknown>
+) =>
+  withSchemaRecovery(async () => {
+    await markCampaignRecipientAction(campaignId, recipientId, action, payload);
+    return loadCampaignRecipientById(campaignId, recipientId);
   });

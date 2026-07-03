@@ -185,5 +185,20 @@ export const dealLabel = (deal: Partial<CRMDeal>) => deal.title || "Untitled Dea
 export const taskLabel = (task: Partial<CRMTask>) => task.title || "Untitled Task";
 
 export const serializeConditions = (
-  conditions: Array<{ field: string; operator: string; value: string }>
-) => conditions.filter((condition) => condition.field && condition.operator && condition.value);
+  conditions: Array<{ field: string; operator: string; value: unknown; secondValue?: unknown }>
+) =>
+  conditions.filter((condition) => {
+    if (!condition.field || !condition.operator) {
+      return false;
+    }
+
+    if (["is_true", "is_false", "is_empty", "is_not_empty"].includes(condition.operator)) {
+      return true;
+    }
+
+    if (condition.operator === "between") {
+      return condition.value !== "" && condition.value != null && condition.secondValue !== "" && condition.secondValue != null;
+    }
+
+    return condition.value !== "" && condition.value != null;
+  });

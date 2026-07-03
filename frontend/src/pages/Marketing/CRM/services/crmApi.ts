@@ -4,6 +4,11 @@ import type {
   CRMActivity,
   CRMApiResponse,
   CRMCampaign,
+  CRMCampaignSegmentAudiencePreview,
+  CRMCampaignAudiencePreview,
+  CRMCampaignTrackingClick,
+  CRMCampaignTrackingEvent,
+  CRMCampaignTrackingOverview,
   CRMCampaignRecipient,
   CRMCampaignRecipientSummary,
   CRMCampaignSummary,
@@ -13,6 +18,8 @@ import type {
   CRMDashboardData,
   CRMDeal,
   CRMLeadEmailRecipient,
+  CRMLeadEmailCleanupPreview,
+  CRMLeadEmailCleanupResult,
   CRMLeadImportPreview,
   CRMLeadImportResult,
   CRMLead,
@@ -187,6 +194,28 @@ export const importLeads = async (formData: FormData) => {
   );
   return result.data as CRMLeadImportResult;
 };
+export const previewLeadEmailCleanup = async (formData: FormData) => {
+  const result = await fetchCRMJson<CRMApiResponse<CRMLeadEmailCleanupPreview>>(
+    "/api/crm/leads/email-cleanup/preview",
+    {
+      method: "POST",
+      body: formData,
+    },
+    "Failed to preview lead email cleanup."
+  );
+  return result.data as CRMLeadEmailCleanupPreview;
+};
+export const applyLeadEmailCleanup = async (formData: FormData) => {
+  const result = await fetchCRMJson<CRMApiResponse<CRMLeadEmailCleanupResult>>(
+    "/api/crm/leads/email-cleanup/apply",
+    {
+      method: "POST",
+      body: formData,
+    },
+    "Failed to apply lead email cleanup."
+  );
+  return result.data as CRMLeadEmailCleanupResult;
+};
 export const convertLead = async (id: number, payload: Record<string, unknown>) => {
   return fetchCRMJson<Record<string, unknown>>(
     `/api/crm/leads/${id}/convert`,
@@ -316,6 +345,14 @@ export const previewCampaign = async (id: number, payload?: Record<string, unkno
   );
   return result.preview as CRMPreviewResponse;
 };
+export const previewCampaignSegmentAudience = async (segmentId: number) => {
+  const result = await fetchCRMJson<CRMApiResponse<CRMCampaignSegmentAudiencePreview>>(
+    `/api/crm/campaigns/segments/${segmentId}/audience-preview`,
+    undefined,
+    "Failed to preview campaign segment audience."
+  );
+  return result.data as CRMCampaignSegmentAudiencePreview;
+};
 export const sendTestCampaign = async (id: number, payload: Record<string, unknown>) =>
   fetchCRMJson<{ success: boolean; message: string }>(
     `/api/crm/campaigns/${id}/test-send`,
@@ -378,6 +415,80 @@ export const getCampaignRecipients = async (
     },
   };
 };
+
+export const getCampaignTracking = async (id: number) => {
+  const result = await fetchCRMJson<
+    CRMApiResponse<{
+      overview: CRMCampaignTrackingOverview;
+      audiencePreview: CRMCampaignAudiencePreview;
+    }>
+  >(
+    `/api/crm/campaigns/${id}/tracking`,
+    undefined,
+    "Failed to load campaign tracking."
+  );
+  return result.data as {
+    overview: CRMCampaignTrackingOverview;
+    audiencePreview: CRMCampaignAudiencePreview;
+  };
+};
+
+export const getCampaignEvents = async (id: number, params?: { page?: number; limit?: number }) => {
+  const result = await fetchCRMJson<
+    CRMApiResponse<CRMCampaignTrackingEvent> & { items?: CRMCampaignTrackingEvent[] }
+  >(
+    `/api/crm/campaigns/${id}/events${buildQueryString(params)}`,
+    undefined,
+    "Failed to load campaign events."
+  );
+
+  return {
+    items: result.items ?? [],
+    pagination: result.pagination ?? {
+      page: params?.page ?? 1,
+      limit: params?.limit ?? 25,
+      total: 0,
+      totalPages: 0,
+    },
+  };
+};
+
+export const getCampaignClicks = async (id: number, params?: { page?: number; limit?: number }) => {
+  const result = await fetchCRMJson<
+    CRMApiResponse<CRMCampaignTrackingClick> & { items?: CRMCampaignTrackingClick[] }
+  >(
+    `/api/crm/campaigns/${id}/clicks${buildQueryString(params)}`,
+    undefined,
+    "Failed to load campaign clicks."
+  );
+
+  return {
+    items: result.items ?? [],
+    pagination: result.pagination ?? {
+      page: params?.page ?? 1,
+      limit: params?.limit ?? 25,
+      total: 0,
+      totalPages: 0,
+    },
+  };
+};
+
+export const updateCampaignRecipientAction = async (
+  campaignId: number,
+  recipientId: number,
+  action: "bounced" | "replied" | "complained" | "unsubscribed" | "do_not_contact",
+  payload?: Record<string, unknown>
+) => {
+  const result = await fetchCRMJson<CRMApiResponse<CRMCampaignRecipient>>(
+    `/api/crm/campaigns/${campaignId}/recipients/${recipientId}/actions/${action}`,
+    {
+      method: "POST",
+      body: JSON.stringify(payload ?? {}),
+    },
+    "Failed to update campaign recipient."
+  );
+  return result.item as CRMCampaignRecipient;
+};
 export const getLeadEmailRecipients = async (
   params?: CRMListParams & { tags?: string; companyName?: string }
 ) => {
@@ -412,6 +523,17 @@ export const getSegment = (id: number) => getItem<CRMSegment>(`/api/crm/segments
 export const createSegment = (payload: Record<string, unknown>) => createItem<CRMSegment>("/api/crm/segments", payload);
 export const updateSegment = (id: number, payload: Record<string, unknown>) => updateItem<CRMSegment>(`/api/crm/segments/${id}`, payload);
 export const deleteSegment = (id: number) => deleteItem(`/api/crm/segments/${id}`);
+export const previewSegmentDefinition = async (payload: Record<string, unknown>) => {
+  const result = await fetchCRMJson<CRMApiResponse<CRMSegmentPreview>>(
+    "/api/crm/segments/preview",
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    },
+    "Failed to preview segment."
+  );
+  return result.preview as CRMSegmentPreview;
+};
 export const previewSegment = async (id: number) => {
   const result = await fetchCRMJson<CRMApiResponse<CRMSegmentPreview>>(
     `/api/crm/segments/${id}/preview`,
