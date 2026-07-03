@@ -482,6 +482,18 @@ export default function LeadsPage() {
                     <div className="mt-1 font-semibold text-gray-800 dark:text-white/90">{viewLead.leadSource}</div>
                   </div>
                   <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
+                    <div className="text-sm text-gray-500 dark:text-gray-400">City</div>
+                    <div className="mt-1 font-semibold text-gray-800 dark:text-white/90">{viewLead.city || "Not set"}</div>
+                  </div>
+                  <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
+                    <div className="text-sm text-gray-500 dark:text-gray-400">State</div>
+                    <div className="mt-1 font-semibold text-gray-800 dark:text-white/90">{viewLead.state || "Not set"}</div>
+                  </div>
+                  <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
+                    <div className="text-sm text-gray-500 dark:text-gray-400">Country</div>
+                    <div className="mt-1 font-semibold text-gray-800 dark:text-white/90">{viewLead.country || "Not set"}</div>
+                  </div>
+                  <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
                     <div className="text-sm text-gray-500 dark:text-gray-400">Estimated Value</div>
                     <div className="mt-1 font-semibold text-gray-800 dark:text-white/90">{formatCurrency(viewLead.estimatedValue, viewLead.currency)}</div>
                   </div>
@@ -498,7 +510,7 @@ export default function LeadsPage() {
                     <div className="mt-1 font-semibold text-gray-800 dark:text-white/90 break-words">{getLeadPhones(viewLead).join(", ") || "No phone"}</div>
                   </div>
                   <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03] md:col-span-2">
-                    <div className="text-sm text-gray-500 dark:text-gray-400">Address</div>
+                    <div className="text-sm text-gray-500 dark:text-gray-400">Address / Legacy Address</div>
                     <div className="mt-1 font-semibold text-gray-800 dark:text-white/90 break-words">{viewLead.address || "Not provided"}</div>
                   </div>
                 </div>

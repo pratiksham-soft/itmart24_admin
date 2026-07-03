@@ -170,7 +170,10 @@ export default function LeadFormModal({
           ))}
 
           <div className="xl:col-span-3">
-            <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Address</label>
+            <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Address / Legacy Address</label>
+            <div className="mb-2 text-xs text-gray-500 dark:text-gray-400">
+              Keep old imported location text here when city, state, and country were not separated yet.
+            </div>
             <TextArea rows={3} value={String(form.address ?? "")} onChange={(value) => setForm((current) => ({ ...current, address: value }))} />
           </div>
 
