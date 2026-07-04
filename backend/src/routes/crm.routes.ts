@@ -65,6 +65,7 @@ import {
   listLeadEmailRecipients,
   previewCampaign,
   previewCampaignSegmentAudience,
+  resendCampaignRecipient,
   sendCampaign,
   sendTestCampaign,
   updateCampaignRecipientTracking,
@@ -125,6 +126,8 @@ const sendError = (res: any, error: unknown, fallback: string) => {
           message.includes("unavailable or inactive") ||
           message.includes("already sending") ||
           message.includes("cannot be re-sent") ||
+          message.includes("can only be resent") ||
+          message.includes("Only failed recipients can be resent") ||
           message.includes("Only sending campaigns can be cancelled") ||
           message.includes("Add at least one valid recipient") ||
           message.includes("safe campaign-ready email address") ||
@@ -718,6 +721,19 @@ router.post("/campaigns/:id/recipients/:recipientId/actions/:action", async (req
     res.json({ success: true, item });
   } catch (error) {
     sendError(res, error, "Failed to update campaign recipient.");
+  }
+});
+
+router.post("/campaigns/:id/recipients/:recipientId/resend", async (req, res) => {
+  try {
+    const item = await resendCampaignRecipient(
+      toPositiveId(req.params.id),
+      toPositiveId(req.params.recipientId),
+      getActor(req)
+    );
+    res.json({ success: true, item });
+  } catch (error) {
+    sendError(res, error, "Failed to resend campaign recipient.");
   }
 });
 

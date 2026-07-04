@@ -3,7 +3,10 @@ import PageMeta from "../../../components/common/PageMeta";
 import InputField from "../../../components/form/input/InputField";
 import Badge from "../../../components/ui/badge/Badge";
 import Button from "../../../components/ui/button/Button";
+import { Dropdown } from "../../../components/ui/dropdown/Dropdown";
+import { DropdownItem } from "../../../components/ui/dropdown/DropdownItem";
 import { Modal } from "../../../components/ui/modal";
+import { downloadCsv, downloadXlsx } from "../../../utils/spreadsheetExport";
 import CampaignComposerModal from "./components/CampaignComposerModal";
 import {
   cancelCampaign,
@@ -16,6 +19,7 @@ import {
   getCampaignRecipients,
   getCampaignTracking,
   previewCampaign,
+  resendCampaignRecipient,
   sendCampaign,
   sendTestCampaign,
   updateCampaignRecipientAction,
@@ -68,6 +72,72 @@ const formatDuration = (count: number, delaySeconds: number) => {
   return seconds ? `${minutes}m ${seconds}s` : `${minutes}m`;
 };
 
+const exportDateValue = (value: string | null | undefined) => (value ? formatDateTime(value) : "");
+
+const buildCampaignExportRows = ({
+  campaign,
+  recipients,
+  events,
+  clicks,
+}: {
+  campaign: CRMCampaign;
+  recipients: CRMCampaignRecipient[];
+  events: CRMCampaignTrackingEvent[];
+  clicks: CRMCampaignTrackingClick[];
+}) =>
+  recipients.map((recipient) => {
+    const openEvents = events
+      .filter((event) => event.recipientId === recipient.id && event.eventType === "opened")
+      .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime());
+    const recipientClicks = clicks
+      .filter((click) => click.recipientId === recipient.id)
+      .sort((left, right) => new Date(right.clickedAt).getTime() - new Date(left.clickedAt).getTime());
+    const lastOpen = openEvents[0] ?? null;
+    const lastClick = recipientClicks[0] ?? null;
+
+    return {
+      "Campaign ID": campaign.id,
+      "Campaign Name": campaign.name,
+      "Campaign Status": campaign.status,
+      "Sender Email": campaign.senderEmail ?? "",
+      "Subject": recipient.personalizedSubject ?? campaign.subject,
+      "Recipient ID": recipient.id,
+      Recipient: [recipient.firstName, recipient.lastName].filter(Boolean).join(" ") || recipient.companyName || "Lead",
+      Email: recipient.email,
+      "Company Name": recipient.companyName ?? "",
+      "Lead Type": recipient.leadType ?? "",
+      "Delivery Status": recipient.status,
+      "Error Message": recipient.errorMessage ?? "",
+      "Failure Reason": recipient.failureReason ?? "",
+      "Blocked Reason": recipient.blockedReason ?? "",
+      "Skip Reason": recipient.skipReason ?? "",
+      "Open Count": recipient.openCount ?? 0,
+      "Click Count": recipient.clickCount ?? 0,
+      "Sent At": exportDateValue(recipient.sentAt),
+      "Delivered At": exportDateValue(recipient.deliveredAt),
+      "First Open At": exportDateValue(recipient.firstOpenedAt),
+      "Last Open At": exportDateValue(recipient.lastOpenedAt),
+      "Last Open Source": lastOpen?.eventSource ?? "",
+      "Last Open IP": lastOpen?.ipAddress ?? "",
+      "Last Open User Agent": lastOpen?.userAgent ?? "",
+      "First Click At": exportDateValue(recipient.firstClickedAt),
+      "Last Click At": exportDateValue(recipient.lastClickedAt),
+      "Last Click URL": lastClick?.originalUrl ?? "",
+      "Last Click IP": lastClick?.ipAddress ?? "",
+      "Last Click User Agent": lastClick?.userAgent ?? "",
+      "Replied At": exportDateValue(recipient.repliedAt),
+      "Bounce At": exportDateValue(recipient.bounceAt),
+      "Bounce Type": recipient.bounceType ?? "",
+      "Bounce Reason": recipient.bounceReason ?? "",
+      "Complained At": exportDateValue(recipient.complainedAt),
+      "Unsubscribed At": exportDateValue(recipient.unsubscribedAt),
+      "Last Event Type": recipient.lastEventType ?? "",
+      "Last Event At": exportDateValue(recipient.lastEventAt),
+      "Created At": exportDateValue(recipient.createdAt),
+      "Updated At": exportDateValue(recipient.updatedAt),
+    };
+  });
+
 export default function EmailCampaignsPage() {
   const [campaigns, setCampaigns] = useState<CRMCampaign[]>([]);
   const [summary, setSummary] = useState<CRMCampaignSummary>({
@@ -109,6 +179,9 @@ export default function EmailCampaignsPage() {
   const [sendConfirmCampaign, setSendConfirmCampaign] = useState<CRMCampaign | null>(null);
   const [workingCampaignId, setWorkingCampaignId] = useState<number | null>(null);
   const [testEmail, setTestEmail] = useState("");
+  const [workingRecipientId, setWorkingRecipientId] = useState<number | null>(null);
+  const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
+  const [exportingFormat, setExportingFormat] = useState<"csv" | "xlsx" | null>(null);
   const detailCampaignIdRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -138,6 +211,9 @@ export default function EmailCampaignsPage() {
     setDetailEvents([]);
     setDetailClicks([]);
     setTestEmail("");
+    setWorkingRecipientId(null);
+    setIsExportMenuOpen(false);
+    setExportingFormat(null);
   };
 
   const openSendConfirmation = async (campaign: CRMCampaign) => {
@@ -302,6 +378,104 @@ export default function EmailCampaignsPage() {
       }
     },
     [detailCampaign, refreshDetailTracking]
+  );
+
+  const handleResendRecipient = useCallback(
+    async (recipient: CRMCampaignRecipient) => {
+      if (!detailCampaign) {
+        return;
+      }
+
+      try {
+        setWorkingRecipientId(recipient.id);
+        await resendCampaignRecipient(detailCampaign.id, recipient.id);
+        await refreshDetailTracking(detailCampaign.id);
+        showBanner("success", `Resend completed for ${recipient.email}.`);
+      } catch (error) {
+        showBanner("error", readErrorMessage(error, "Failed to resend recipient email."));
+      } finally {
+        setWorkingRecipientId(null);
+      }
+    },
+    [detailCampaign, refreshDetailTracking]
+  );
+
+  const handleExportRecipients = useCallback(
+    async (format: "csv" | "xlsx") => {
+      if (!detailCampaign || exportingFormat) {
+        return;
+      }
+
+      setIsExportMenuOpen(false);
+      setExportingFormat(format);
+
+      const fetchAllPages = async <T,>(
+        fetchPage: (page: number, limit: number) => Promise<{
+          items: T[];
+          pagination: { totalPages: number };
+        }>
+      ) => {
+        const limit = 500;
+        const allItems: T[] = [];
+        let currentPage = 1;
+        let totalPages = 1;
+
+        while (currentPage <= totalPages) {
+          const response = await fetchPage(currentPage, limit);
+          allItems.push(...response.items);
+          totalPages = Math.max(response.pagination.totalPages, 1);
+          currentPage += 1;
+        }
+
+        return allItems;
+      };
+
+      try {
+        const [recipients, events, clicks] = await Promise.all([
+          fetchAllPages((pageNumber, pageLimit) =>
+            getCampaignRecipients(detailCampaign.id, { page: pageNumber, limit: pageLimit })
+          ),
+          fetchAllPages((pageNumber, pageLimit) =>
+            getCampaignEvents(detailCampaign.id, { page: pageNumber, limit: pageLimit })
+          ),
+          fetchAllPages((pageNumber, pageLimit) =>
+            getCampaignClicks(detailCampaign.id, { page: pageNumber, limit: pageLimit })
+          ),
+        ]);
+
+        const rows = buildCampaignExportRows({
+          campaign: detailCampaign,
+          recipients,
+          events,
+          clicks,
+        });
+
+        if (rows.length === 0) {
+          showBanner("info", "No recipient details available to export.");
+          return;
+        }
+
+        const dateTag = new Date().toISOString().slice(0, 10);
+        const safeCampaignName = detailCampaign.name
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-+|-+$/g, "");
+        const fileBaseName = `${safeCampaignName || "campaign"}-recipient-delivery-${dateTag}`;
+
+        if (format === "csv") {
+          downloadCsv(`${fileBaseName}.csv`, rows);
+        } else {
+          downloadXlsx(`${fileBaseName}.xlsx`, rows);
+        }
+
+        showBanner("success", `Campaign report exported as ${format.toUpperCase()}.`);
+      } catch (error) {
+        showBanner("error", readErrorMessage(error, `Failed to export ${format.toUpperCase()} report.`));
+      } finally {
+        setExportingFormat(null);
+      }
+    },
+    [detailCampaign, exportingFormat]
   );
 
   return (
@@ -889,7 +1063,37 @@ export default function EmailCampaignsPage() {
                   <div className="space-y-4">
                     <div className="rounded-3xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">
                       <div className="mb-3 flex items-center justify-between gap-3">
-                        <div className="text-sm font-semibold text-gray-800 dark:text-white/90">Recipient Delivery Status</div>
+                        <div className="flex items-center gap-3">
+                          <div className="text-sm font-semibold text-gray-800 dark:text-white/90">Recipient Delivery Status</div>
+                          <div className="relative">
+                            <button
+                              type="button"
+                              className="dropdown-toggle inline-flex h-9 items-center rounded-lg border border-gray-300 px-3 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-white/[0.05]"
+                              onClick={() => setIsExportMenuOpen((current) => !current)}
+                              disabled={Boolean(exportingFormat)}
+                            >
+                              {exportingFormat ? `Exporting ${exportingFormat.toUpperCase()}...` : "Export"}
+                            </button>
+                            <Dropdown
+                              isOpen={isExportMenuOpen}
+                              onClose={() => setIsExportMenuOpen(false)}
+                              className="w-44 p-1"
+                            >
+                              <DropdownItem
+                                onClick={() => void handleExportRecipients("csv")}
+                                onItemClick={() => setIsExportMenuOpen(false)}
+                              >
+                                Export CSV
+                              </DropdownItem>
+                              <DropdownItem
+                                onClick={() => void handleExportRecipients("xlsx")}
+                                onItemClick={() => setIsExportMenuOpen(false)}
+                              >
+                                Export XLSX
+                              </DropdownItem>
+                            </Dropdown>
+                          </div>
+                        </div>
                         <div className="text-xs text-gray-500 dark:text-gray-400">
                           Delay {detailCampaign.delaySeconds}s · Est. {formatDuration(detailCampaign.totalRecipients, detailCampaign.delaySeconds)}
                         </div>
@@ -934,6 +1138,17 @@ export default function EmailCampaignsPage() {
                                   <td className="px-3 py-2 text-gray-700 dark:text-gray-300">{formatDateTime(recipient.sentAt)}</td>
                                   <td className="px-3 py-2">
                                     <div className="flex flex-wrap gap-2">
+                                      {recipient.status === "failed" && detailCampaign.status !== "Sending" ? (
+                                        <Button
+                                          type="button"
+                                          size="sm"
+                                          variant="outline"
+                                          onClick={() => void handleResendRecipient(recipient)}
+                                          disabled={workingRecipientId === recipient.id}
+                                        >
+                                          {workingRecipientId === recipient.id ? "Resending..." : "Resend"}
+                                        </Button>
+                                      ) : null}
                                       <Button type="button" size="sm" variant="outline" onClick={() => void handleRecipientAction(recipient, "replied")}>
                                         Replied
                                       </Button>

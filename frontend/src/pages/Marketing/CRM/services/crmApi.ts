@@ -489,6 +489,17 @@ export const updateCampaignRecipientAction = async (
   );
   return result.item as CRMCampaignRecipient;
 };
+
+export const resendCampaignRecipient = async (campaignId: number, recipientId: number) => {
+  const result = await fetchCRMJson<CRMApiResponse<CRMCampaignRecipient>>(
+    `/api/crm/campaigns/${campaignId}/recipients/${recipientId}/resend`,
+    {
+      method: "POST",
+    },
+    "Failed to resend campaign recipient."
+  );
+  return result.item as CRMCampaignRecipient;
+};
 export const getLeadEmailRecipients = async (
   params?: CRMListParams & { tags?: string; companyName?: string }
 ) => {

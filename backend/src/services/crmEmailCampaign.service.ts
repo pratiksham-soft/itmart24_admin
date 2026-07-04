@@ -1156,6 +1156,149 @@ const finalizeCampaignStatus = async (campaignId: number) => {
   );
 };
 
+const sendSingleCampaignRecipient = async (
+  campaign: CampaignRecord,
+  recipient: CampaignRecipientRecord,
+  actor: AdminActor
+) => {
+  if (!campaign.senderAccountId) {
+    throw new Error("Campaign sender account is required.");
+  }
+
+  const senderAccountId = campaign.senderAccountId;
+  const pool = await getAnalyticsPool();
+
+  let lead: LeadRecipientCandidate | undefined;
+  if (recipient.leadId) {
+    [lead] = await loadLeadRecipientsByIds([recipient.leadId]);
+    if (!lead || !canSendEmailToLead({ ...lead, email: recipient.email })) {
+      throw new Error(getBlockedReason(lead, recipient.email));
+    }
+  }
+
+  const trackedContent = await buildTrackedCampaignContent(
+    {
+      id: campaign.id,
+      name: campaign.name,
+      subject: campaign.subject,
+      body: campaign.body,
+      bodyHtml: campaign.bodyHtml ?? (campaign.bodyMode === "html" ? campaign.body : null),
+      bodyText: campaign.bodyText ?? (campaign.bodyMode === "text" ? campaign.body : null),
+      bodyMode: campaign.bodyMode,
+      trackOpens: campaign.trackOpens,
+      trackClicks: campaign.trackClicks,
+      unsubscribeRequired: campaign.unsubscribeRequired,
+    },
+    {
+      id: recipient.id,
+      campaignId: campaign.id,
+      leadId: recipient.leadId,
+      email: recipient.email,
+      firstName: recipient.firstName,
+      lastName: recipient.lastName,
+      contactName: [recipient.firstName, recipient.lastName].filter(Boolean).join(" ") || null,
+      companyName: recipient.companyName,
+      website: recipient.website,
+      jobTitle: recipient.jobTitle,
+      trackingToken: recipient.trackingToken,
+    }
+  );
+
+  try {
+    await pool.query(
+      `
+        UPDATE crm_campaign_recipients
+        SET status = 'sending',
+            personalized_subject = $3,
+            personalized_body_html = $4,
+            error_message = NULL,
+            updated_at = NOW()
+        WHERE campaign_id = $1 AND id = $2
+      `,
+      [campaign.id, recipient.id, trackedContent.subject, trackedContent.bodyHtml ?? trackedContent.bodyText]
+    );
+
+    const sendResult = await sendEmailMessage(
+      senderAccountId,
+      {
+        to: recipient.email,
+        subject: trackedContent.subject,
+        bodyText: trackedContent.bodyText,
+        bodyHtml: trackedContent.bodyHtml ?? undefined,
+      },
+      actor.id
+    );
+
+    await pool.query(
+      `
+        UPDATE crm_campaign_recipients
+        SET personalized_subject = $3,
+            personalized_body_html = $4,
+            tracking_token = COALESCE(tracking_token, $5),
+            updated_at = NOW()
+        WHERE campaign_id = $1 AND id = $2
+      `,
+      [campaign.id, recipient.id, trackedContent.subject, trackedContent.bodyHtml ?? trackedContent.bodyText, trackedContent.trackingToken]
+    );
+
+    await applyRecipientEvent(
+      {
+        id: recipient.id,
+        campaign_id: campaign.id,
+        lead_id: recipient.leadId,
+        email: recipient.email,
+        campaign_name: campaign.name,
+      },
+      "sent",
+      "smtp",
+      {
+        metadata: {
+          messageId: sendResult.messageId ?? null,
+          providerMessageId: sendResult.messageId ?? null,
+        },
+      }
+    );
+  } catch (error) {
+    const errorMessage = readErrorMessage(error, "Failed to send email.");
+
+    await pool.query(
+      `
+        UPDATE crm_campaign_recipients
+        SET status = 'failed',
+            personalized_subject = $3,
+            personalized_body_html = $4,
+            error_message = $5,
+            updated_at = NOW()
+        WHERE campaign_id = $1 AND id = $2
+      `,
+      [
+        campaign.id,
+        recipient.id,
+        trackedContent.subject,
+        trackedContent.bodyHtml ?? trackedContent.bodyText,
+        errorMessage,
+      ]
+    );
+
+    await applyRecipientEvent(
+      {
+        id: recipient.id,
+        campaign_id: campaign.id,
+        lead_id: recipient.leadId,
+        email: recipient.email,
+        campaign_name: campaign.name,
+      },
+      "failed",
+      "smtp",
+      {
+        failureReason: errorMessage,
+      }
+    );
+
+    throw error;
+  }
+};
+
 const processCampaignInBackground = async (campaignId: number, actor: AdminActor) => {
   if (activeCampaignProcessors.has(campaignId)) {
     return;
@@ -1169,8 +1312,7 @@ const processCampaignInBackground = async (campaignId: number, actor: AdminActor
       return;
     }
 
-    const senderAccountId = campaign.senderAccountId;
-    if (!senderAccountId) {
+    if (!campaign.senderAccountId) {
       throw new Error("Campaign sender account is missing.");
     }
 
@@ -1209,110 +1351,30 @@ const processCampaignInBackground = async (campaignId: number, actor: AdminActor
         continue;
       }
 
-      let lead: LeadRecipientCandidate | undefined;
-      if (recipient.leadId) {
-        [lead] = await loadLeadRecipientsByIds([recipient.leadId]);
-        if (!lead || !canSendEmailToLead({ ...lead, email: recipient.email })) {
-          await applyRecipientEvent(
-            {
-              id: recipient.id,
-              campaign_id: campaignId,
-              lead_id: recipient.leadId,
-              email: recipient.email,
-              campaign_name: freshCampaign.name,
-            },
-            "blocked",
-            "internal",
-            {
-              blockedReason: getBlockedReason(lead, recipient.email),
-            }
-          );
-          continue;
-        }
-      }
-
-      const trackedContent = await buildTrackedCampaignContent(
-        {
-          id: freshCampaign.id,
-          name: freshCampaign.name,
-          subject: freshCampaign.subject,
-          body: freshCampaign.body,
-          bodyHtml: freshCampaign.bodyHtml ?? (freshCampaign.bodyMode === "html" ? freshCampaign.body : null),
-          bodyText: freshCampaign.bodyText ?? (freshCampaign.bodyMode === "text" ? freshCampaign.body : null),
-          bodyMode: freshCampaign.bodyMode,
-          trackOpens: freshCampaign.trackOpens,
-          trackClicks: freshCampaign.trackClicks,
-          unsubscribeRequired: freshCampaign.unsubscribeRequired,
-        },
-        {
-          id: recipient.id,
-          campaignId,
-          leadId: recipient.leadId,
-          email: recipient.email,
-          firstName: recipient.firstName,
-          lastName: recipient.lastName,
-          contactName: [recipient.firstName, recipient.lastName].filter(Boolean).join(" ") || null,
-          companyName: recipient.companyName,
-          website: recipient.website,
-          jobTitle: recipient.jobTitle,
-          trackingToken: recipient.trackingToken,
-        }
-      );
-
       try {
-        await pool.query(
-          `
-            UPDATE crm_campaign_recipients
-            SET status = 'sending',
-                personalized_subject = $3,
-                personalized_body_html = $4,
-                error_message = NULL,
-                updated_at = NOW()
-            WHERE campaign_id = $1 AND id = $2
-          `,
-          [campaignId, recipient.id, trackedContent.subject, trackedContent.bodyHtml ?? trackedContent.bodyText]
-        );
-
-        const sendResult = await sendEmailMessage(
-          senderAccountId,
-          {
-            to: recipient.email,
-            subject: trackedContent.subject,
-            bodyText: trackedContent.bodyText,
-            bodyHtml: trackedContent.bodyHtml ?? undefined,
-          },
-          actor.id
-        );
-
-        await pool.query(
-          `
-            UPDATE crm_campaign_recipients
-            SET personalized_subject = $3,
-                personalized_body_html = $4,
-                tracking_token = COALESCE(tracking_token, $5),
-                updated_at = NOW()
-            WHERE campaign_id = $1 AND id = $2
-          `,
-          [campaignId, recipient.id, trackedContent.subject, trackedContent.bodyHtml ?? trackedContent.bodyText, trackedContent.trackingToken]
-        );
-
-        await applyRecipientEvent(
-          {
-            id: recipient.id,
-            campaign_id: campaignId,
-            lead_id: recipient.leadId,
-            email: recipient.email,
-            campaign_name: freshCampaign.name,
-          },
-          "sent",
-          "smtp",
-          {
-            metadata: {
-              messageId: sendResult.messageId ?? null,
-              providerMessageId: sendResult.messageId ?? null,
-            },
+        let lead: LeadRecipientCandidate | undefined;
+        if (recipient.leadId) {
+          [lead] = await loadLeadRecipientsByIds([recipient.leadId]);
+          if (!lead || !canSendEmailToLead({ ...lead, email: recipient.email })) {
+            await applyRecipientEvent(
+              {
+                id: recipient.id,
+                campaign_id: campaignId,
+                lead_id: recipient.leadId,
+                email: recipient.email,
+                campaign_name: freshCampaign.name,
+              },
+              "blocked",
+              "internal",
+              {
+                blockedReason: getBlockedReason(lead, recipient.email),
+              }
+            );
+            continue;
           }
-        );
+        }
+
+        await sendSingleCampaignRecipient(freshCampaign, recipient, actor);
 
         await pool.query(
           `
@@ -1328,39 +1390,6 @@ const processCampaignInBackground = async (campaignId: number, actor: AdminActor
 
       } catch (error) {
         const errorMessage = readErrorMessage(error, "Failed to send email.");
-        await pool.query(
-          `
-            UPDATE crm_campaign_recipients
-            SET status = 'failed',
-                personalized_subject = $3,
-                personalized_body_html = $4,
-                error_message = $5,
-                updated_at = NOW()
-            WHERE campaign_id = $1 AND id = $2
-          `,
-          [
-            campaignId,
-            recipient.id,
-            trackedContent.subject,
-            trackedContent.bodyHtml ?? trackedContent.bodyText,
-            errorMessage,
-          ]
-        );
-
-        await applyRecipientEvent(
-          {
-            id: recipient.id,
-            campaign_id: campaignId,
-            lead_id: recipient.leadId,
-            email: recipient.email,
-            campaign_name: freshCampaign.name,
-          },
-          "failed",
-          "smtp",
-          {
-            failureReason: errorMessage,
-          }
-        );
 
         await pool.query(
           `
@@ -2239,5 +2268,81 @@ export const updateCampaignRecipientTracking = async (
 ) =>
   withSchemaRecovery(async () => {
     await markCampaignRecipientAction(campaignId, recipientId, action, payload);
+    return loadCampaignRecipientById(campaignId, recipientId);
+  });
+
+export const resendCampaignRecipient = async (
+  campaignId: number,
+  recipientId: number,
+  actor: AdminActor
+) =>
+  withSchemaRecovery(async () => {
+    const campaign = await loadCampaignById(campaignId);
+    if (!campaign) {
+      throw new Error("Campaign not found.");
+    }
+    if (campaign.status === "Sending") {
+      throw new Error("Failed recipients can only be resent after the campaign finishes sending.");
+    }
+    if (!campaign.senderAccountId) {
+      throw new Error("Campaign sender account is required.");
+    }
+
+    await loadSenderAccount(campaign.senderAccountId);
+
+    const recipient = await loadCampaignRecipientById(campaignId, recipientId);
+    if (!recipient) {
+      throw new Error("Campaign recipient not found.");
+    }
+    if (recipient.status !== "failed") {
+      throw new Error("Only failed recipients can be resent.");
+    }
+    if (!isValidEmail(recipient.email)) {
+      throw new Error("Recipient email must be valid before resending.");
+    }
+
+    const pool = await getAnalyticsPool();
+    await pool.query(
+      `
+        UPDATE crm_campaign_recipients
+        SET status = 'pending',
+            error_message = NULL,
+            failure_reason = NULL,
+            failed_at = NULL,
+            last_event_type = NULL,
+            last_event_at = NULL,
+            updated_at = NOW()
+        WHERE campaign_id = $1 AND id = $2
+      `,
+      [campaignId, recipientId]
+    );
+
+    const freshRecipient = await loadCampaignRecipientById(campaignId, recipientId);
+    if (!freshRecipient) {
+      throw new Error("Campaign recipient not found.");
+    }
+
+    try {
+      await sendSingleCampaignRecipient(campaign, freshRecipient, actor);
+    } finally {
+      await syncCampaignCounts(campaignId);
+      if (campaign.status !== "Cancelled") {
+        await finalizeCampaignStatus(campaignId);
+      }
+    }
+
+    await insertActivity({
+      activityType: "Campaign Sent",
+      title: `Failed recipient resent: ${campaign.name}`,
+      description: `Manual resend attempted for ${freshRecipient.email}.`,
+      relatedType: "campaign",
+      relatedId: campaignId,
+      actor,
+      metadata: {
+        recipientId,
+        email: freshRecipient.email,
+      },
+    });
+
     return loadCampaignRecipientById(campaignId, recipientId);
   });
