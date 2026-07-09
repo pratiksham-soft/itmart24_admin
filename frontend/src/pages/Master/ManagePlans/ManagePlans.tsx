@@ -5,6 +5,7 @@ import { SubscriptionPlan } from "./types";
 import axios from "axios";
 import PlanView from "./PlanView";
 import PortfolioPlansSection from "./PortfolioPlansSection";
+import PromoCodesModal from "./PromoCodesModal";
 
 const ManagePlans = () => {
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
@@ -13,6 +14,7 @@ const ManagePlans = () => {
   const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlan | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [viewPlan, setViewPlan] = useState<SubscriptionPlan | null>(null);
+  const [isPromoModalOpen, setIsPromoModalOpen] = useState(false);
 
   const pricingOverrideCount = plans.reduce(
     (count, plan) =>
@@ -107,6 +109,12 @@ const ManagePlans = () => {
 
           <div className="flex flex-wrap gap-3">
             <button
+              onClick={() => setIsPromoModalOpen(true)}
+              className="rounded-full border border-gray-300 bg-white px-5 py-2.5 text-sm font-semibold text-gray-700 transition hover:border-blue-300 hover:text-blue-700 dark:border-white/[0.08] dark:bg-white/[0.03] dark:text-white"
+            >
+              Manage Promo Codes
+            </button>
+            <button
               onClick={handleCreate}
               className="rounded-full bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700"
             >
@@ -194,6 +202,12 @@ const ManagePlans = () => {
           }}
         />
       )}
+
+      <PromoCodesModal
+        isOpen={isPromoModalOpen}
+        onClose={() => setIsPromoModalOpen(false)}
+        plans={plans}
+      />
     </div>
   );
 };

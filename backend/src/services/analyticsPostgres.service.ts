@@ -1,5 +1,9 @@
 import pg from "pg";
 import { DEFAULT_ANALYTICS_DATABASE } from "../config/databaseTargets";
+import { PROMO_CODE_TABLE_STATEMENTS } from "./planPromoCodes.schema";
+import {
+  ensureDefaultPromoCodeSeeds,
+} from "./planPromoCodes.service";
 
 const { Client, Pool } = pg as any;
 
@@ -1416,6 +1420,7 @@ const TABLE_STATEMENTS = [
   `
     CREATE INDEX IF NOT EXISTS idx_crm_segments_entity_type ON crm_segments (entity_type, created_at DESC) WHERE deleted_at IS NULL
   `,
+  ...PROMO_CODE_TABLE_STATEMENTS,
 ];
 
 export const ensureTables = async () => {
@@ -1426,6 +1431,8 @@ export const ensureTables = async () => {
     for (const statement of TABLE_STATEMENTS) {
       await client.query(statement);
     }
+
+    await ensureDefaultPromoCodeSeeds(client);
   } finally {
     client.release();
   }

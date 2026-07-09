@@ -6,6 +6,7 @@ type FirestoreProduct = {
     productName: string;
     description: string;
     category: string;
+    shopifyProductType?: string;
   };
   features: {
     name: string;
@@ -69,7 +70,7 @@ Renewal Price: ${plan.renewalPrice} Renewal Term: ${plan.renewalTerm}
       title: product.basic.productName,
       handle,
       vendor: product.vendorName || "",
-      product_type: product.basic.category,
+      product_type: product.basic.shopifyProductType || product.basic.category,
       body_html: product.basic.description,
       status: "active",
 

@@ -12,6 +12,14 @@ import {
   updateSubscriptionPlan,
 } from "../services/subscriptionPlans.service";
 import {
+  createPlanPromoCode,
+  deletePlanPromoCode,
+  listPlanPromoCodes,
+  setPlanPromoCodeActiveState,
+  updatePlanPromoCode,
+} from "../services/planPromoCodes.service";
+import type { PlanPromoCodePayload } from "../services/planPromoCodes.schema";
+import {
   detectVisitorCountryCode,
   resolvePricingDetails,
 } from "../services/subscriptionPlanPricing";
@@ -176,6 +184,70 @@ router.patch("/:planId/portfolio/:portfolioPlanId/status", async (req, res) => {
     const message =
       error instanceof Error ? error.message : "Failed to update portfolio plan status";
     console.error("Update portfolio plan status error:", error);
+    res.status(400).json({ error: message });
+  }
+});
+
+router.get("/promos", async (_req, res) => {
+  try {
+    const promos = await listPlanPromoCodes();
+    res.json(promos);
+  } catch (error) {
+    console.error("Fetch promo codes error:", error);
+    res.status(500).json({ error: "Failed to fetch promo codes" });
+  }
+});
+
+router.post("/promos", async (req, res) => {
+  try {
+    const promo = await createPlanPromoCode(req.body as PlanPromoCodePayload);
+    res.status(201).json(promo);
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Failed to create promo code";
+    console.error("Create promo code error:", error);
+    res.status(400).json({ error: message });
+  }
+});
+
+router.put("/promos/:promoId", async (req, res) => {
+  try {
+    const promo = await updatePlanPromoCode(
+      Number(req.params.promoId),
+      req.body as PlanPromoCodePayload
+    );
+    res.json(promo);
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Failed to update promo code";
+    console.error("Update promo code error:", error);
+    res.status(400).json({ error: message });
+  }
+});
+
+router.patch("/promos/:promoId/status", async (req, res) => {
+  try {
+    const promo = await setPlanPromoCodeActiveState(
+      Number(req.params.promoId),
+      Boolean(req.body?.active)
+    );
+    res.json(promo);
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Failed to update promo code status";
+    console.error("Update promo code status error:", error);
+    res.status(400).json({ error: message });
+  }
+});
+
+router.delete("/promos/:promoId", async (req, res) => {
+  try {
+    const result = await deletePlanPromoCode(Number(req.params.promoId));
+    res.json(result);
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Failed to delete promo code";
+    console.error("Delete promo code error:", error);
     res.status(400).json({ error: message });
   }
 });

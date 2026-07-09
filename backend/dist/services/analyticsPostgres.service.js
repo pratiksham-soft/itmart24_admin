@@ -6,6 +6,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.listAnalyticsPreaggregated = exports.getAnalyticsPool = exports.initializeAnalyticsPostgres = exports.ensureTables = exports.ensureDatabase = exports.formatAnalyticsConnectionError = exports.getLastSuccessfulAnalyticsConfigSummary = exports.getAnalyticsConfigSummary = void 0;
 const pg_1 = __importDefault(require("pg"));
 const databaseTargets_1 = require("../config/databaseTargets");
+const planPromoCodes_schema_1 = require("./planPromoCodes.schema");
+const planPromoCodes_service_1 = require("./planPromoCodes.service");
 const { Client, Pool } = pg_1.default;
 const DEFAULT_PORT = 5432;
 const ADMIN_DATABASE_CANDIDATES = ["postgres", "template1", "defaultdb"];
@@ -1348,6 +1350,7 @@ const TABLE_STATEMENTS = [
     `
     CREATE INDEX IF NOT EXISTS idx_crm_segments_entity_type ON crm_segments (entity_type, created_at DESC) WHERE deleted_at IS NULL
   `,
+    ...planPromoCodes_schema_1.PROMO_CODE_TABLE_STATEMENTS,
 ];
 const ensureTables = async () => {
     const pool = await (0, exports.getAnalyticsPool)();
@@ -1356,6 +1359,7 @@ const ensureTables = async () => {
         for (const statement of TABLE_STATEMENTS) {
             await client.query(statement);
         }
+        await (0, planPromoCodes_service_1.ensureDefaultPromoCodeSeeds)(client);
     }
     finally {
         client.release();

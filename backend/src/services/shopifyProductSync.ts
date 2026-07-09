@@ -24,6 +24,26 @@ const normalizeOptionalUrl = (value: unknown) => {
   return text || null;
 };
 
+const resolveShopifyProductType = (
+  basic: Record<string, unknown>
+) => {
+  const mainCategory = normalizeText(
+    basic.categoryName ?? basic.category
+  );
+  const selectedFinalCategory = normalizeTextList(
+    basic.subSubCategories
+  )[0];
+
+  if (
+    mainCategory.toLowerCase() === "digital services" &&
+    selectedFinalCategory
+  ) {
+    return selectedFinalCategory;
+  }
+
+  return mainCategory;
+};
+
 const normalizeTextList = (value: unknown): string[] => {
   if (!Array.isArray(value)) {
     return [];
@@ -217,6 +237,7 @@ const normalizeProductForShopify = (product: any) => {
       category: normalizeText(
         basic.categoryName ?? basic.category ?? product.basic?.category
       ),
+      shopifyProductType: resolveShopifyProductType(basic),
       description: normalizeText(
         basic.description ?? product.basic?.description
       ),
