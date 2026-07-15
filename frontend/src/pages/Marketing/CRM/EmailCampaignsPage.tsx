@@ -138,6 +138,40 @@ const buildCampaignExportRows = ({
     };
   });
 
+const formatEventTypeLabel = (value: string | null | undefined) => {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (!normalized) {
+    return "Unknown";
+  }
+  if (normalized === "auto_replied") {
+    return "Auto-reply received";
+  }
+  return normalized
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+};
+
+const getRecipientSignalBadges = (recipient: CRMCampaignRecipient) => {
+  const badges: Array<{ label: string; color: "error" | "warning" | "info" }> = [];
+
+  if (recipient.status === "bounced") {
+    if (recipient.bounceType === "soft") {
+      badges.push({ label: "Soft Bounced", color: "warning" });
+    } else if (recipient.bounceType === "technical") {
+      badges.push({ label: "Technical Bounce", color: "info" });
+    } else {
+      badges.push({ label: "Hard Bounced", color: "error" });
+    }
+  }
+
+  if (recipient.lastEventType === "auto_replied") {
+    badges.push({ label: "Auto-reply Received", color: "info" });
+  }
+
+  return badges;
+};
+
 export default function EmailCampaignsPage() {
   const [campaigns, setCampaigns] = useState<CRMCampaign[]>([]);
   const [summary, setSummary] = useState<CRMCampaignSummary>({
@@ -997,6 +1031,10 @@ export default function EmailCampaignsPage() {
                       ["Blocked", detailAudiencePreview?.blockedLeads ?? 0],
                       ["Opened", detailTrackingOverview?.openedUnique ?? 0],
                       ["Clicked", detailTrackingOverview?.clickedUnique ?? 0],
+                      ["Hard Bounced", detailTrackingOverview?.hardBounced ?? 0],
+                      ["Soft Bounced", detailTrackingOverview?.softBounced ?? 0],
+                      ["Technical Bounce", detailTrackingOverview?.technicalBounced ?? 0],
+                      ["Auto Replies", detailTrackingOverview?.autoReplied ?? 0],
                       ["Unsubscribed", detailTrackingOverview?.unsubscribed ?? 0],
                     ].map(([label, value]) => (
                       <div key={String(label)} className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
@@ -1129,9 +1167,16 @@ export default function EmailCampaignsPage() {
                                   </td>
                                   <td className="px-3 py-2 text-gray-700 dark:text-gray-300">{recipient.email}</td>
                                   <td className="px-3 py-2">
-                                    <Badge color={getStatusBadgeColor(recipient.status)} size="sm">
-                                      {recipient.status}
-                                    </Badge>
+                                    <div className="flex flex-wrap gap-2">
+                                      <Badge color={getStatusBadgeColor(recipient.status)} size="sm">
+                                        {recipient.status}
+                                      </Badge>
+                                      {getRecipientSignalBadges(recipient).map((badge) => (
+                                        <Badge key={badge.label} color={badge.color} size="sm">
+                                          {badge.label}
+                                        </Badge>
+                                      ))}
+                                    </div>
                                   </td>
                                   <td className="px-3 py-2 text-gray-700 dark:text-gray-300">{recipient.openCount ?? 0}</td>
                                   <td className="px-3 py-2 text-gray-700 dark:text-gray-300">{recipient.clickCount ?? 0}</td>
@@ -1206,7 +1251,7 @@ export default function EmailCampaignsPage() {
                         detailEvents.map((event) => (
                           <div key={event.id} className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-800 dark:bg-gray-900">
                             <div className="flex items-center justify-between gap-3">
-                              <div className="font-medium text-gray-800 dark:text-white/90">{event.eventType}</div>
+                              <div className="font-medium text-gray-800 dark:text-white/90">{formatEventTypeLabel(event.eventType)}</div>
                               <div className="text-xs text-gray-500 dark:text-gray-400">{formatDateTime(event.createdAt)}</div>
                             </div>
                             <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">

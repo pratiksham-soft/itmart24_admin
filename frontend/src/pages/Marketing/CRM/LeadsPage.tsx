@@ -58,7 +58,7 @@ export default function LeadsPage() {
       return { label: "Unsubscribed", color: "error" as const };
     }
     if (lead.bounced) {
-      return { label: "Bounced", color: "error" as const };
+      return { label: lead.bounceType === "hard" ? "Hard Bounced" : "Bounced", color: "error" as const };
     }
     if (lead.spamComplaint || lead.doNotContact || lead.emailRiskLevel === "blocked") {
       return { label: "Blocked", color: "error" as const };
@@ -67,6 +67,26 @@ export default function LeadsPage() {
       return { label: "Ready", color: "success" as const };
     }
     return { label: "Needs Review", color: "warning" as const };
+  };
+
+  const getLeadDetailSignals = (lead: CRMLead) => {
+    const signals: Array<{ label: string; color: "error" | "warning" | "info" | "success" | "light" }> = [];
+
+    if (lead.bounced || lead.lastCampaignStatus === "bounced") {
+      if (lead.bounceType === "soft") {
+        signals.push({ label: "Soft Bounced", color: "warning" });
+      } else if (lead.bounceType === "technical") {
+        signals.push({ label: "Technical Bounce", color: "info" });
+      } else {
+        signals.push({ label: "Hard Bounced", color: "error" });
+      }
+    }
+
+    if (lead.lastCampaignStatus === "auto_replied") {
+      signals.push({ label: "Auto-reply Received", color: "info" });
+    }
+
+    return signals;
   };
 
   const escapeCsvValue = (value: unknown) => {
@@ -452,6 +472,9 @@ export default function LeadsPage() {
                       <Badge color={getCampaignSafetyBadge(viewLead).color} size="sm">{getCampaignSafetyBadge(viewLead).label}</Badge>
                       {viewLead.agencyOutreachReady ? <Badge color="success" size="sm">Agency Ready</Badge> : null}
                       {viewLead.emailRiskLevel ? <Badge color="light" size="sm">{viewLead.emailRiskLevel}</Badge> : null}
+                      {getLeadDetailSignals(viewLead).map((signal) => (
+                        <Badge key={signal.label} color={signal.color} size="sm">{signal.label}</Badge>
+                      ))}
                     </div>
                   </div>
                   <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">

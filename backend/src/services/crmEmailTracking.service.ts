@@ -41,6 +41,7 @@ type RecipientAction =
   | "opened"
   | "clicked"
   | "replied"
+  | "auto_replied"
   | "bounced"
   | "complained"
   | "unsubscribed"
@@ -295,7 +296,34 @@ const updateLeadForEvent = async (
         UPDATE crm_leads
         SET last_email_replied_at = NOW(),
             email_reply_count = COALESCE(email_reply_count, 0) + 1,
-            last_campaign_status = 'replied',
+            last_campaign_status = CASE
+              WHEN COALESCE(unsubscribed, FALSE)
+                OR COALESCE(spam_complaint, FALSE)
+                OR COALESCE(do_not_contact, FALSE)
+                OR COALESCE(email_consent_status, 'unknown') IN ('unsubscribed', 'do_not_contact')
+              THEN last_campaign_status
+              ELSE 'replied'
+            END,
+            updated_at = NOW()
+        WHERE id = $1 AND deleted_at IS NULL
+      `,
+      [leadId]
+    );
+    return;
+  }
+  if (eventType === "auto_replied") {
+    await pool.query(
+      `
+        UPDATE crm_leads
+        SET last_email_replied_at = NOW(),
+            last_campaign_status = CASE
+              WHEN COALESCE(unsubscribed, FALSE)
+                OR COALESCE(spam_complaint, FALSE)
+                OR COALESCE(do_not_contact, FALSE)
+                OR COALESCE(email_consent_status, 'unknown') IN ('unsubscribed', 'do_not_contact')
+              THEN last_campaign_status
+              ELSE 'auto_replied'
+            END,
             updated_at = NOW()
         WHERE id = $1 AND deleted_at IS NULL
       `,
@@ -310,7 +338,14 @@ const updateLeadForEvent = async (
         UPDATE crm_leads
         SET bounced = CASE WHEN $2 = 'hard' THEN TRUE ELSE bounced END,
             bounce_type = $2,
-            last_campaign_status = 'bounced',
+            last_campaign_status = CASE
+              WHEN COALESCE(unsubscribed, FALSE)
+                OR COALESCE(spam_complaint, FALSE)
+                OR COALESCE(do_not_contact, FALSE)
+                OR COALESCE(email_consent_status, 'unknown') IN ('unsubscribed', 'do_not_contact')
+              THEN last_campaign_status
+              ELSE 'bounced'
+            END,
             updated_at = NOW()
         WHERE id = $1 AND deleted_at IS NULL
       `,
@@ -474,6 +509,7 @@ export const applyRecipientEvent = async (
     opened: `status = CASE WHEN status IN ('sent','delivered') THEN 'opened' ELSE status END, first_opened_at = COALESCE(first_opened_at, NOW()), last_opened_at = NOW(), open_count = COALESCE(open_count, 0) + 1`,
     clicked: `status = CASE WHEN status IN ('sent','delivered','opened') THEN 'clicked' ELSE status END, first_clicked_at = COALESCE(first_clicked_at, NOW()), last_clicked_at = NOW(), click_count = COALESCE(click_count, 0) + 1`,
     replied: `status = 'replied', replied_at = COALESCE(replied_at, NOW())`,
+    auto_replied: `status = CASE WHEN status IN ('complained','unsubscribed','bounced') THEN status ELSE 'replied' END, replied_at = COALESCE(replied_at, NOW())`,
     bounced: `status = 'bounced', bounce_at = COALESCE(bounce_at, NOW()), bounce_type = $3, bounce_reason = $4`,
     complained: `status = 'complained', complained_at = COALESCE(complained_at, NOW())`,
     unsubscribed: `status = 'unsubscribed', unsubscribed_at = COALESCE(unsubscribed_at, NOW())`,
@@ -663,6 +699,7 @@ const normalizeWebhookEventType = (value: unknown): RecipientAction | null => {
   if (["delivered", "delivery"].includes(normalized)) return "delivered";
   if (["failed", "dropped"].includes(normalized)) return "failed";
   if (["queued"].includes(normalized)) return "queued";
+  if (["auto_replied", "autoreplied", "auto_reply"].includes(normalized)) return "auto_replied";
   return null;
 };
 
@@ -810,9 +847,11 @@ export const getCampaignTrackingOverview = async (campaignId: number) => {
         COUNT(*) FILTER (WHERE first_clicked_at IS NOT NULL)::int AS clicked_unique_count,
         COALESCE(SUM(click_count), 0)::int AS clicked_total_count,
         COUNT(*) FILTER (WHERE replied_at IS NOT NULL OR status = 'replied')::int AS replied_count,
+        COUNT(*) FILTER (WHERE LOWER(COALESCE(last_event_type, '')) = 'auto_replied')::int AS auto_replied_count,
         COUNT(*) FILTER (WHERE bounce_at IS NOT NULL OR status = 'bounced')::int AS bounced_count,
         COUNT(*) FILTER (WHERE LOWER(COALESCE(bounce_type, '')) = 'hard')::int AS hard_bounced_count,
         COUNT(*) FILTER (WHERE LOWER(COALESCE(bounce_type, '')) = 'soft')::int AS soft_bounced_count,
+        COUNT(*) FILTER (WHERE LOWER(COALESCE(bounce_type, '')) = 'technical')::int AS technical_bounced_count,
         COUNT(*) FILTER (WHERE complained_at IS NOT NULL OR status = 'complained')::int AS complained_count,
         COUNT(*) FILTER (WHERE unsubscribed_at IS NOT NULL OR status = 'unsubscribed')::int AS unsubscribed_count,
         COUNT(*) FILTER (WHERE failed_at IS NOT NULL OR status = 'failed')::int AS failed_count
@@ -840,9 +879,11 @@ export const getCampaignTrackingOverview = async (campaignId: number) => {
     clickedUnique: Number(row.clicked_unique_count ?? 0),
     clickedTotal: Number(row.clicked_total_count ?? 0),
     replied: Number(row.replied_count ?? 0),
+    autoReplied: Number(row.auto_replied_count ?? 0),
     bounced: Number(row.bounced_count ?? 0),
     hardBounced: Number(row.hard_bounced_count ?? 0),
     softBounced: Number(row.soft_bounced_count ?? 0),
+    technicalBounced: Number(row.technical_bounced_count ?? 0),
     complained: Number(row.complained_count ?? 0),
     unsubscribed: Number(row.unsubscribed_count ?? 0),
     failed: Number(row.failed_count ?? 0),

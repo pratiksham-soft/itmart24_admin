@@ -18,6 +18,10 @@ type EmailAccountPayload = {
   emailAddress?: unknown;
   username?: unknown;
   password?: unknown;
+  imapUsername?: unknown;
+  imapPassword?: unknown;
+  smtpUsername?: unknown;
+  smtpPassword?: unknown;
   imapHost?: unknown;
   imapPort?: unknown;
   imapSecure?: unknown;
@@ -82,6 +86,8 @@ type EmailAccountRecord = {
   displayName: string;
   emailAddress: string;
   username: string;
+  imapUsername: string;
+  smtpUsername: string;
   imapHost: string;
   imapPort: number;
   imapSecure: boolean;
@@ -99,11 +105,17 @@ type EmailAccountRecord = {
 
 type EmailAccountRow = Record<string, unknown> & {
   encrypted_password?: string;
+  encrypted_imap_password?: string;
+  encrypted_smtp_password?: string;
 };
 
 type InternalEmailAccountRecord = EmailAccountRecord & {
   encryptedPassword: string;
+  encryptedImapPassword: string;
+  encryptedSmtpPassword: string;
 };
+
+type EmailAccountTestScope = "imap" | "smtp" | "both";
 
 const DEFAULT_PAGE_SIZE = 25;
 const MAX_PAGE_SIZE = 50;
@@ -244,6 +256,8 @@ const mapEmailAccount = (row: EmailAccountRow): EmailAccountRecord => ({
   displayName: String(row.display_name ?? ""),
   emailAddress: String(row.email_address ?? ""),
   username: String(row.username ?? ""),
+  imapUsername: String(row.imap_username ?? row.username ?? ""),
+  smtpUsername: String(row.smtp_username ?? row.username ?? ""),
   imapHost: String(row.imap_host ?? ""),
   imapPort: Number(row.imap_port ?? 0),
   imapSecure: Boolean(row.imap_secure),
@@ -264,6 +278,12 @@ const mapInternalEmailAccount = (
 ): InternalEmailAccountRecord => ({
   ...mapEmailAccount(row),
   encryptedPassword: String(row.encrypted_password ?? ""),
+  encryptedImapPassword: String(
+    row.encrypted_imap_password ?? row.encrypted_password ?? ""
+  ),
+  encryptedSmtpPassword: String(
+    row.encrypted_smtp_password ?? row.encrypted_password ?? ""
+  ),
 });
 
 const isSchemaRecoveryError = (error: unknown) => {
@@ -296,6 +316,18 @@ const sanitizeAccountPayload = (
   const emailAddress = normalizeEmail(payload.emailAddress);
   const username = toTrimmedString(payload.username) || emailAddress;
   const password = typeof payload.password === "string" ? payload.password : "";
+  const imapUsername =
+    toTrimmedString(payload.imapUsername) ||
+    username ||
+    emailAddress;
+  const smtpUsername =
+    toTrimmedString(payload.smtpUsername) ||
+    username ||
+    emailAddress;
+  const imapPassword =
+    typeof payload.imapPassword === "string" ? payload.imapPassword : password;
+  const smtpPassword =
+    typeof payload.smtpPassword === "string" ? payload.smtpPassword : password;
   const imapHost = toTrimmedString(payload.imapHost);
   const smtpHost = toTrimmedString(payload.smtpHost);
 
@@ -311,8 +343,20 @@ const sanitizeAccountPayload = (
     throw new Error("Username is required.");
   }
 
-  if (options.requirePassword && !password) {
-    throw new Error("Password is required.");
+  if (!imapUsername) {
+    throw new Error("IMAP username is required.");
+  }
+
+  if (!smtpUsername) {
+    throw new Error("SMTP username is required.");
+  }
+
+  if (options.requirePassword && !imapPassword) {
+    throw new Error("IMAP password is required.");
+  }
+
+  if (options.requirePassword && !smtpPassword) {
+    throw new Error("SMTP password is required.");
   }
 
   if (!imapHost) {
@@ -328,6 +372,10 @@ const sanitizeAccountPayload = (
     emailAddress,
     username,
     password,
+    imapUsername,
+    imapPassword,
+    smtpUsername,
+    smtpPassword,
     imapHost,
     imapPort: toInteger(payload.imapPort, "IMAP port"),
     imapSecure: toBoolean(payload.imapSecure, true),
@@ -345,8 +393,8 @@ const createImapClient = (account: InternalEmailAccountRecord) =>
     port: account.imapPort,
     secure: account.imapSecure,
     auth: {
-      user: account.username,
-      pass: decryptEmailCredential(account.encryptedPassword),
+      user: account.imapUsername,
+      pass: decryptEmailCredential(account.encryptedImapPassword),
     },
     logger: false,
     socketTimeout: IMAP_SOCKET_TIMEOUT_MS,
@@ -358,8 +406,8 @@ const createSmtpTransport = (account: InternalEmailAccountRecord) =>
     port: account.smtpPort,
     secure: account.smtpSecure,
     auth: {
-      user: account.username,
-      pass: decryptEmailCredential(account.encryptedPassword),
+      user: account.smtpUsername,
+      pass: decryptEmailCredential(account.encryptedSmtpPassword),
     },
     connectionTimeout: IMAP_SOCKET_TIMEOUT_MS,
     greetingTimeout: IMAP_SOCKET_TIMEOUT_MS,
@@ -394,6 +442,10 @@ const loadAccountById = async (id: number) => {
                email_address,
                username,
                encrypted_password,
+               imap_username,
+               encrypted_imap_password,
+               smtp_username,
+               encrypted_smtp_password,
                imap_host,
                imap_port,
                imap_secure,
@@ -540,6 +592,8 @@ export const listEmailAccounts = async () => {
                display_name,
                email_address,
                username,
+               imap_username,
+               smtp_username,
                imap_host,
                imap_port,
                imap_secure,
@@ -584,6 +638,10 @@ export const createEmailAccount = async (payload: EmailAccountPayload) => {
           email_address,
           username,
           encrypted_password,
+          imap_username,
+          encrypted_imap_password,
+          smtp_username,
+          encrypted_smtp_password,
           imap_host,
           imap_port,
           imap_secure,
@@ -595,14 +653,18 @@ export const createEmailAccount = async (payload: EmailAccountPayload) => {
           created_at,
           updated_at
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW(), NOW())
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, NOW(), NOW())
         RETURNING id
       `,
       [
         input.displayName,
         input.emailAddress,
         input.username,
-        encryptEmailCredential(input.password),
+        encryptEmailCredential(input.imapPassword || input.password),
+        input.imapUsername,
+        encryptEmailCredential(input.imapPassword || input.password),
+        input.smtpUsername,
+        encryptEmailCredential(input.smtpPassword || input.password),
         input.imapHost,
         input.imapPort,
         input.imapSecure,
@@ -650,14 +712,18 @@ export const updateEmailAccount = async (
             email_address = $3,
             username = $4,
             encrypted_password = $5,
-            imap_host = $6,
-            imap_port = $7,
-            imap_secure = $8,
-            smtp_host = $9,
-            smtp_port = $10,
-            smtp_secure = $11,
-            is_default = $12,
-            is_active = $13,
+            imap_username = $6,
+            encrypted_imap_password = $7,
+            smtp_username = $8,
+            encrypted_smtp_password = $9,
+            imap_host = $10,
+            imap_port = $11,
+            imap_secure = $12,
+            smtp_host = $13,
+            smtp_port = $14,
+            smtp_secure = $15,
+            is_default = $16,
+            is_active = $17,
             updated_at = NOW()
         WHERE id = $1 AND deleted_at IS NULL
         RETURNING id
@@ -667,9 +733,17 @@ export const updateEmailAccount = async (
         input.displayName,
         input.emailAddress,
         input.username,
-        input.password
-          ? encryptEmailCredential(input.password)
+        input.imapPassword
+          ? encryptEmailCredential(input.imapPassword)
           : existing.encryptedPassword,
+        input.imapUsername,
+        input.imapPassword
+          ? encryptEmailCredential(input.imapPassword)
+          : existing.encryptedImapPassword,
+        input.smtpUsername,
+        input.smtpPassword
+          ? encryptEmailCredential(input.smtpPassword)
+          : existing.encryptedSmtpPassword,
         input.imapHost,
         input.imapPort,
         input.imapSecure,
@@ -720,7 +794,10 @@ export const deleteEmailAccount = async (id: number) => {
   };
 };
 
-export const testEmailAccountConnections = async (id: number) => {
+export const testEmailAccountConnections = async (
+  id: number,
+  scope: EmailAccountTestScope = "both"
+) => {
   const account = await loadAccountById(id);
   ensureActiveAccount(account);
 
@@ -733,36 +810,45 @@ export const testEmailAccountConnections = async (id: number) => {
     message: "SMTP test not started.",
   };
 
-  try {
-    await withImapClient(account, async (client) => {
-      await openMailbox(client, "INBOX");
-    });
-    imapResult = {
-      success: true,
-      message: "IMAP connection successful.",
-    };
-  } catch (error) {
-    imapResult = {
-      success: false,
-      message: readErrorMessage(error, "IMAP connection failed."),
-    };
+  if (scope === "imap" || scope === "both") {
+    try {
+      await withImapClient(account, async (client) => {
+        await openMailbox(client, "INBOX");
+      });
+      imapResult = {
+        success: true,
+        message: "IMAP connection successful.",
+      };
+    } catch (error) {
+      imapResult = {
+        success: false,
+        message: readErrorMessage(error, "IMAP connection failed."),
+      };
+    }
   }
 
-  try {
-    const transporter = createSmtpTransport(account);
-    await transporter.verify();
-    smtpResult = {
-      success: true,
-      message: "SMTP connection successful.",
-    };
-  } catch (error) {
-    smtpResult = {
-      success: false,
-      message: readErrorMessage(error, "SMTP connection failed."),
-    };
+  if (scope === "smtp" || scope === "both") {
+    try {
+      const transporter = createSmtpTransport(account);
+      await transporter.verify();
+      smtpResult = {
+        success: true,
+        message: "SMTP connection successful.",
+      };
+    } catch (error) {
+      smtpResult = {
+        success: false,
+        message: readErrorMessage(error, "SMTP connection failed."),
+      };
+    }
   }
 
-  const success = imapResult.success && smtpResult.success;
+  const success =
+    scope === "imap"
+      ? imapResult.success
+      : scope === "smtp"
+        ? smtpResult.success
+        : imapResult.success && smtpResult.success;
   const pool = await getAnalyticsPool();
   await pool.query(
     `
@@ -776,7 +862,12 @@ export const testEmailAccountConnections = async (id: number) => {
     [
       id,
       success ? "success" : "failed",
-      success ? null : `${imapResult.message} ${smtpResult.message}`.trim(),
+      success
+        ? null
+        : [scope !== "smtp" ? imapResult.message : null, scope !== "imap" ? smtpResult.message : null]
+            .filter(Boolean)
+            .join(" ")
+            .trim(),
     ]
   );
 

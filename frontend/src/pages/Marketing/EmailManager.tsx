@@ -47,7 +47,8 @@ type FilterMode = "all" | "unread" | "starred" | "attachments";
 type ComposeMode = "new" | "reply" | "replyAll" | "forward";
 
 type AccountFormState = EmailAccountPayload & {
-  password: string;
+  imapPassword: string;
+  smtpPassword: string;
 };
 
 type ComposeFormState = {
@@ -64,7 +65,10 @@ const DEFAULT_ACCOUNT_FORM: AccountFormState = {
   displayName: "",
   emailAddress: "",
   username: "",
-  password: "",
+  imapUsername: "",
+  imapPassword: "",
+  smtpUsername: "",
+  smtpPassword: "",
   imapHost: "imap.itmart24.com",
   imapPort: 993,
   imapSecure: true,
@@ -432,7 +436,10 @@ export default function EmailManager() {
       displayName: selectedAccount.displayName,
       emailAddress: selectedAccount.emailAddress,
       username: selectedAccount.username,
-      password: "",
+      imapUsername: selectedAccount.imapUsername || selectedAccount.username,
+      imapPassword: "",
+      smtpUsername: selectedAccount.smtpUsername || selectedAccount.username,
+      smtpPassword: "",
       imapHost: selectedAccount.imapHost,
       imapPort: selectedAccount.imapPort,
       imapSecure: selectedAccount.imapSecure,
@@ -457,8 +464,23 @@ export default function EmailManager() {
       return;
     }
 
-    if (!editingAccount && !accountForm.password) {
-      setBanner({ tone: "error", message: "Password is required for a new account." });
+    if (!accountForm.imapUsername.trim()) {
+      setBanner({ tone: "error", message: "IMAP username is required." });
+      return;
+    }
+
+    if (!accountForm.smtpUsername.trim()) {
+      setBanner({ tone: "error", message: "SMTP username is required." });
+      return;
+    }
+
+    if (!editingAccount && !accountForm.imapPassword) {
+      setBanner({ tone: "error", message: "IMAP password is required for a new account." });
+      return;
+    }
+
+    if (!editingAccount && !accountForm.smtpPassword) {
+      setBanner({ tone: "error", message: "SMTP password is required for a new account." });
       return;
     }
 
@@ -466,7 +488,7 @@ export default function EmailManager() {
       setSavingAccount(true);
       const payload: EmailAccountPayload = {
         ...accountForm,
-        password: accountForm.password,
+        username: accountForm.emailAddress,
       };
       const savedAccount = editingAccount
         ? await updateEmailAccount(editingAccount.id, payload)
@@ -491,7 +513,7 @@ export default function EmailManager() {
     }
   };
 
-  const handleTestAccount = async () => {
+  const handleTestAccount = async (scope: "imap" | "smtp" | "both") => {
     if (!editingAccount) {
       setBanner({
         tone: "info",
@@ -502,13 +524,17 @@ export default function EmailManager() {
 
     try {
       setTestingAccount(true);
-      const result = await testEmailAccount(editingAccount.id);
+      const result = await testEmailAccount(editingAccount.id, scope);
       setAccountTestResult(result);
       setBanner({
-        tone: result.success ? "success" : "error",
+        tone: result.success ? "success" : scope === "both" ? "error" : "info",
         message: result.success
-          ? "IMAP and SMTP connections are working."
-          : "One or more connection checks failed.",
+          ? scope === "both"
+            ? "IMAP and SMTP connections are working."
+            : `${scope.toUpperCase()} connection is working.`
+          : scope === "both"
+            ? "One or more connection checks failed."
+            : `${scope.toUpperCase()} connection check failed.`,
       });
     } catch (error) {
       setBanner({
@@ -1284,6 +1310,9 @@ export default function EmailManager() {
             <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
               Credentials stay encrypted on the backend and are never exposed to the frontend.
             </p>
+            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              Some providers use different usernames/passwords for IMAP and SMTP.
+            </p>
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
@@ -1312,103 +1341,161 @@ export default function EmailManager() {
             </div>
             <div>
               <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Username
+                Sender Identity
               </label>
-              <InputField
-                value={accountForm.username}
-                onChange={(event) =>
-                  setAccountForm((current) => ({ ...current, username: event.target.value }))
-                }
-              />
+              <InputField value={accountForm.emailAddress} disabled />
             </div>
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Password
-              </label>
-              <InputField
-                type="password"
-                placeholder={editingAccount ? "Leave blank to keep existing password" : ""}
-                value={accountForm.password}
-                onChange={(event) =>
-                  setAccountForm((current) => ({ ...current, password: event.target.value }))
-                }
-              />
+          </div>
+
+          <div className="grid gap-6 lg:grid-cols-2">
+            <div className="rounded-2xl border border-gray-200 p-4 dark:border-gray-800">
+              <div className="mb-4">
+                <div className="text-base font-semibold text-gray-800 dark:text-white/90">
+                  IMAP Receiving Settings
+                </div>
+                <div className="text-sm text-gray-500 dark:text-gray-400">
+                  Use the mailbox credentials for replies, bounce notices, and auto-replies.
+                </div>
+              </div>
+              <div className="grid gap-4">
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    IMAP Username
+                  </label>
+                  <InputField
+                    value={accountForm.imapUsername}
+                    onChange={(event) =>
+                      setAccountForm((current) => ({ ...current, imapUsername: event.target.value }))
+                    }
+                  />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    IMAP Password
+                  </label>
+                  <InputField
+                    type="password"
+                    placeholder={editingAccount ? "Leave blank to keep existing IMAP password" : ""}
+                    value={accountForm.imapPassword}
+                    onChange={(event) =>
+                      setAccountForm((current) => ({ ...current, imapPassword: event.target.value }))
+                    }
+                  />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    IMAP Host
+                  </label>
+                  <InputField
+                    value={accountForm.imapHost}
+                    onChange={(event) =>
+                      setAccountForm((current) => ({ ...current, imapHost: event.target.value }))
+                    }
+                  />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    IMAP Port
+                  </label>
+                  <InputField
+                    type="number"
+                    value={accountForm.imapPort}
+                    onChange={(event) =>
+                      setAccountForm((current) => ({
+                        ...current,
+                        imapPort: Number(event.target.value || 0),
+                      }))
+                    }
+                  />
+                </div>
+                <label className="flex items-center gap-3 rounded-2xl border border-gray-200 px-4 py-3 text-sm text-gray-700 dark:border-gray-800 dark:text-gray-300">
+                  <input
+                    type="checkbox"
+                    checked={accountForm.imapSecure}
+                    onChange={(event) =>
+                      setAccountForm((current) => ({ ...current, imapSecure: event.target.checked }))
+                    }
+                  />
+                  IMAP Secure SSL/TLS
+                </label>
+              </div>
             </div>
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                IMAP Host
-              </label>
-              <InputField
-                value={accountForm.imapHost}
-                onChange={(event) =>
-                  setAccountForm((current) => ({ ...current, imapHost: event.target.value }))
-                }
-              />
-            </div>
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                IMAP Port
-              </label>
-              <InputField
-                type="number"
-                value={accountForm.imapPort}
-                onChange={(event) =>
-                  setAccountForm((current) => ({
-                    ...current,
-                    imapPort: Number(event.target.value || 0),
-                  }))
-                }
-              />
-            </div>
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                SMTP Host
-              </label>
-              <InputField
-                value={accountForm.smtpHost}
-                onChange={(event) =>
-                  setAccountForm((current) => ({ ...current, smtpHost: event.target.value }))
-                }
-              />
-            </div>
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                SMTP Port
-              </label>
-              <InputField
-                type="number"
-                value={accountForm.smtpPort}
-                onChange={(event) =>
-                  setAccountForm((current) => ({
-                    ...current,
-                    smtpPort: Number(event.target.value || 0),
-                  }))
-                }
-              />
+
+            <div className="rounded-2xl border border-gray-200 p-4 dark:border-gray-800">
+              <div className="mb-4">
+                <div className="text-base font-semibold text-gray-800 dark:text-white/90">
+                  SMTP Sending Settings
+                </div>
+                <div className="text-sm text-gray-500 dark:text-gray-400">
+                  Some providers require different SMTP usernames or passwords. Port 587 with SSL/TLS off is supported.
+                </div>
+              </div>
+              <div className="grid gap-4">
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    SMTP Username
+                  </label>
+                  <InputField
+                    value={accountForm.smtpUsername}
+                    onChange={(event) =>
+                      setAccountForm((current) => ({ ...current, smtpUsername: event.target.value }))
+                    }
+                  />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    SMTP Password
+                  </label>
+                  <InputField
+                    type="password"
+                    placeholder={editingAccount ? "Leave blank to keep existing SMTP password" : ""}
+                    value={accountForm.smtpPassword}
+                    onChange={(event) =>
+                      setAccountForm((current) => ({ ...current, smtpPassword: event.target.value }))
+                    }
+                  />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    SMTP Host
+                  </label>
+                  <InputField
+                    value={accountForm.smtpHost}
+                    onChange={(event) =>
+                      setAccountForm((current) => ({ ...current, smtpHost: event.target.value }))
+                    }
+                  />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    SMTP Port
+                  </label>
+                  <InputField
+                    type="number"
+                    value={accountForm.smtpPort}
+                    onChange={(event) =>
+                      setAccountForm((current) => ({
+                        ...current,
+                        smtpPort: Number(event.target.value || 0),
+                      }))
+                    }
+                  />
+                </div>
+                <label className="flex items-center gap-3 rounded-2xl border border-gray-200 px-4 py-3 text-sm text-gray-700 dark:border-gray-800 dark:text-gray-300">
+                  <input
+                    type="checkbox"
+                    checked={accountForm.smtpSecure}
+                    onChange={(event) =>
+                      setAccountForm((current) => ({ ...current, smtpSecure: event.target.checked }))
+                    }
+                  />
+                  SMTP Secure SSL/TLS
+                </label>
+              </div>
             </div>
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
-            <label className="flex items-center gap-3 rounded-2xl border border-gray-200 px-4 py-3 text-sm text-gray-700 dark:border-gray-800 dark:text-gray-300">
-              <input
-                type="checkbox"
-                checked={accountForm.imapSecure}
-                onChange={(event) =>
-                  setAccountForm((current) => ({ ...current, imapSecure: event.target.checked }))
-                }
-              />
-              IMAP Secure (SSL/TLS)
-            </label>
-            <label className="flex items-center gap-3 rounded-2xl border border-gray-200 px-4 py-3 text-sm text-gray-700 dark:border-gray-800 dark:text-gray-300">
-              <input
-                type="checkbox"
-                checked={accountForm.smtpSecure}
-                onChange={(event) =>
-                  setAccountForm((current) => ({ ...current, smtpSecure: event.target.checked }))
-                }
-              />
-              SMTP Secure (SSL/TLS)
-            </label>
             <label className="flex items-center gap-3 rounded-2xl border border-gray-200 px-4 py-3 text-sm text-gray-700 dark:border-gray-800 dark:text-gray-300">
               <input
                 type="checkbox"
@@ -1449,8 +1536,14 @@ export default function EmailManager() {
           ) : null}
 
           <div className="flex flex-wrap justify-end gap-3 border-t border-gray-200 pt-5 dark:border-gray-800">
-            <Button type="button" variant="outline" onClick={handleTestAccount} disabled={testingAccount}>
-              {testingAccount ? "Testing..." : "Test Connection"}
+            <Button type="button" variant="outline" onClick={() => void handleTestAccount("imap")} disabled={testingAccount}>
+              {testingAccount ? "Testing..." : "Test IMAP"}
+            </Button>
+            <Button type="button" variant="outline" onClick={() => void handleTestAccount("smtp")} disabled={testingAccount}>
+              {testingAccount ? "Testing..." : "Test SMTP"}
+            </Button>
+            <Button type="button" variant="outline" onClick={() => void handleTestAccount("both")} disabled={testingAccount}>
+              {testingAccount ? "Testing..." : "Test Both"}
             </Button>
             <Button type="button" variant="outline" onClick={() => setIsAccountModalOpen(false)}>
               Cancel

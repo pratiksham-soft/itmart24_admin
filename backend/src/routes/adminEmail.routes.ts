@@ -105,7 +105,9 @@ router.delete("/accounts/:id", async (req, res) => {
 
 router.post("/accounts/:id/test", async (req, res) => {
   try {
-    const result = await testEmailAccountConnections(parseAccountId(String(req.params.id)));
+    const scopeRaw = typeof req.body?.scope === "string" ? String(req.body.scope).toLowerCase() : "both";
+    const scope = scopeRaw === "imap" || scopeRaw === "smtp" ? scopeRaw : "both";
+    const result = await testEmailAccountConnections(parseAccountId(String(req.params.id)), scope);
     res.json(result);
   } catch (error) {
     sendRouteError(res, error, "Failed to test email account.");

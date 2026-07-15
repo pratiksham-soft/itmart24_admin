@@ -6,6 +6,8 @@ export type EmailAccount = {
   displayName: string;
   emailAddress: string;
   username: string;
+  imapUsername: string;
+  smtpUsername: string;
   imapHost: string;
   imapPort: number;
   imapSecure: boolean;
@@ -65,8 +67,12 @@ export type EmailMessageDetail = {
 export type EmailAccountPayload = {
   displayName: string;
   emailAddress: string;
-  username: string;
+  username?: string;
   password?: string;
+  imapUsername: string;
+  imapPassword?: string;
+  smtpUsername: string;
+  smtpPassword?: string;
   imapHost: string;
   imapPort: number;
   imapSecure: boolean;
@@ -179,7 +185,10 @@ export const deleteEmailAccount = async (id: number) => {
   );
 };
 
-export const testEmailAccount = async (id: number) => {
+export const testEmailAccount = async (
+  id: number,
+  scope: "imap" | "smtp" | "both" = "both"
+) => {
   return fetchJson<{
     success: boolean;
     imap: { success: boolean; message: string };
@@ -188,6 +197,7 @@ export const testEmailAccount = async (id: number) => {
     `/api/admin/email/accounts/${id}/test`,
     {
       method: "POST",
+      body: JSON.stringify({ scope }),
     },
     "Failed to test email account."
   );

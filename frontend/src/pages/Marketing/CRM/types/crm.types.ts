@@ -379,9 +379,11 @@ export type CRMCampaignTrackingOverview = {
   clickedUnique: number;
   clickedTotal: number;
   replied: number;
+  autoReplied: number;
   bounced: number;
   hardBounced: number;
   softBounced: number;
+  technicalBounced: number;
   complained: number;
   unsubscribed: number;
   failed: number;

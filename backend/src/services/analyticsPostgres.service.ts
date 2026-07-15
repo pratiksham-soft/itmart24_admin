@@ -561,6 +561,10 @@ const TABLE_STATEMENTS = [
       email_address TEXT NOT NULL,
       username TEXT NOT NULL,
       encrypted_password TEXT NOT NULL,
+      imap_username TEXT,
+      encrypted_imap_password TEXT,
+      smtp_username TEXT,
+      encrypted_smtp_password TEXT,
       imap_host TEXT NOT NULL,
       imap_port INTEGER NOT NULL,
       imap_secure BOOLEAN NOT NULL DEFAULT TRUE,
@@ -586,6 +590,42 @@ const TABLE_STATEMENTS = [
     CREATE INDEX IF NOT EXISTS idx_email_accounts_default_active
     ON email_accounts (is_default DESC, is_active DESC, updated_at DESC)
     WHERE deleted_at IS NULL
+  `,
+  `
+    ALTER TABLE email_accounts
+    ADD COLUMN IF NOT EXISTS imap_username TEXT
+  `,
+  `
+    ALTER TABLE email_accounts
+    ADD COLUMN IF NOT EXISTS encrypted_imap_password TEXT
+  `,
+  `
+    ALTER TABLE email_accounts
+    ADD COLUMN IF NOT EXISTS smtp_username TEXT
+  `,
+  `
+    ALTER TABLE email_accounts
+    ADD COLUMN IF NOT EXISTS encrypted_smtp_password TEXT
+  `,
+  `
+    UPDATE email_accounts
+    SET imap_username = COALESCE(NULLIF(BTRIM(imap_username), ''), username)
+    WHERE imap_username IS NULL OR BTRIM(imap_username) = ''
+  `,
+  `
+    UPDATE email_accounts
+    SET smtp_username = COALESCE(NULLIF(BTRIM(smtp_username), ''), username)
+    WHERE smtp_username IS NULL OR BTRIM(smtp_username) = ''
+  `,
+  `
+    UPDATE email_accounts
+    SET encrypted_imap_password = COALESCE(NULLIF(BTRIM(encrypted_imap_password), ''), encrypted_password)
+    WHERE encrypted_imap_password IS NULL OR BTRIM(encrypted_imap_password) = ''
+  `,
+  `
+    UPDATE email_accounts
+    SET encrypted_smtp_password = COALESCE(NULLIF(BTRIM(encrypted_smtp_password), ''), encrypted_password)
+    WHERE encrypted_smtp_password IS NULL OR BTRIM(encrypted_smtp_password) = ''
   `,
   `
     CREATE TABLE IF NOT EXISTS email_activity_logs (
@@ -1302,6 +1342,25 @@ const TABLE_STATEMENTS = [
     )
   `,
   `
+    CREATE TABLE IF NOT EXISTS crm_inbox_message_logs (
+      id BIGSERIAL PRIMARY KEY,
+      account_id BIGINT REFERENCES email_accounts(id) ON DELETE SET NULL,
+      folder TEXT NOT NULL DEFAULT 'INBOX',
+      uid BIGINT NOT NULL,
+      message_id TEXT,
+      subject TEXT,
+      sender_email TEXT,
+      matched_email TEXT,
+      lead_id BIGINT REFERENCES crm_leads(id) ON DELETE SET NULL,
+      recipient_id BIGINT REFERENCES crm_campaign_recipients(id) ON DELETE SET NULL,
+      detected_type TEXT NOT NULL,
+      action_taken TEXT NOT NULL DEFAULT 'processed',
+      metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+      processed_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `,
+  `
     CREATE INDEX IF NOT EXISTS idx_crm_leads_email ON crm_leads (email) WHERE deleted_at IS NULL
   `,
   `
@@ -1413,6 +1472,14 @@ const TABLE_STATEMENTS = [
   `,
   `
     CREATE UNIQUE INDEX IF NOT EXISTS idx_crm_email_links_click_token ON crm_email_links (click_token)
+  `,
+  `
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_crm_inbox_message_logs_account_folder_uid
+    ON crm_inbox_message_logs (account_id, folder, uid)
+  `,
+  `
+    CREATE INDEX IF NOT EXISTS idx_crm_inbox_message_logs_detected_type
+    ON crm_inbox_message_logs (detected_type, processed_at DESC)
   `,
   `
     CREATE INDEX IF NOT EXISTS idx_crm_email_unsubscribes_email ON crm_email_unsubscribes (email)
