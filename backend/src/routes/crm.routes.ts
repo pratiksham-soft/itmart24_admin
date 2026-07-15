@@ -42,6 +42,7 @@ import {
   previewLeadImport,
   previewSegment,
   previewSegmentDefinition,
+  setLeadBlocked,
   updateCompany,
   updateContact,
   updateCRMSettings,
@@ -336,6 +337,15 @@ router.post("/leads/:id/tasks", async (req, res) => {
     res.status(201).json({ success: true, item: task });
   } catch (error) {
     sendError(res, error, "Failed to create task.");
+  }
+});
+
+router.patch("/leads/:id/block", async (req, res) => {
+  try {
+    const lead = await setLeadBlocked(toPositiveId(req.params.id), req.body ?? {}, getActor(req));
+    res.json({ success: true, item: lead });
+  } catch (error) {
+    sendError(res, error, "Failed to update lead block status.");
   }
 });
 

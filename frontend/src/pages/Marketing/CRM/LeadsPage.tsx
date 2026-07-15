@@ -5,7 +5,7 @@ import Button from "../../../components/ui/button/Button";
 import LeadFormModal from "./components/LeadFormModal";
 import LeadImportModal from "./components/LeadImportModal";
 import CRMEntityPage from "./components/CRMEntityPage";
-import { addLeadNote, addLeadTask, convertLead, createLead, deleteLead, getLeadCustomPortfolio, getLeads, updateLead } from "./services/crmApi";
+import { addLeadNote, addLeadTask, blockLead, convertLead, createLead, deleteLead, getLeadCustomPortfolio, getLeads, updateLead } from "./services/crmApi";
 import type { BannerState, CRMCustomPortfolioLead, CRMLead, CRMLeadEmailCleanupResult, CRMLeadImportResult, CRMListParams } from "./types/crm.types";
 import { crmLeadTypes, defaultCRMSettings, formatCurrency, formatDateTime, formatLeadType, fullLeadName, getLeadTypeBadgeColor, getPriorityBadgeColor, getStatusBadgeColor, isOverdue, readErrorMessage, toOptions } from "./utils/crmHelpers";
 import { Modal } from "../../../components/ui/modal";
@@ -21,6 +21,10 @@ export default function LeadsPage() {
   const [reloadKey, setReloadKey] = useState(0);
   const [customPortfolio, setCustomPortfolio] = useState<CRMCustomPortfolioLead | null>(null);
   const [customPortfolioLoading, setCustomPortfolioLoading] = useState(false);
+  const [leadBlockDialog, setLeadBlockDialog] = useState<{
+    lead: CRMLead;
+    blocked: boolean;
+  } | null>(null);
 
   const filters = [
     { key: "leadType", label: "Lead Type", options: toOptions([...crmLeadTypes]) },
@@ -69,8 +73,22 @@ export default function LeadsPage() {
     return { label: "Needs Review", color: "warning" as const };
   };
 
+  const isLeadBlocked = (lead: CRMLead) =>
+    Boolean(lead.doNotContact || lead.emailRiskLevel === "blocked" || lead.lastCampaignStatus === "blocked");
+
   const getLeadDetailSignals = (lead: CRMLead) => {
     const signals: Array<{ label: string; color: "error" | "warning" | "info" | "success" | "light" }> = [];
+
+    if (isLeadBlocked(lead)) {
+      signals.push({ label: "Blocked", color: "error" });
+      if (lead.doNotContact) {
+        signals.push({ label: "Do Not Contact", color: "error" });
+        signals.push({ label: "Email contact blocked", color: "error" });
+        if (getLeadPhones(lead).length > 0) {
+          signals.push({ label: "Phone/contact number blocked", color: "warning" });
+        }
+      }
+    }
 
     if (lead.bounced || lead.lastCampaignStatus === "bounced") {
       if (lead.bounceType === "soft") {
@@ -225,6 +243,12 @@ export default function LeadsPage() {
                   ) : null}
                 </div>
                 <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">{(lead as CRMLead).companyName || "No company"}</div>
+                {(lead as CRMLead).phone ? (
+                  <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                    <span>{(lead as CRMLead).phone}</span>
+                    {isLeadBlocked(lead as CRMLead) ? <Badge color="error" size="sm">Blocked</Badge> : null}
+                  </div>
+                ) : null}
               </div>
             ),
           },
@@ -233,7 +257,10 @@ export default function LeadsPage() {
             label: "Email",
             render: (lead) => (
               <div>
-                <div>{(lead as CRMLead).email || "No email"}</div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span>{(lead as CRMLead).email || "No email"}</span>
+                  {isLeadBlocked(lead as CRMLead) ? <Badge color="error" size="sm">Blocked</Badge> : null}
+                </div>
                 <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                   {(lead as CRMLead).emailType || "unknown"}{(lead as CRMLead).emailRiskLevel ? ` | ${(lead as CRMLead).emailRiskLevel}` : ""}
                 </div>
@@ -378,22 +405,28 @@ export default function LeadsPage() {
         }}
       />
 
-      <Modal isOpen={Boolean(viewLead)} onClose={() => setViewLead(null)} className="max-w-5xl p-6 lg:p-8">
+      <Modal
+        isOpen={Boolean(viewLead)}
+        onClose={() => setViewLead(null)}
+        className="max-w-5xl p-6 pr-14 lg:p-8 lg:pr-20"
+      >
         {viewLead ? (
           <div className="space-y-6">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="flex flex-col gap-4 pr-2 sm:pr-4 lg:flex-row lg:items-start lg:justify-between">
               <div>
                 <h3 className="text-2xl font-semibold text-gray-800 dark:text-white/90">{fullLeadName(viewLead)}</h3>
-                <div className="mt-3">
+                <div className="mt-3 flex flex-wrap gap-2">
                   <Badge color={getLeadTypeBadgeColor(viewLead.leadType)} size="sm">
                     {formatLeadType(viewLead.leadType)}
                   </Badge>
+                  {isLeadBlocked(viewLead) ? <Badge color="error" size="sm">Blocked</Badge> : null}
+                  {viewLead.doNotContact ? <Badge color="error" size="sm">Do Not Contact</Badge> : null}
                 </div>
                 <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
                   {viewLead.companyName || "No company"} | {viewLead.email || "No email"} | {viewLead.phone || "No phone"}
                 </p>
               </div>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-2 lg:max-w-[calc(100%-12rem)] lg:justify-end">
                 <Button
                   type="button"
                   variant="outline"
@@ -442,6 +475,23 @@ export default function LeadsPage() {
                   }}
                 >
                   Convert Lead
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className={
+                    isLeadBlocked(viewLead)
+                      ? ""
+                      : "text-error-600 ring-error-200 hover:bg-error-50 dark:text-error-400 dark:ring-error-500/30"
+                  }
+                  onClick={() =>
+                    setLeadBlockDialog({
+                      lead: viewLead,
+                      blocked: !isLeadBlocked(viewLead),
+                    })
+                  }
+                >
+                  {isLeadBlocked(viewLead) ? "Unblock" : "Block"}
                 </Button>
               </div>
             </div>
@@ -526,11 +576,17 @@ export default function LeadsPage() {
                   </div>
                   <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03] md:col-span-2">
                     <div className="text-sm text-gray-500 dark:text-gray-400">Emails</div>
-                    <div className="mt-1 font-semibold text-gray-800 dark:text-white/90 break-words">{getLeadEmails(viewLead).join(", ") || "No email"}</div>
+                    <div className="mt-1 flex flex-wrap items-center gap-2 font-semibold text-gray-800 dark:text-white/90 break-words">
+                      <span>{getLeadEmails(viewLead).join(", ") || "No email"}</span>
+                      {isLeadBlocked(viewLead) ? <Badge color="error" size="sm">Blocked</Badge> : null}
+                    </div>
                   </div>
                   <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03] md:col-span-2">
                     <div className="text-sm text-gray-500 dark:text-gray-400">Phone Numbers</div>
-                    <div className="mt-1 font-semibold text-gray-800 dark:text-white/90 break-words">{getLeadPhones(viewLead).join(", ") || "No phone"}</div>
+                    <div className="mt-1 flex flex-wrap items-center gap-2 font-semibold text-gray-800 dark:text-white/90 break-words">
+                      <span>{getLeadPhones(viewLead).join(", ") || "No phone"}</span>
+                      {isLeadBlocked(viewLead) && getLeadPhones(viewLead).length > 0 ? <Badge color="warning" size="sm">Blocked</Badge> : null}
+                    </div>
                   </div>
                   <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03] md:col-span-2">
                     <div className="text-sm text-gray-500 dark:text-gray-400">Address / Legacy Address</div>
@@ -678,6 +734,71 @@ export default function LeadsPage() {
                 </div>
               )
             ) : null}
+          </div>
+        ) : null}
+      </Modal>
+
+      <Modal
+        isOpen={Boolean(leadBlockDialog)}
+        onClose={() => setLeadBlockDialog(null)}
+        className="max-w-xl p-6 lg:p-8"
+      >
+        {leadBlockDialog ? (
+          <div className="space-y-6">
+            <div>
+              <h3 className="text-2xl font-semibold text-gray-800 dark:text-white/90">
+                {leadBlockDialog.blocked ? "Confirm Block" : "Confirm Unblock"}
+              </h3>
+              <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                {leadBlockDialog.blocked
+                  ? "Blocking this lead will prevent all future emails and contact attempts from this CRM. This lead will be excluded from campaigns automatically."
+                  : "Unblocking this lead will make it eligible for CRM contact again if other safety checks pass."}
+              </p>
+            </div>
+            <div className="rounded-2xl border border-gray-200 bg-white p-4 text-sm text-gray-600 dark:border-gray-800 dark:bg-white/[0.03] dark:text-gray-300">
+              {fullLeadName(leadBlockDialog.lead)}{leadBlockDialog.lead.email ? ` • ${leadBlockDialog.lead.email}` : ""}
+            </div>
+            <div className="flex flex-wrap justify-end gap-3">
+              <Button type="button" variant="outline" onClick={() => setLeadBlockDialog(null)}>
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                className={
+                  leadBlockDialog.blocked
+                    ? "bg-error-600 hover:bg-error-700 disabled:bg-error-400"
+                    : ""
+                }
+                onClick={async () => {
+                  try {
+                    const updatedLead = await blockLead(leadBlockDialog.lead.id, {
+                      blocked: leadBlockDialog.blocked,
+                    });
+                    setViewLead((current) => (current && current.id === updatedLead.id ? updatedLead : current));
+                    setReloadKey((current) => current + 1);
+                    setLeadBlockDialog(null);
+                    showBanner(
+                      "success",
+                      leadBlockDialog.blocked
+                        ? "Lead blocked successfully."
+                        : "Lead unblocked successfully."
+                    );
+                  } catch (error) {
+                    showBanner(
+                      "error",
+                      readErrorMessage(
+                        error,
+                        leadBlockDialog.blocked
+                          ? "Failed to block lead."
+                          : "Failed to unblock lead."
+                      )
+                    );
+                  }
+                }}
+              >
+                {leadBlockDialog.blocked ? "Confirm Block" : "Confirm Unblock"}
+              </Button>
+            </div>
           </div>
         ) : null}
       </Modal>

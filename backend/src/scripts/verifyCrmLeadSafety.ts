@@ -140,7 +140,7 @@ const main = async () => {
   logSection("Sample Safety");
   const leadResult = await pool.query(
     `
-      SELECT id, email, tags, unsubscribed, bounced, spam_complaint, do_not_contact, email_consent_status
+      SELECT id, email, phone, tags, unsubscribed, bounced, spam_complaint, do_not_contact, email_consent_status, last_campaign_status
       FROM crm_leads
       WHERE deleted_at IS NULL
       ORDER BY updated_at DESC, id DESC
@@ -158,7 +158,10 @@ const main = async () => {
             sample: index + 1,
             id: lead.id,
             email: lead.email,
+            phone: lead.phone,
             rawTags: lead.tags,
+            doNotContact: lead.do_not_contact,
+            lastCampaignStatus: lead.last_campaign_status,
             campaignReady: safety.campaignReady,
             agencyOutreachReady: safety.agencyOutreachReady,
             emailType: safety.emailType,

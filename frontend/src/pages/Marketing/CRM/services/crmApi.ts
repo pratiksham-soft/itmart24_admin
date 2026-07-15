@@ -244,6 +244,20 @@ export const addLeadTask = (id: number, payload: Record<string, unknown>) =>
     },
     "Failed to create lead task."
   );
+export const blockLead = async (
+  id: number,
+  payload: { blocked: boolean; reason?: string }
+) => {
+  const result = await fetchCRMJson<CRMApiResponse<CRMLead>>(
+    `/api/crm/leads/${id}/block`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    },
+    "Failed to update lead block status."
+  );
+  return result.item as CRMLead;
+};
 
 export const getContacts = (params?: CRMListParams) => getList<CRMContact>("/api/crm/contacts", params);
 export const getContact = (id: number) => getItem<CRMContact>(`/api/crm/contacts/${id}`);

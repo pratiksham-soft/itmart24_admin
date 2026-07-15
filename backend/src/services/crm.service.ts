@@ -4417,6 +4417,66 @@ export const addLeadNote = async (
   return getLeadById(id);
 };
 
+export const setLeadBlocked = async (
+  id: number,
+  payload: Record<string, unknown>,
+  actor: AdminActor
+) => {
+  const lead = await getLeadById(id);
+  if (!lead) {
+    throw new Error("Lead not found.");
+  }
+
+  const blocked = parseBooleanLikeValue(payload.blocked ?? true);
+  const reason = toOptionalString(payload.reason);
+
+  if (Boolean(lead.doNotContact) === blocked) {
+    return lead;
+  }
+
+  const timestamp = new Date().toISOString();
+  const noteText = blocked
+    ? `Lead blocked by admin on ${timestamp}. Future CRM contact disabled.${reason ? ` Reason: ${reason}.` : ""}`
+    : `Lead unblocked by admin on ${timestamp}. CRM contact may resume if other safety checks pass.${reason ? ` Reason: ${reason}.` : ""}`;
+  const nextNotes = appendNote(lead.notes as JsonRecord[], noteText, actor);
+  const nextLastCampaignStatus = blocked ? "blocked" : lead.lastCampaignStatus;
+
+  const pool = await getAnalyticsPool();
+  const result = await pool.query(
+    `
+      UPDATE crm_leads
+      SET do_not_contact = $2,
+          notes = $3::jsonb,
+          last_campaign_status = $4,
+          last_activity_at = NOW(),
+          updated_by = $5,
+          updated_at = NOW()
+      WHERE id = $1 AND deleted_at IS NULL
+      RETURNING *
+    `,
+    [id, blocked, JSON.stringify(nextNotes), nextLastCampaignStatus, actor.id]
+  );
+
+  if (result.rowCount === 0) {
+    throw new Error("Lead not found.");
+  }
+
+  await insertActivity({
+    activityType: blocked ? "Lead Blocked" : "Lead Unblocked",
+    title: blocked ? "Lead blocked from CRM contact" : "Lead unblocked for CRM contact",
+    description: noteText,
+    relatedType: "lead",
+    relatedId: id,
+    actor,
+    metadata: {
+      blocked,
+      reason,
+    },
+  });
+
+  return mapLead(result.rows[0] as Record<string, unknown>);
+};
+
 export const createLeadTask = async (
   id: number,
   payload: Record<string, unknown>,
