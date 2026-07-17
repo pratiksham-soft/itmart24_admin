@@ -15,6 +15,11 @@ const getRequestMeta = (req: any) => ({
   userAgent: typeof req.headers["user-agent"] === "string" ? req.headers["user-agent"] : null,
 });
 
+const PREVIEW_UNSUBSCRIBE_TOKENS = new Set(["preview-token", "test-preview"]);
+const PREVIEW_UNSUBSCRIBE_EMAIL = "preview@shavi.itmart24.com";
+
+const isPreviewUnsubscribeToken = (token: string) => PREVIEW_UNSUBSCRIBE_TOKENS.has(String(token).trim().toLowerCase());
+
 const renderUnsubscribePage = (
   email: string,
   token: string,
@@ -60,13 +65,20 @@ const renderUnsubscribePage = (
 </html>`;
 
 const handleUnsubscribeConfirmation = async (req: any, res: any) => {
+  const trackingToken = String(req.params.recipientTrackingToken);
+  if (isPreviewUnsubscribeToken(trackingToken)) {
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.send(renderUnsubscribePage(PREVIEW_UNSUBSCRIBE_EMAIL, trackingToken, "success"));
+    return;
+  }
+
   try {
-    const result = await unsubscribeByToken(String(req.params.recipientTrackingToken));
+    const result = await unsubscribeByToken(trackingToken);
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     res.send(
       renderUnsubscribePage(
         result.email,
-        String(req.params.recipientTrackingToken),
+        trackingToken,
         result.alreadyUnsubscribed ? "already_unsubscribed" : "success"
       )
     );
@@ -99,8 +111,15 @@ router.get("/click/:clickToken", async (req, res) => {
 });
 
 router.get("/unsubscribe/:recipientTrackingToken", async (req, res) => {
+  const trackingToken = String(req.params.recipientTrackingToken);
+  if (isPreviewUnsubscribeToken(trackingToken)) {
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.send(renderUnsubscribePage(PREVIEW_UNSUBSCRIBE_EMAIL, trackingToken, "confirm"));
+    return;
+  }
+
   try {
-    const recipient = await getUnsubscribeRecipientByToken(String(req.params.recipientTrackingToken));
+    const recipient = await getUnsubscribeRecipientByToken(trackingToken);
     if (!recipient) {
       res.status(404).send("Unsubscribe link is invalid.");
       return;
@@ -110,7 +129,7 @@ router.get("/unsubscribe/:recipientTrackingToken", async (req, res) => {
     res.send(
       renderUnsubscribePage(
         String(recipient.email ?? ""),
-        String(req.params.recipientTrackingToken),
+        trackingToken,
         recipient.unsubscribed_at || recipient.status === "unsubscribed" ? "already_unsubscribed" : "confirm"
       )
     );
