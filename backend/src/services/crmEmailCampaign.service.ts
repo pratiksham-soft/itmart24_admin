@@ -429,6 +429,10 @@ const renderTemplate = (
     jobTitle?: string | null;
     website?: string | null;
     email?: string | null;
+  },
+  extra?: {
+    unsubscribeUrl?: string | null;
+    agencyOfferUrl?: string | null;
   }
 ) =>
   [
@@ -439,6 +443,10 @@ const renderTemplate = (
     ["{{jobTitle}}", recipient.jobTitle || ""],
     ["{{website}}", recipient.website || ""],
     ["{{email}}", recipient.email || ""],
+    ["{{unsubscribeUrl}}", extra?.unsubscribeUrl || ""],
+    ["{{unsubscribeLink}}", extra?.unsubscribeUrl || ""],
+    ["{{unsubscribe_url}}", extra?.unsubscribeUrl || ""],
+    ["{{agencyOfferUrl}}", extra?.agencyOfferUrl || ""],
   ].reduce((content, [token, replacement]) => content.split(token).join(replacement), template);
 
 const buildPagination = (query: PaginationQuery) => {
@@ -1981,9 +1989,18 @@ export const previewCampaign = async (id: number, payload?: Record<string, unkno
       website: toTrimmedString(payload?.website) || "https://example.com",
     };
 
+    const previewBaseUrl = "https://shavi.itmart24.com";
+    const previewUnsubscribeUrl = `${previewBaseUrl}/api/public/crm/email-track/unsubscribe/preview-token`;
+
     return {
-      subject: renderTemplate(campaign.subject, sampleRecipient),
-      body: renderTemplate(campaign.body, sampleRecipient),
+      subject: renderTemplate(campaign.subject, sampleRecipient, {
+        unsubscribeUrl: previewUnsubscribeUrl,
+        agencyOfferUrl: "https://itmart24.com/agency-partner",
+      }),
+      body: renderTemplate(campaign.body, sampleRecipient, {
+        unsubscribeUrl: previewUnsubscribeUrl,
+        agencyOfferUrl: "https://itmart24.com/agency-partner",
+      }),
       bodyMode: campaign.bodyMode,
       variables: sampleRecipient,
     };
@@ -2004,6 +2021,9 @@ export const sendTestCampaign = async (id: number, payload: Record<string, unkno
       throw new Error("A valid test email is required.");
     }
 
+    const testBaseUrl = "https://shavi.itmart24.com";
+    const testUnsubscribeUrl = `${testBaseUrl}/api/public/crm/email-track/unsubscribe/test-preview`;
+
     const renderedSubject = renderTemplate(campaign.subject, {
       firstName: "Test",
       lastName: "Recipient",
@@ -2012,6 +2032,9 @@ export const sendTestCampaign = async (id: number, payload: Record<string, unkno
       jobTitle: "Marketing Lead",
       email: testEmail,
       website: "https://itmart24.com",
+    }, {
+      unsubscribeUrl: testUnsubscribeUrl,
+      agencyOfferUrl: "https://itmart24.com/agency-partner",
     });
     const renderedBody = renderTemplate(campaign.body, {
       firstName: "Test",
@@ -2021,6 +2044,9 @@ export const sendTestCampaign = async (id: number, payload: Record<string, unkno
       jobTitle: "Marketing Lead",
       email: testEmail,
       website: "https://itmart24.com",
+    }, {
+      unsubscribeUrl: testUnsubscribeUrl,
+      agencyOfferUrl: "https://itmart24.com/agency-partner",
     });
 
     await sendEmailMessage(

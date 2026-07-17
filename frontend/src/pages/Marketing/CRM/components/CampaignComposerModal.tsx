@@ -11,6 +11,7 @@ import {
   getLeadEmailRecipients,
   getSegments,
   previewCampaignSegmentAudience,
+  sendTestCampaign,
   updateCampaign,
 } from "../services/crmApi";
 import type {
@@ -47,6 +48,7 @@ type CampaignFormState = {
 };
 
 type AudienceSource = "manual" | "segment";
+type TestEmailStatus = { tone: "success" | "error"; message: string } | null;
 
 const selectClassName =
   "h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 shadow-theme-xs focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/20 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90";
@@ -213,6 +215,9 @@ export default function CampaignComposerModal({
   const [selectedRecipients, setSelectedRecipients] = useState<Record<string, CRMLeadEmailRecipient>>({});
   const [loadingInitialRecipients, setLoadingInitialRecipients] = useState(false);
   const [previewRecipientId, setPreviewRecipientId] = useState<string | null>(null);
+  const [testEmail, setTestEmail] = useState("");
+  const [sendingTestEmail, setSendingTestEmail] = useState(false);
+  const [testEmailStatus, setTestEmailStatus] = useState<TestEmailStatus>(null);
   useEffect(() => {
     if (!isOpen) {
       return;
@@ -323,6 +328,9 @@ export default function CampaignComposerModal({
       setSegmentPreview(null);
       setSelectedSegmentId(initialCampaign?.segmentId ? String(initialCampaign.segmentId) : "");
       setAudienceSource(initialCampaign?.segmentId ? "segment" : "manual");
+      setTestEmail("");
+      setTestEmailStatus(null);
+      setSendingTestEmail(false);
       return;
     }
 
@@ -570,6 +578,37 @@ export default function CampaignComposerModal({
     } finally {
       setSaving(false);
       setSaveMode("draft");
+    }
+  };
+
+  const handleSendTestEmail = async () => {
+    if (!initialCampaign) {
+      return;
+    }
+
+    if (!testEmail.trim()) {
+      setTestEmailStatus({
+        tone: "error",
+        message: "Email Sending Failed",
+      });
+      return;
+    }
+
+    try {
+      setSendingTestEmail(true);
+      setTestEmailStatus(null);
+      await sendTestCampaign(initialCampaign.id, { email: testEmail.trim() });
+      setTestEmailStatus({
+        tone: "success",
+        message: "Email Successfully send",
+      });
+    } catch (sendError) {
+      setTestEmailStatus({
+        tone: "error",
+        message: readErrorMessage(sendError, "Email Sending Failed"),
+      });
+    } finally {
+      setSendingTestEmail(false);
     }
   };
 
@@ -852,6 +891,44 @@ export default function CampaignComposerModal({
                 className="font-mono"
               />
             </div>
+
+            {initialCampaign ? (
+              <div className="rounded-3xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">
+                <div className="mb-3 text-sm font-semibold text-gray-800 dark:text-white/90">Send Test Email</div>
+                <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto]">
+                  <InputField
+                    type="email"
+                    placeholder="Enter test email address"
+                    value={testEmail}
+                    onChange={(event) => {
+                      setTestEmail(event.target.value);
+                      if (testEmailStatus) {
+                        setTestEmailStatus(null);
+                      }
+                    }}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => void handleSendTestEmail()}
+                    disabled={sendingTestEmail}
+                  >
+                    {sendingTestEmail ? "Sending..." : "Send"}
+                  </Button>
+                </div>
+                {testEmailStatus ? (
+                  <div
+                    className={`mt-3 text-sm ${
+                      testEmailStatus.tone === "success"
+                        ? "text-success-600 dark:text-success-400"
+                        : "text-error-600 dark:text-error-400"
+                    }`}
+                  >
+                    {testEmailStatus.message}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
 
             <div className="rounded-3xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">
               <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
