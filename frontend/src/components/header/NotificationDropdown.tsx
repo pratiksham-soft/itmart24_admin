@@ -256,6 +256,13 @@ export default function NotificationDropdown() {
             <p className="mt-2 text-xs text-error-600 dark:text-error-400">
               {pushError}
             </p>
+          ) : !hasCurrentDevicePush &&
+            pushStatus &&
+            !pushStatus.supported &&
+            pushStatus.missingConfigKeys.length > 0 ? (
+            <p className="mt-2 text-xs text-warning-600 dark:text-warning-400">
+              Missing backend config: {pushStatus.missingConfigKeys.join(", ")}
+            </p>
           ) : null}
         </div>
 

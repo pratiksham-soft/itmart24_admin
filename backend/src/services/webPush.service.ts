@@ -12,7 +12,13 @@ type WebPushSubscriptionInput = {
 let webPushConfigured = false;
 let webPushInitializationAttempted = false;
 
-const getWebPushConfig = () => {
+type WebPushConfig = {
+  publicKey: string;
+  privateKey: string;
+  subject: string;
+};
+
+const getWebPushConfig = (): WebPushConfig => {
   const publicKey = String(process.env.WEB_PUSH_PUBLIC_KEY ?? "").trim();
   const privateKey = String(process.env.WEB_PUSH_PRIVATE_KEY ?? "").trim();
   const subject = String(process.env.WEB_PUSH_SUBJECT ?? "").trim();
@@ -24,6 +30,25 @@ const getWebPushConfig = () => {
   };
 };
 
+export const getMissingWebPushConfigKeys = () => {
+  const config = getWebPushConfig();
+  const missingKeys: string[] = [];
+
+  if (!config.publicKey) {
+    missingKeys.push("WEB_PUSH_PUBLIC_KEY");
+  }
+
+  if (!config.privateKey) {
+    missingKeys.push("WEB_PUSH_PRIVATE_KEY");
+  }
+
+  if (!config.subject) {
+    missingKeys.push("WEB_PUSH_SUBJECT");
+  }
+
+  return missingKeys;
+};
+
 export const initializeWebPushIfNeeded = () => {
   if (webPushInitializationAttempted) {
     return webPushConfigured;
@@ -32,7 +57,7 @@ export const initializeWebPushIfNeeded = () => {
   webPushInitializationAttempted = true;
   const config = getWebPushConfig();
 
-  if (!config.publicKey || !config.privateKey || !config.subject) {
+  if (getMissingWebPushConfigKeys().length > 0) {
     return false;
   }
 

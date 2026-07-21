@@ -49,6 +49,7 @@ export type NotificationPreferences = Record<
 export type PushStatus = {
   supported: boolean;
   publicKey: string | null;
+  missingConfigKeys: string[];
   preferences: NotificationPreferences;
   subscriptions: Array<{
     id: string;
@@ -466,8 +467,13 @@ export const enableBrowserPushNotifications = async (options: {
   const pushStatus = await fetchPushStatus();
 
   if (!pushStatus.supported || !pushStatus.publicKey) {
+    const missingKeys =
+      pushStatus.missingConfigKeys.length > 0
+        ? ` Missing backend config: ${pushStatus.missingConfigKeys.join(", ")}.`
+        : "";
+
     throw new Error(
-      "Browser push is not configured on this environment yet."
+      `Browser push is not configured on this environment yet.${missingKeys}`
     );
   }
 

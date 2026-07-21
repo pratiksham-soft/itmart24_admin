@@ -1107,6 +1107,7 @@ exports.getPushPublicKey = getPushPublicKey;
 const getPushStatus = async (adminId) => ({
     supported: (0, webPush_service_1.isWebPushConfigured)(),
     publicKey: (0, webPush_service_1.getWebPushPublicKey)(),
+    missingConfigKeys: (0, webPush_service_1.getMissingWebPushConfigKeys)(),
     preferences: await getNotificationPreferences(adminId),
     subscriptions: await listActivePushSubscriptions(adminId),
 });

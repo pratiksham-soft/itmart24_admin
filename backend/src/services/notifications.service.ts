@@ -16,6 +16,7 @@ import {
 } from "./adminNotifications.helpers";
 import {
   getWebPushPublicKey,
+  getMissingWebPushConfigKeys,
   isWebPushConfigured,
   sendWebPushNotification,
 } from "./webPush.service";
@@ -1525,6 +1526,7 @@ export const getPushPublicKey = () => getWebPushPublicKey();
 export const getPushStatus = async (adminId: number) => ({
   supported: isWebPushConfigured(),
   publicKey: getWebPushPublicKey(),
+  missingConfigKeys: getMissingWebPushConfigKeys(),
   preferences: await getNotificationPreferences(adminId),
   subscriptions: await listActivePushSubscriptions(adminId),
 });

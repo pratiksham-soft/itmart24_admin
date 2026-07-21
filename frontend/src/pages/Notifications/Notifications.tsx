@@ -581,6 +581,14 @@ const Notifications = () => {
                 <p className="mt-4 text-sm font-medium text-gray-900 dark:text-white">
                   Status: {pushEnabled ? "Enabled on this device" : "Disabled"}
                 </p>
+                {!pushEnabled &&
+                pushStatus &&
+                !pushStatus.supported &&
+                pushStatus.missingConfigKeys.length > 0 ? (
+                  <p className="mt-2 text-sm text-warning-600 dark:text-warning-400">
+                    Missing backend config: {pushStatus.missingConfigKeys.join(", ")}
+                  </p>
+                ) : null}
                 {pushError ? (
                   <p className="mt-2 text-sm text-error-600 dark:text-error-400">
                     {pushError}
