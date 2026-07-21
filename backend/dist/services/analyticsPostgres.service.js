@@ -325,6 +325,88 @@ const TABLE_STATEMENTS = [
     ON admin_sessions (admin_id, expires_at DESC)
   `,
     `
+    CREATE TABLE IF NOT EXISTS admin_notification_events (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      type TEXT NOT NULL,
+      category TEXT NOT NULL,
+      title TEXT NOT NULL,
+      message TEXT NOT NULL,
+      severity TEXT NOT NULL DEFAULT 'info',
+      target_url TEXT NOT NULL,
+      entity_type TEXT,
+      entity_id TEXT,
+      event_key TEXT NOT NULL UNIQUE,
+      metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+      occurred_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `,
+    `
+    CREATE INDEX IF NOT EXISTS idx_admin_notification_events_category_created
+    ON admin_notification_events (category, occurred_at DESC)
+  `,
+    `
+    CREATE INDEX IF NOT EXISTS idx_admin_notification_events_type_created
+    ON admin_notification_events (type, occurred_at DESC)
+  `,
+    `
+    CREATE TABLE IF NOT EXISTS admin_notification_recipients (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      notification_id UUID NOT NULL REFERENCES admin_notification_events(id) ON DELETE CASCADE,
+      admin_id BIGINT NOT NULL REFERENCES admins(id) ON DELETE CASCADE,
+      read_at TIMESTAMP,
+      archived_at TIMESTAMP,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      UNIQUE (notification_id, admin_id)
+    )
+  `,
+    `
+    CREATE INDEX IF NOT EXISTS idx_admin_notification_recipients_admin_unread
+    ON admin_notification_recipients (admin_id, read_at, created_at DESC)
+  `,
+    `
+    CREATE INDEX IF NOT EXISTS idx_admin_notification_recipients_admin_archived
+    ON admin_notification_recipients (admin_id, archived_at, created_at DESC)
+  `,
+    `
+    CREATE TABLE IF NOT EXISTS admin_notification_sync_state (
+      source_key TEXT PRIMARY KEY,
+      cursor_value TEXT NOT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `,
+    `
+    CREATE TABLE IF NOT EXISTS admin_push_subscriptions (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      admin_id BIGINT NOT NULL REFERENCES admins(id) ON DELETE CASCADE,
+      endpoint TEXT NOT NULL,
+      p256dh_key TEXT NOT NULL,
+      auth_key TEXT NOT NULL,
+      user_agent TEXT,
+      device_label TEXT,
+      expiration_time BIGINT,
+      is_active BOOLEAN NOT NULL DEFAULT TRUE,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      UNIQUE (admin_id, endpoint)
+    )
+  `,
+    `
+    CREATE INDEX IF NOT EXISTS idx_admin_push_subscriptions_admin_active
+    ON admin_push_subscriptions (admin_id, is_active, updated_at DESC)
+  `,
+    `
+    CREATE TABLE IF NOT EXISTS admin_notification_preferences (
+      admin_id BIGINT PRIMARY KEY REFERENCES admins(id) ON DELETE CASCADE,
+      preferences JSONB NOT NULL DEFAULT '{"vendors": true, "products": true, "users": true, "guest_reports": true, "payments": true}'::jsonb,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `,
+    `
     ALTER TABLE blog_jobs
     ADD COLUMN IF NOT EXISTS shopify_publish_enabled BOOLEAN NOT NULL DEFAULT FALSE
   `,

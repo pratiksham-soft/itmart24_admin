@@ -22,13 +22,27 @@ const getBearerToken = (authorizationHeader: string | undefined) => {
     : "";
 };
 
+const getRequestSessionToken = (req: Request) => {
+  const bearerToken = getBearerToken(req.headers.authorization);
+  if (bearerToken) {
+    return bearerToken;
+  }
+
+  const queryToken =
+    typeof req.query?.accessToken === "string"
+      ? req.query.accessToken.trim()
+      : "";
+
+  return queryToken;
+};
+
 export const requireAdminAuth = async (
   req: AuthenticatedAdminRequest,
   res: Response,
   next: NextFunction
 ) => {
   try {
-    const profile = await getAdminProfile(getBearerToken(req.headers.authorization));
+    const profile = await getAdminProfile(getRequestSessionToken(req));
     req.adminUser = profile.user;
     next();
   } catch (error) {

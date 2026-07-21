@@ -1,48 +1,104 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router";
 import { Dropdown } from "../ui/dropdown/Dropdown";
-import { DropdownItem } from "../ui/dropdown/DropdownItem";
 import Badge from "../ui/badge/Badge";
 import {
+  AlertIcon,
   BoxCubeIcon,
-  ChatIcon,
+  CheckCircleIcon,
+  InfoIcon,
   UserCircleIcon,
 } from "../../icons";
+import Button from "../ui/button/Button";
 import {
+  disableBrowserPushNotifications,
+  enableBrowserPushNotifications,
+  ensureNotificationStream,
   fetchNotifications,
+  fetchPushStatus,
   formatNotificationRelativeTime,
-  getNotificationTypeLabel,
+  getNotificationCategoryLabel,
   markAllNotificationsAsRead,
   markNotificationAsRead,
   subscribeToNotificationsChanged,
   type AdminNotification,
+  type PushStatus,
 } from "../../services/notifications.service";
 
+const renderIcon = (notification: AdminNotification) => {
+  if (notification.category === "vendors" || notification.category === "users") {
+    return (
+      <span className="flex h-10 w-10 items-center justify-center rounded-full bg-success-50 text-success-600 dark:bg-success-500/15 dark:text-success-500">
+        <UserCircleIcon className="h-5 w-5" />
+      </span>
+    );
+  }
+
+  if (notification.category === "products") {
+    return (
+      <span className="flex h-10 w-10 items-center justify-center rounded-full bg-brand-50 text-brand-500 dark:bg-brand-500/15 dark:text-brand-400">
+        <BoxCubeIcon className="h-5 w-5" />
+      </span>
+    );
+  }
+
+  if (notification.severity === "success") {
+    return (
+      <span className="flex h-10 w-10 items-center justify-center rounded-full bg-success-50 text-success-600 dark:bg-success-500/15 dark:text-success-500">
+        <CheckCircleIcon className="h-5 w-5" />
+      </span>
+    );
+  }
+
+  if (notification.severity === "error") {
+    return (
+      <span className="flex h-10 w-10 items-center justify-center rounded-full bg-error-50 text-error-600 dark:bg-error-500/15 dark:text-error-400">
+        <AlertIcon className="h-5 w-5" />
+      </span>
+    );
+  }
+
+  return (
+    <span className="flex h-10 w-10 items-center justify-center rounded-full bg-warning-50 text-warning-600 dark:bg-warning-500/15 dark:text-warning-300">
+      <InfoIcon className="h-5 w-5" />
+    </span>
+  );
+};
+
 export default function NotificationDropdown() {
-  const NOTIFICATIONS_STALE_MS = 30_000;
+  const staleMs = 20_000;
   const [isOpen, setIsOpen] = useState(false);
-  const [notifications, setNotifications] = useState<
-    AdminNotification[]
-  >([]);
+  const [notifications, setNotifications] = useState<AdminNotification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
+  const [pushStatus, setPushStatus] = useState<PushStatus | null>(null);
+  const [pushError, setPushError] = useState<string | null>(null);
+  const [pushBusy, setPushBusy] = useState(false);
   const lastLoadedAtRef = useRef(0);
 
   const loadNotifications = useCallback(async (force = false) => {
     if (
       !force &&
       lastLoadedAtRef.current > 0 &&
-      Date.now() - lastLoadedAtRef.current < NOTIFICATIONS_STALE_MS
+      Date.now() - lastLoadedAtRef.current < staleMs
     ) {
       return;
     }
 
     setIsLoading(true);
-
     try {
-      const result = await fetchNotifications(6);
-      setNotifications(result.notifications);
-      setUnreadCount(result.unreadCount);
+      const [notificationResult, pushResult] = await Promise.all([
+        fetchNotifications({
+          page: 1,
+          pageSize: 6,
+          readStatus: "all",
+        }),
+        fetchPushStatus().catch(() => null),
+      ]);
+
+      setNotifications(notificationResult.notifications);
+      setUnreadCount(notificationResult.unreadCount);
+      setPushStatus(pushResult);
       lastLoadedAtRef.current = Date.now();
     } catch (error) {
       console.error("Failed to load notifications", error);
@@ -52,27 +108,18 @@ export default function NotificationDropdown() {
   }, []);
 
   useEffect(() => {
-    void loadNotifications();
-  }, [loadNotifications]);
+    ensureNotificationStream();
+    void loadNotifications(true);
 
-  useEffect(() => {
     return subscribeToNotificationsChanged(() => {
       void loadNotifications(true);
     });
   }, [loadNotifications]);
 
-  function toggleDropdown() {
-    const nextState = !isOpen;
-    setIsOpen(nextState);
-
-    if (nextState) {
-      void loadNotifications(true);
-    }
-  }
-
-  function closeDropdown() {
-    setIsOpen(false);
-  }
+  const hasCurrentDevicePush = useMemo(
+    () => Boolean(pushStatus?.subscriptions?.length),
+    [pushStatus]
+  );
 
   const handleNotificationClick = async (
     notification: AdminNotification
@@ -81,55 +128,53 @@ export default function NotificationDropdown() {
       try {
         await markNotificationAsRead(notification.id);
       } catch (error) {
-        console.error(
-          "Failed to mark notification as read",
-          error
-        );
+        console.error("Failed to mark notification as read", error);
       }
     }
   };
 
-  const handleMarkAllAsRead = async () => {
+  const handlePushToggle = async () => {
+    setPushBusy(true);
+    setPushError(null);
+
     try {
-      await markAllNotificationsAsRead();
+      if (hasCurrentDevicePush) {
+        await disableBrowserPushNotifications();
+      } else {
+        const result = await enableBrowserPushNotifications({
+          deviceLabel: "Current browser",
+        });
+
+        if (!result.granted) {
+          setPushError(
+            "Browser permission was not granted. In-app notifications still work normally."
+          );
+        }
+      }
+
       await loadNotifications(true);
     } catch (error) {
-      console.error(
-        "Failed to mark all notifications as read",
-        error
+      setPushError(
+        error instanceof Error
+          ? error.message
+          : "Failed to update browser push settings."
       );
+    } finally {
+      setPushBusy(false);
     }
-  };
-
-  const renderIcon = (notification: AdminNotification) => {
-    if (notification.icon === "vendor") {
-      return (
-        <span className="flex h-10 w-10 items-center justify-center rounded-full bg-success-50 text-success-600 dark:bg-success-500/15 dark:text-success-500">
-          <UserCircleIcon className="h-5 w-5" />
-        </span>
-      );
-    }
-
-    if (notification.icon === "product") {
-      return (
-        <span className="flex h-10 w-10 items-center justify-center rounded-full bg-brand-50 text-brand-500 dark:bg-brand-500/15 dark:text-brand-400">
-          <BoxCubeIcon className="h-5 w-5" />
-        </span>
-      );
-    }
-
-    return (
-      <span className="flex h-10 w-10 items-center justify-center rounded-full bg-warning-50 text-warning-600 dark:bg-warning-500/15 dark:text-orange-400">
-        <ChatIcon className="h-5 w-5" />
-      </span>
-    );
   };
 
   return (
     <div className="relative">
       <button
         className="relative flex items-center justify-center text-gray-500 transition-colors bg-white border border-gray-200 rounded-full dropdown-toggle hover:text-gray-700 h-11 w-11 hover:bg-gray-100 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white"
-        onClick={toggleDropdown}
+        onClick={() => {
+          const next = !isOpen;
+          setIsOpen(next);
+          if (next) {
+            void loadNotifications(true);
+          }
+        }}
         aria-label="Open notifications"
       >
         {unreadCount > 0 ? (
@@ -154,10 +199,10 @@ export default function NotificationDropdown() {
       </button>
       <Dropdown
         isOpen={isOpen}
-        onClose={closeDropdown}
-        className="absolute -right-[240px] mt-[17px] flex h-[480px] w-[350px] flex-col rounded-2xl border border-gray-200 bg-white p-3 shadow-theme-lg dark:border-gray-800 dark:bg-gray-dark sm:w-[361px] lg:right-0"
+        onClose={() => setIsOpen(false)}
+        className="absolute -right-[240px] mt-[17px] flex h-[520px] w-[360px] flex-col rounded-2xl border border-gray-200 bg-white p-3 shadow-theme-lg dark:border-gray-800 dark:bg-gray-dark sm:w-[380px] lg:right-0"
       >
-        <div className="mb-3 flex items-center justify-between border-b border-gray-100 pb-3 dark:border-gray-700">
+        <div className="mb-3 flex items-start justify-between gap-3 border-b border-gray-100 pb-3 dark:border-gray-700">
           <div>
             <h5 className="text-lg font-semibold text-gray-800 dark:text-gray-200">
               Notifications
@@ -166,62 +211,77 @@ export default function NotificationDropdown() {
               {unreadCount} unread
             </p>
           </div>
-          <div className="flex items-center gap-2">
-            {unreadCount > 0 ? (
-              <button
-                onClick={() => {
-                  void handleMarkAllAsRead();
-                }}
-                className="text-theme-xs font-medium text-brand-500 transition hover:text-brand-600"
-              >
-                Mark all read
-              </button>
-            ) : null}
+          {unreadCount > 0 ? (
             <button
-              onClick={toggleDropdown}
-              className="text-gray-500 transition dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+              onClick={() => {
+                void markAllNotificationsAsRead().then(() =>
+                  loadNotifications(true)
+                );
+              }}
+              className="text-theme-xs font-medium text-brand-500 transition hover:text-brand-600"
             >
-              <svg
-                className="fill-current"
-                width="24"
-                height="24"
-                viewBox="0 0 24 24"
-                xmlns="http://www.w3.org/2000/svg"
-              >
-                <path
-                  fillRule="evenodd"
-                  clipRule="evenodd"
-                  d="M6.21967 7.28131C5.92678 6.98841 5.92678 6.51354 6.21967 6.22065C6.51256 5.92775 6.98744 5.92775 7.28033 6.22065L11.999 10.9393L16.7176 6.22078C17.0105 5.92789 17.4854 5.92788 17.7782 6.22078C18.0711 6.51367 18.0711 6.98855 17.7782 7.28144L13.0597 12L17.7782 16.7186C18.0711 17.0115 18.0711 17.4863 17.7782 17.7792C17.4854 18.0721 17.0105 18.0721 16.7176 17.7792L11.999 13.0607L7.28033 17.7794C6.98744 18.0722 6.51256 18.0722 6.21967 17.7794C5.92678 17.4865 5.92678 17.0116 6.21967 16.7187L10.9384 12L6.21967 7.28131Z"
-                  fill="currentColor"
-                />
-              </svg>
+              Mark all read
             </button>
-          </div>
+          ) : null}
         </div>
-        <ul className="flex h-auto flex-col overflow-y-auto custom-scrollbar">
+
+        <div className="mb-3 rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-gray-800 dark:bg-gray-900/40">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-medium text-gray-900 dark:text-white">
+                Browser push
+              </p>
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {hasCurrentDevicePush
+                  ? "This device is receiving admin push notifications."
+                  : "Enable push on this device after granting browser permission."}
+              </p>
+            </div>
+            <Button
+              size="sm"
+              variant={hasCurrentDevicePush ? "outline" : "primary"}
+              disabled={pushBusy}
+              onClick={() => {
+                void handlePushToggle();
+              }}
+            >
+              {pushBusy
+                ? "Working..."
+                : hasCurrentDevicePush
+                  ? "Disable"
+                  : "Enable"}
+            </Button>
+          </div>
+          {pushError ? (
+            <p className="mt-2 text-xs text-error-600 dark:text-error-400">
+              {pushError}
+            </p>
+          ) : null}
+        </div>
+
+        <ul className="flex h-auto flex-1 flex-col overflow-y-auto custom-scrollbar">
           {isLoading ? (
             <li className="px-4 py-6 text-center text-sm text-gray-500 dark:text-gray-400">
               Loading notifications...
             </li>
           ) : notifications.length === 0 ? (
-            <li className="px-4 py-6 text-center">
+            <li className="px-4 py-8 text-center">
               <p className="text-sm font-medium text-gray-900 dark:text-white">
                 No notifications yet
               </p>
               <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-                New vendor, product, and support ticket alerts will show up here.
+                Vendor, product, user, guest report, and payment alerts will show up here.
               </p>
             </li>
           ) : (
             notifications.map((notification) => (
               <li key={notification.id}>
-                <DropdownItem
-                  tag="a"
-                  to={notification.relatedRoute ?? "/notifications"}
+                <Link
+                  to={notification.targetUrl}
                   onClick={() => {
                     void handleNotificationClick(notification);
+                    setIsOpen(false);
                   }}
-                  onItemClick={closeDropdown}
                   className={`flex gap-3 rounded-lg border-b border-gray-100 p-3 px-4.5 py-3 hover:bg-gray-100 dark:border-gray-800 dark:hover:bg-white/5 ${
                     notification.isRead
                       ? ""
@@ -242,27 +302,33 @@ export default function NotificationDropdown() {
                     <span className="flex flex-wrap items-center gap-2 text-theme-xs text-gray-500 dark:text-gray-400">
                       <Badge
                         size="sm"
-                        color={notification.badgeColor}
+                        color={
+                          notification.severity === "success"
+                            ? "success"
+                            : notification.severity === "error"
+                              ? "error"
+                              : notification.severity === "warning"
+                                ? "warning"
+                                : "primary"
+                        }
                       >
-                        {getNotificationTypeLabel(
-                          notification.type
-                        )}
+                        {getNotificationCategoryLabel(notification.category)}
                       </Badge>
                       <span>
                         {formatNotificationRelativeTime(
-                          notification.eventAt
+                          notification.occurredAt
                         )}
                       </span>
                     </span>
                   </span>
-                </DropdownItem>
+                </Link>
               </li>
             ))
           )}
         </ul>
         <Link
           to="/notifications"
-          onClick={closeDropdown}
+          onClick={() => setIsOpen(false)}
           className="mt-3 flex items-center justify-center rounded-lg border border-gray-200 p-3 text-sm font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:border-gray-800 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-200"
         >
           View all notifications

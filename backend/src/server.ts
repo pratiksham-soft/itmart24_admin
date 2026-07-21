@@ -6,6 +6,7 @@ import {
     initializeAnalyticsPostgres,
 } from "./services/analyticsPostgres.service";
 import { startBlogJobScheduler } from "./services/blogJobScheduler.service";
+import { startNotificationsSyncLoop } from "./services/notifications.service";
 //import { startProductRankingScheduler } from "./services/productRankingScheduler.service";
 
 const PORT = process.env.PORT || 5000;
@@ -36,6 +37,7 @@ console.log(
 
 initializeAnalyticsPostgres()
     .then(() => {
+        startNotificationsSyncLoop();
         return startBlogJobScheduler();
     })
     .then(() => {

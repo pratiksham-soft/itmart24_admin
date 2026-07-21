@@ -7,9 +7,13 @@ exports.sendSmtpEmail = sendSmtpEmail;
 exports.sendNotificationEmail = sendNotificationEmail;
 const nodemailer_1 = __importDefault(require("nodemailer"));
 const NOTIFICATION_TYPE_LABELS = {
-    vendor_joined: "New vendor joined",
-    product_inserted: "New product inserted",
-    support_ticket_generated: "New support ticket generated",
+    "vendor.registered": "New vendor registered",
+    "product.submitted": "New product awaiting review",
+    "user.registered": "New user registered",
+    "guest-report.generated": "New guest report generated",
+    "payment.initiated": "Payment initiated",
+    "payment.succeeded": "Payment successful",
+    "payment.failed": "Payment failed",
 };
 const readEnv = (name) => {
     const value = process.env[name];

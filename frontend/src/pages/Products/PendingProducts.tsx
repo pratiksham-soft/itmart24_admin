@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router";
 import ComponentCard from "../../components/common/ComponentCard";
 import { useProductStatusUpdate } from "../../hooks/useProductStatusUpdate";
 import StatusPopups from "../../components/common/StatusPopups";
@@ -18,6 +19,7 @@ import { API_BASE_URL } from "../../config/api";
 type LifecycleStatus = "pending" | "active" | "rejected" | "on-hold";
 
 const PendingProducts = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [statusDraft, setStatusDraft] = useState<Record<string, LifecycleStatus>>(
     {}
   );
@@ -94,6 +96,15 @@ const PendingProducts = () => {
     setSelectedIds(new Set());
     setBulkStatus("");
   }, [products]);
+
+  useEffect(() => {
+    const productIdFromQuery = searchParams.get("productId");
+    if (!productIdFromQuery) {
+      return;
+    }
+
+    setSelectedProductId(productIdFromQuery);
+  }, [searchParams]);
 
   if (loading) {
     return (
@@ -354,7 +365,15 @@ const PendingProducts = () => {
       <ProductDetailsModal
         isOpen={selectedProductId !== null}
         productId={selectedProductId}
-        onClose={() => setSelectedProductId(null)}
+        onClose={() => {
+          setSelectedProductId(null);
+
+          if (searchParams.get("productId")) {
+            const nextSearchParams = new URLSearchParams(searchParams);
+            nextSearchParams.delete("productId");
+            setSearchParams(nextSearchParams, { replace: true });
+          }
+        }}
         onUpdated={refetchProducts}
       />
     </div>

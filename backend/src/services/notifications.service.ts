@@ -1,379 +1,1470 @@
 import admin from "firebase-admin";
+import type { Response } from "express";
 import { firestore } from "../config/firebase";
-import { sendNotificationEmail } from "./email.service";
+import { getAnalyticsPool } from "./analyticsPostgres.service";
+import { getUserPortalPool } from "./userPortalUsers.service";
+import {
+  ADMIN_NOTIFICATION_CATEGORIES,
+  type AdminNotificationCategory,
+  type AdminNotificationSeverity,
+  type AdminNotificationType,
+  buildPushMessageForCategory,
+  normalizeNotificationCategory,
+  normalizeNotificationSeverity,
+  sanitizeNotificationMetadata,
+  sanitizeTargetUrl,
+} from "./adminNotifications.helpers";
+import {
+  getWebPushPublicKey,
+  isWebPushConfigured,
+  sendWebPushNotification,
+} from "./webPush.service";
 
-const NOTIFICATIONS_COLLECTION = "admin_notifications";
-const NOTIFICATION_SYNC_STATE_COLLECTION =
-  "admin_notification_sync_state";
-const NOTIFICATION_SYNC_COOLDOWN_MS = 60 * 1000;
+export type NotificationType = AdminNotificationType;
 
-export type NotificationType =
-  | "vendor_joined"
-  | "product_inserted"
-  | "support_ticket_generated";
-
-type NotificationColor = "primary" | "success" | "warning";
-
-type SourceConfig = {
-  collectionName: "vendor_profile" | "products" | "support_tickets";
-  route: string;
-  type: NotificationType;
-  icon: "vendor" | "product" | "ticket";
-  badgeColor: NotificationColor;
-  buildPayload: (
-    docId: string,
-    data: FirebaseFirestore.DocumentData
-  ) => {
-    title: string;
-    message: string;
-    entityLabel: string;
-    metadata: Record<string, unknown>;
-  };
+type Queryable = {
+  query: (
+    text: string,
+    params?: unknown[]
+  ) => Promise<{
+    rows: Array<Record<string, unknown>>;
+    rowCount: number;
+  }>;
 };
 
-type NotificationDocument = {
-  id: string;
-  type: NotificationType;
+type CreateNotificationInput = {
+  type: AdminNotificationType;
+  category: AdminNotificationCategory;
   title: string;
   message: string;
-  entityLabel: string;
-  sourceCollection: string;
-  sourceId: string;
-  relatedRoute: string | null;
-  icon: SourceConfig["icon"];
-  badgeColor: NotificationColor;
-  isRead: boolean;
-  createdAt: string | null;
-  updatedAt: string | null;
-  readAt: string | null;
-  eventAt: string | null;
-  metadata: Record<string, unknown>;
+  severity: AdminNotificationSeverity;
+  targetUrl: string;
+  entityType: string | null;
+  entityId: string | null;
+  eventKey: string;
+  metadata?: Record<string, unknown>;
+  occurredAt?: Date;
 };
 
-const timestampNow = () => admin.firestore.Timestamp.now();
-let lastNotificationsSyncStartedAt = 0;
-let notificationsSyncPromise:
-  | Promise<{ createdCount: number }>
-  | null = null;
+type ListNotificationsFilters = {
+  page?: number;
+  pageSize?: number;
+  category?: AdminNotificationCategory | null;
+  type?: string | null;
+  severity?: AdminNotificationSeverity | null;
+  readStatus?: "read" | "unread" | "all";
+  archived?: boolean;
+};
 
-const readString = (value: unknown) =>
-  typeof value === "string" ? value.trim() : "";
+type NotificationRecipientRow = {
+  recipient_id: string;
+  notification_id: string;
+  admin_id: number;
+  is_read: boolean;
+  is_archived: boolean;
+  read_at: string | null;
+  archived_at: string | null;
+  created_at: string;
+  updated_at: string;
+  type: AdminNotificationType;
+  category: AdminNotificationCategory;
+  title: string;
+  message: string;
+  severity: AdminNotificationSeverity;
+  target_url: string;
+  entity_type: string | null;
+  entity_id: string | null;
+  event_key: string;
+  metadata: Record<string, unknown>;
+  event_created_at: string;
+  event_updated_at: string;
+  occurred_at: string;
+};
+
+type SyncCursorKey =
+  | "vendors"
+  | "products"
+  | "users"
+  | "guest_reports"
+  | "payments"
+  | "payment_order_status";
+
+type AdminNotificationPreferences = Record<
+  AdminNotificationCategory,
+  boolean
+>;
+
+type BrowserPushSubscription = {
+  id: string;
+  adminId: number;
+  endpoint: string;
+  p256dhKey: string;
+  authKey: string;
+  userAgent: string | null;
+  deviceLabel: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+const DEFAULT_PAGE_SIZE = 20;
+const MAX_PAGE_SIZE = 100;
+const NOTIFICATION_SYNC_INTERVAL_MS = 20 * 1000;
+const firestoreTimestampNow = () => admin.firestore.Timestamp.now();
+
+let syncPromise: Promise<{ createdCount: number }> | null = null;
+let syncIntervalHandle: NodeJS.Timeout | null = null;
+
+const sseClients = new Map<number, Set<Response>>();
+
+const GENERATED_GUEST_REPORT_EVENT_NAMES = new Set([
+  "SEOHealthReportGenerated",
+  "AIAnalysisReportGenerated",
+  "CompetitorReportGenerated",
+]);
+
+const PAYMENT_FAILURE_STATUSES = new Set([
+  "failed",
+  "payment_failed",
+  "cancelled",
+]);
 
 const toIsoString = (value: unknown) => {
+  if (!value) {
+    return null;
+  }
+
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+
   if (value instanceof admin.firestore.Timestamp) {
     return value.toDate().toISOString();
   }
 
   if (
-    value &&
     typeof value === "object" &&
+    value &&
     "_seconds" in value &&
     typeof (value as { _seconds?: number })._seconds === "number"
   ) {
     return new Date(
-      (value as { _seconds: number })._seconds * 1000
+      Number((value as { _seconds: number })._seconds) * 1000
     ).toISOString();
   }
 
-  return null;
+  const parsed = new Date(String(value));
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
 };
 
-const normalizeFirestoreValue = (value: unknown): unknown => {
-  if (value instanceof admin.firestore.Timestamp) {
-    return value.toDate().toISOString();
+const toDate = (value: unknown) => {
+  const isoString = toIsoString(value);
+  return isoString ? new Date(isoString) : null;
+};
+
+const readString = (value: unknown) => String(value ?? "").trim();
+const readNullableString = (value: unknown) => {
+  const normalized = readString(value);
+  return normalized || null;
+};
+const readNumber = (value: unknown, fallback = 0) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+};
+
+const readPgJson = (value: unknown): Record<string, unknown> => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
   }
 
-  if (Array.isArray(value)) {
-    return value.map((item) => normalizeFirestoreValue(item));
-  }
+  return value as Record<string, unknown>;
+};
 
-  if (value && typeof value === "object") {
-    return Object.entries(value as Record<string, unknown>).reduce<
-      Record<string, unknown>
-    >((accumulator, [key, nestedValue]) => {
-      accumulator[key] = normalizeFirestoreValue(nestedValue);
+const getNotificationPreferencesDefaults = (): AdminNotificationPreferences => ({
+  vendors: true,
+  products: true,
+  users: true,
+  guest_reports: true,
+  payments: true,
+});
+
+const getCategoryLabel = (category: AdminNotificationCategory) => {
+  switch (category) {
+    case "vendors":
+      return "vendors";
+    case "products":
+      return "products";
+    case "users":
+      return "users";
+    case "guest_reports":
+      return "guest reports";
+    case "payments":
+      return "payments";
+    default:
+      return "notifications";
+  }
+};
+
+const formatCurrency = (amount: number, currencyCode: string) => {
+  try {
+    return new Intl.NumberFormat("en-IN", {
+      style: "currency",
+      currency: currencyCode || "INR",
+      maximumFractionDigits: 2,
+    }).format(amount);
+  } catch {
+    return `${currencyCode || "INR"} ${amount.toFixed(2)}`;
+  }
+};
+
+const mapNotificationRow = (row: NotificationRecipientRow) => ({
+  id: String(row.recipient_id),
+  notificationId: String(row.notification_id),
+  adminId: Number(row.admin_id),
+  type: row.type,
+  category: row.category,
+  title: String(row.title),
+  message: String(row.message),
+  severity: row.severity,
+  targetUrl: String(row.target_url),
+  entityType: readNullableString(row.entity_type),
+  entityId: readNullableString(row.entity_id),
+  eventKey: String(row.event_key),
+  metadata: sanitizeNotificationMetadata(row.metadata),
+  isRead: Boolean(row.is_read),
+  isArchived: Boolean(row.is_archived),
+  readAt: row.read_at,
+  archivedAt: row.archived_at,
+  createdAt: String(row.created_at),
+  updatedAt: String(row.updated_at),
+  occurredAt: String(row.occurred_at),
+});
+
+async function withAnalyticsTransaction<T>(
+  callback: (client: Queryable) => Promise<T>
+) {
+  const pool = await getAnalyticsPool();
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+    const result = await callback(client);
+    await client.query("COMMIT");
+    return result;
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+const getSyncState = async (key: SyncCursorKey) => {
+  const pool = await getAnalyticsPool();
+  const result = await pool.query(
+    `
+      SELECT cursor_value
+      FROM admin_notification_sync_state
+      WHERE source_key = $1
+      LIMIT 1
+    `,
+    [key]
+  );
+
+  return readNullableString(result.rows[0]?.cursor_value);
+};
+
+const setSyncState = async (
+  client: Queryable,
+  key: SyncCursorKey,
+  value: string
+) => {
+  await client.query(
+    `
+      INSERT INTO admin_notification_sync_state (
+        source_key,
+        cursor_value,
+        created_at,
+        updated_at
+      )
+      VALUES ($1, $2, NOW(), NOW())
+      ON CONFLICT (source_key)
+      DO UPDATE
+      SET
+        cursor_value = EXCLUDED.cursor_value,
+        updated_at = NOW()
+    `,
+    [key, value]
+  );
+};
+
+const createNotificationEvent = async (
+  input: CreateNotificationInput
+) => {
+  const sanitizedTargetUrl = sanitizeTargetUrl(input.targetUrl);
+  const sanitizedMetadata = sanitizeNotificationMetadata(
+    input.metadata ?? {}
+  );
+
+  return withAnalyticsTransaction(async (client) => {
+    const eventInsertResult = await client.query(
+      `
+        INSERT INTO admin_notification_events (
+          type,
+          category,
+          title,
+          message,
+          severity,
+          target_url,
+          entity_type,
+          entity_id,
+          event_key,
+          metadata,
+          occurred_at,
+          created_at,
+          updated_at
+        )
+        VALUES (
+          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb,
+          COALESCE($11::timestamp, NOW()),
+          NOW(),
+          NOW()
+        )
+        ON CONFLICT (event_key)
+        DO NOTHING
+        RETURNING id
+      `,
+      [
+        input.type,
+        input.category,
+        input.title,
+        input.message,
+        input.severity,
+        sanitizedTargetUrl,
+        input.entityType,
+        input.entityId,
+        input.eventKey,
+        JSON.stringify(sanitizedMetadata),
+        input.occurredAt ? input.occurredAt.toISOString() : null,
+      ]
+    );
+
+    const insertedEventId = readNullableString(
+      eventInsertResult.rows[0]?.id
+    );
+
+    if (!insertedEventId) {
+      return {
+        created: false,
+        recipientAdminIds: [] as number[],
+        category: input.category,
+        title: input.title,
+        targetUrl: sanitizedTargetUrl,
+      };
+    }
+
+    const recipientsInsertResult = await client.query(
+      `
+        INSERT INTO admin_notification_recipients (
+          notification_id,
+          admin_id,
+          created_at,
+          updated_at
+        )
+        SELECT $1, a.id, NOW(), NOW()
+        FROM admins a
+        WHERE LOWER(COALESCE(a.status, 'active')) = 'active'
+        RETURNING admin_id
+      `,
+      [insertedEventId]
+    );
+
+    return {
+      created: true,
+      recipientAdminIds: recipientsInsertResult.rows.map((row: Record<string, unknown>) =>
+        Number(row.admin_id)
+      ),
+      eventId: insertedEventId,
+      category: input.category,
+      title: input.title,
+      targetUrl: sanitizedTargetUrl,
+    };
+  });
+};
+
+const getNotificationPreferences = async (
+  adminId: number
+): Promise<AdminNotificationPreferences> => {
+  const pool = await getAnalyticsPool();
+  const result = await pool.query(
+    `
+      SELECT preferences
+      FROM admin_notification_preferences
+      WHERE admin_id = $1
+      LIMIT 1
+    `,
+    [adminId]
+  );
+
+  const defaults = getNotificationPreferencesDefaults();
+  const raw = readPgJson(result.rows[0]?.preferences);
+
+  return ADMIN_NOTIFICATION_CATEGORIES.reduce<AdminNotificationPreferences>(
+    (accumulator, category) => {
+      accumulator[category] =
+        typeof raw[category] === "boolean"
+          ? Boolean(raw[category])
+          : defaults[category];
       return accumulator;
-    }, {});
+    },
+    { ...defaults }
+  );
+};
+
+export const updateNotificationPreferences = async (
+  adminId: number,
+  input: Partial<Record<AdminNotificationCategory, boolean>>
+) => {
+  const nextPreferences = ADMIN_NOTIFICATION_CATEGORIES.reduce<
+    AdminNotificationPreferences
+  >((accumulator, category) => {
+    accumulator[category] =
+      typeof input[category] === "boolean"
+        ? Boolean(input[category])
+        : getNotificationPreferencesDefaults()[category];
+    return accumulator;
+  }, getNotificationPreferencesDefaults());
+
+  const pool = await getAnalyticsPool();
+  await pool.query(
+    `
+      INSERT INTO admin_notification_preferences (
+        admin_id,
+        preferences,
+        created_at,
+        updated_at
+      )
+      VALUES ($1, $2::jsonb, NOW(), NOW())
+      ON CONFLICT (admin_id)
+      DO UPDATE
+      SET
+        preferences = EXCLUDED.preferences,
+        updated_at = NOW()
+    `,
+    [adminId, JSON.stringify(nextPreferences)]
+  );
+
+  emitNotificationUpdate(adminId, "preferences-updated");
+  return nextPreferences;
+};
+
+export const listNotificationPreferences = async (
+  adminId: number
+) => getNotificationPreferences(adminId);
+
+const listActivePushSubscriptions = async (
+  adminId: number
+): Promise<BrowserPushSubscription[]> => {
+  const pool = await getAnalyticsPool();
+  const result = await pool.query(
+    `
+      SELECT
+        id,
+        admin_id,
+        endpoint,
+        p256dh_key,
+        auth_key,
+        user_agent,
+        device_label,
+        is_active,
+        created_at,
+        updated_at
+      FROM admin_push_subscriptions
+      WHERE admin_id = $1
+        AND is_active = TRUE
+      ORDER BY updated_at DESC
+    `,
+    [adminId]
+  );
+
+  return result.rows.map((row: Record<string, unknown>) => ({
+    id: String(row.id),
+    adminId: Number(row.admin_id),
+    endpoint: String(row.endpoint),
+    p256dhKey: String(row.p256dh_key),
+    authKey: String(row.auth_key),
+    userAgent: readNullableString(row.user_agent),
+    deviceLabel: readNullableString(row.device_label),
+    isActive: Boolean(row.is_active),
+    createdAt: String(row.created_at),
+    updatedAt: String(row.updated_at),
+  }));
+};
+
+const deactivatePushSubscriptionById = async (
+  subscriptionId: string
+) => {
+  const pool = await getAnalyticsPool();
+  await pool.query(
+    `
+      UPDATE admin_push_subscriptions
+      SET
+        is_active = FALSE,
+        updated_at = NOW()
+      WHERE id = $1
+    `,
+    [subscriptionId]
+  );
+};
+
+export const listPushSubscriptionsForAdmin = async (adminId: number) =>
+  listActivePushSubscriptions(adminId);
+
+export const upsertPushSubscription = async (input: {
+  adminId: number;
+  subscription: {
+    endpoint: string;
+    expirationTime?: number | null;
+    keys?: {
+      p256dh?: string;
+      auth?: string;
+    };
+  };
+  userAgent?: string | null;
+  deviceLabel?: string | null;
+}) => {
+  const endpoint = readString(input.subscription.endpoint);
+  const p256dhKey = readString(input.subscription.keys?.p256dh);
+  const authKey = readString(input.subscription.keys?.auth);
+
+  if (!endpoint || !p256dhKey || !authKey) {
+    throw new Error("A valid push subscription is required.");
   }
 
-  return value;
+  const pool = await getAnalyticsPool();
+  const result = await pool.query(
+    `
+      INSERT INTO admin_push_subscriptions (
+        admin_id,
+        endpoint,
+        p256dh_key,
+        auth_key,
+        user_agent,
+        device_label,
+        expiration_time,
+        is_active,
+        created_at,
+        updated_at
+      )
+      VALUES (
+        $1, $2, $3, $4, $5, $6, $7, TRUE, NOW(), NOW()
+      )
+      ON CONFLICT (admin_id, endpoint)
+      DO UPDATE
+      SET
+        p256dh_key = EXCLUDED.p256dh_key,
+        auth_key = EXCLUDED.auth_key,
+        user_agent = EXCLUDED.user_agent,
+        device_label = EXCLUDED.device_label,
+        expiration_time = EXCLUDED.expiration_time,
+        is_active = TRUE,
+        updated_at = NOW()
+      RETURNING id
+    `,
+    [
+      input.adminId,
+      endpoint,
+      p256dhKey,
+      authKey,
+      readNullableString(input.userAgent),
+      readNullableString(input.deviceLabel),
+      input.subscription.expirationTime ?? null,
+    ]
+  );
+
+  emitNotificationUpdate(input.adminId, "push-subscription-updated");
+  return {
+    id: String(result.rows[0]?.id ?? ""),
+    endpoint,
+  };
+};
+
+export const disablePushSubscriptionForEndpoint = async (
+  adminId: number,
+  endpoint: string
+) => {
+  const pool = await getAnalyticsPool();
+  const result = await pool.query(
+    `
+      UPDATE admin_push_subscriptions
+      SET
+        is_active = FALSE,
+        updated_at = NOW()
+      WHERE admin_id = $1
+        AND endpoint = $2
+      RETURNING id
+    `,
+    [adminId, endpoint]
+  );
+
+  emitNotificationUpdate(adminId, "push-subscription-updated");
+  return result.rowCount > 0;
+};
+
+const sendPushForNotification = async (input: {
+  category: AdminNotificationCategory;
+  title: string;
+  targetUrl: string;
+  recipientAdminIds: number[];
+}) => {
+  if (!isWebPushConfigured() || input.recipientAdminIds.length === 0) {
+    return;
+  }
+
+  await Promise.allSettled(
+    input.recipientAdminIds.map(async (adminId) => {
+      const preferences = await getNotificationPreferences(adminId);
+      if (!preferences[input.category]) {
+        return;
+      }
+
+      const subscriptions = await listActivePushSubscriptions(adminId);
+      await Promise.allSettled(
+        subscriptions.map(async (subscription) => {
+          const result = await sendWebPushNotification(
+            {
+              endpoint: subscription.endpoint,
+              keys: {
+                p256dh: subscription.p256dhKey,
+                auth: subscription.authKey,
+              },
+            },
+            {
+              title: input.title,
+              body: buildPushMessageForCategory(input.category),
+              targetUrl: sanitizeTargetUrl(input.targetUrl),
+            }
+          );
+
+          if (result.shouldDeactivate) {
+            await deactivatePushSubscriptionById(subscription.id);
+          }
+        })
+      );
+    })
+  );
+};
+
+export const listNotifications = async (
+  adminId: number,
+  filters: ListNotificationsFilters = {}
+) => {
+  await syncNotifications();
+
+  const pool = await getAnalyticsPool();
+  const pageSize = Math.max(
+    1,
+    Math.min(Number(filters.pageSize ?? DEFAULT_PAGE_SIZE), MAX_PAGE_SIZE)
+  );
+  const page = Math.max(1, Number(filters.page ?? 1));
+  const values: unknown[] = [adminId];
+  const conditions = ["r.admin_id = $1"];
+
+  if (filters.archived === false) {
+    conditions.push("r.archived_at IS NULL");
+  } else if (filters.archived === true) {
+    conditions.push("r.archived_at IS NOT NULL");
+  }
+
+  if (filters.category) {
+    values.push(filters.category);
+    conditions.push(`e.category = $${values.length}`);
+  }
+
+  if (filters.type) {
+    values.push(filters.type);
+    conditions.push(`e.type = $${values.length}`);
+  }
+
+  if (filters.severity) {
+    values.push(filters.severity);
+    conditions.push(`e.severity = $${values.length}`);
+  }
+
+  if (filters.readStatus === "read") {
+    conditions.push("r.read_at IS NOT NULL");
+  } else if (filters.readStatus === "unread") {
+    conditions.push("r.read_at IS NULL");
+  }
+
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+  values.push(pageSize);
+  values.push((page - 1) * pageSize);
+
+  const itemsResult = await pool.query(
+    `
+      SELECT
+        r.id AS recipient_id,
+        r.notification_id,
+        r.admin_id,
+        (r.read_at IS NOT NULL) AS is_read,
+        (r.archived_at IS NOT NULL) AS is_archived,
+        r.read_at,
+        r.archived_at,
+        r.created_at,
+        r.updated_at,
+        e.type,
+        e.category,
+        e.title,
+        e.message,
+        e.severity,
+        e.target_url,
+        e.entity_type,
+        e.entity_id,
+        e.event_key,
+        e.metadata,
+        e.created_at AS event_created_at,
+        e.updated_at AS event_updated_at,
+        e.occurred_at
+      FROM admin_notification_recipients r
+      INNER JOIN admin_notification_events e
+        ON e.id = r.notification_id
+      ${whereClause}
+      ORDER BY e.occurred_at DESC, e.created_at DESC, r.id DESC
+      LIMIT $${values.length - 1}
+      OFFSET $${values.length}
+    `,
+    values
+  );
+
+  const countValues = values.slice(0, values.length - 2);
+  const countResult = await pool.query(
+    `
+      SELECT COUNT(*)::int AS total
+      FROM admin_notification_recipients r
+      INNER JOIN admin_notification_events e
+        ON e.id = r.notification_id
+      ${whereClause}
+    `,
+    countValues
+  );
+
+  return {
+    items: itemsResult.rows.map((row: Record<string, unknown>) =>
+      mapNotificationRow(row as unknown as NotificationRecipientRow)
+    ),
+    total: Number(countResult.rows[0]?.total ?? 0),
+    page,
+    pageSize,
+  };
+};
+
+export const getUnreadNotificationCount = async (adminId: number) => {
+  await syncNotifications();
+
+  const pool = await getAnalyticsPool();
+  const result = await pool.query(
+    `
+      SELECT COUNT(*)::int AS unread_count
+      FROM admin_notification_recipients
+      WHERE admin_id = $1
+        AND read_at IS NULL
+        AND archived_at IS NULL
+    `,
+    [adminId]
+  );
+
+  return Number(result.rows[0]?.unread_count ?? 0);
+};
+
+export const markNotificationAsRead = async (
+  adminId: number,
+  recipientId: string
+) => {
+  const pool = await getAnalyticsPool();
+  const result = await pool.query(
+    `
+      UPDATE admin_notification_recipients
+      SET
+        read_at = COALESCE(read_at, NOW()),
+        updated_at = NOW()
+      WHERE id = $1
+        AND admin_id = $2
+      RETURNING id
+    `,
+    [recipientId, adminId]
+  );
+
+  if (result.rowCount > 0) {
+    emitNotificationUpdate(adminId, "notification-read");
+    return true;
+  }
+
+  return false;
+};
+
+export const markAllNotificationsAsRead = async (adminId: number) => {
+  const pool = await getAnalyticsPool();
+  const result = await pool.query(
+    `
+      UPDATE admin_notification_recipients
+      SET
+        read_at = COALESCE(read_at, NOW()),
+        updated_at = NOW()
+      WHERE admin_id = $1
+        AND read_at IS NULL
+        AND archived_at IS NULL
+    `,
+    [adminId]
+  );
+
+  emitNotificationUpdate(adminId, "notifications-read-all");
+  return result.rowCount;
+};
+
+export const archiveNotification = async (
+  adminId: number,
+  recipientId: string
+) => {
+  const pool = await getAnalyticsPool();
+  const result = await pool.query(
+    `
+      UPDATE admin_notification_recipients
+      SET
+        archived_at = NOW(),
+        updated_at = NOW()
+      WHERE id = $1
+        AND admin_id = $2
+      RETURNING id
+    `,
+    [recipientId, adminId]
+  );
+
+  if (result.rowCount > 0) {
+    emitNotificationUpdate(adminId, "notification-archived");
+    return true;
+  }
+
+  return false;
+};
+
+export const registerNotificationStream = (
+  adminId: number,
+  response: Response
+) => {
+  const existingClients = sseClients.get(adminId) ?? new Set<Response>();
+  existingClients.add(response);
+  sseClients.set(adminId, existingClients);
+
+  response.write(
+    `event: ready\ndata: ${JSON.stringify({
+      unreadCount: 0,
+    })}\n\n`
+  );
+
+  return () => {
+    const clients = sseClients.get(adminId);
+    if (!clients) {
+      return;
+    }
+
+    clients.delete(response);
+    if (clients.size === 0) {
+      sseClients.delete(adminId);
+    }
+  };
+};
+
+export const emitNotificationUpdate = (
+  adminId: number,
+  eventType = "notifications-updated"
+) => {
+  const clients = sseClients.get(adminId);
+  if (!clients || clients.size === 0) {
+    return;
+  }
+
+  clients.forEach((client) => {
+    client.write(
+      `event: ${eventType}\ndata: ${JSON.stringify({
+        eventType,
+        at: new Date().toISOString(),
+      })}\n\n`
+    );
+  });
+};
+
+const broadcastRecipients = (adminIds: number[]) => {
+  adminIds.forEach((adminId) => emitNotificationUpdate(adminId));
 };
 
 const getNestedString = (
-  data: FirebaseFirestore.DocumentData,
+  data: Record<string, unknown>,
   path: string[]
 ) => {
   let current: unknown = data;
-
-  for (const key of path) {
+  for (const segment of path) {
     if (!current || typeof current !== "object") {
       return "";
     }
 
-    current = (current as Record<string, unknown>)[key];
+    current = (current as Record<string, unknown>)[segment];
   }
 
   return readString(current);
 };
 
-const SOURCE_CONFIGS: SourceConfig[] = [
-  {
-    collectionName: "vendor_profile",
-    route: "/vendors",
-    type: "vendor_joined",
-    icon: "vendor",
-    badgeColor: "success",
-    buildPayload: (docId, data) => {
-      const businessName = readString(data.businessName) || "Unnamed vendor";
-      const country = readString(data.country);
-      const contactEmail =
-        readString(data.contactEmail) || readString(data.email);
+const syncVendorNotifications = async () => {
+  const cursor = await getSyncState("vendors");
+  const query = firestore.collection("vendor_profile").orderBy("createdAt", "asc");
+  const snapshot = cursor
+    ? await query.startAfter(admin.firestore.Timestamp.fromDate(new Date(cursor))).get()
+    : await query.get();
 
-      return {
-        title: "New vendor joined",
-        message: [
-          businessName,
-          country ? `from ${country}` : "",
-          contactEmail ? `(${contactEmail})` : "",
-        ]
-          .filter(Boolean)
-          .join(" "),
-        entityLabel: businessName,
-        metadata: {
-          vendorId: docId,
-          businessName,
-          country,
-          contactEmail,
-        },
-      };
-    },
-  },
-  {
-    collectionName: "products",
-    route: "/products/pending",
-    type: "product_inserted",
-    icon: "product",
-    badgeColor: "primary",
-    buildPayload: (docId, data) => {
-      const productName =
-        getNestedString(data, ["vendor", "basic", "productName"]) ||
-        getNestedString(data, ["product", "title"]) ||
-        "Unnamed product";
-      const category =
-        getNestedString(data, ["vendor", "basic", "category"]) ||
-        getNestedString(data, ["product", "category"]);
-      const vendorId = readString(data.vendorId);
-
-      return {
-        title: "New product inserted",
-        message: [
-          productName,
-          category ? `in ${category}` : "",
-          vendorId ? `for vendor ${vendorId}` : "",
-        ]
-          .filter(Boolean)
-          .join(" "),
-        entityLabel: productName,
-        metadata: {
-          productId: docId,
-          productName,
-          category,
-          vendorId,
-        },
-      };
-    },
-  },
-  {
-    collectionName: "support_tickets",
-    route: "/support",
-    type: "support_ticket_generated",
-    icon: "ticket",
-    badgeColor: "warning",
-    buildPayload: (docId, data) => {
-      const ticketCode = readString(data.ticketCode) || docId;
-      const category = readString(data.category) || "General";
-      const vendorId = readString(data.vendorId);
-
-      return {
-        title: "New support ticket generated",
-        message: [
-          `Ticket ${ticketCode}`,
-          category ? `(${category})` : "",
-          vendorId ? `from vendor ${vendorId}` : "",
-        ]
-          .filter(Boolean)
-          .join(" "),
-        entityLabel: ticketCode,
-        metadata: {
-          ticketId: docId,
-          ticketCode,
-          category,
-          vendorId,
-        },
-      };
-    },
-  },
-];
-
-const mapNotificationDoc = (
-  doc: FirebaseFirestore.QueryDocumentSnapshot<FirebaseFirestore.DocumentData>
-): NotificationDocument => {
-  const data = doc.data();
-
-  return {
-    id: doc.id,
-    type: data.type as NotificationType,
-    title: readString(data.title),
-    message: readString(data.message),
-    entityLabel: readString(data.entityLabel),
-    sourceCollection: readString(data.sourceCollection),
-    sourceId: readString(data.sourceId),
-    relatedRoute: readString(data.relatedRoute) || null,
-    icon:
-      data.icon === "vendor" ||
-      data.icon === "product" ||
-      data.icon === "ticket"
-        ? data.icon
-        : "ticket",
-    badgeColor:
-      data.badgeColor === "success" ||
-      data.badgeColor === "warning" ||
-      data.badgeColor === "primary"
-        ? data.badgeColor
-        : "primary",
-    isRead: Boolean(data.isRead),
-    createdAt: toIsoString(data.createdAt),
-    updatedAt: toIsoString(data.updatedAt),
-    readAt: toIsoString(data.readAt),
-    eventAt: toIsoString(data.eventAt),
-    metadata:
-      (normalizeFirestoreValue(data.metadata) as Record<string, unknown>) ??
-      {},
-  };
-};
-
-const getNotificationDocumentId = (
-  type: NotificationType,
-  sourceId: string
-) => `${type}__${sourceId}`;
-
-const initializeSourceStateIfNeeded = async (
-  source: SourceConfig
-) => {
-  const stateRef = firestore
-    .collection(NOTIFICATION_SYNC_STATE_COLLECTION)
-    .doc(source.collectionName);
-  const stateSnapshot = await stateRef.get();
-
-  if (stateSnapshot.exists) {
-    return;
-  }
-
-  const now = timestampNow();
-
-  await stateRef.set({
-    collectionName: source.collectionName,
-    initializedAt: now,
-    lastProcessedAt: now,
-    lastSyncedAt: now,
-  });
-};
-
-const syncSourceNotifications = async (
-  source: SourceConfig
-) => {
-  await initializeSourceStateIfNeeded(source);
-
-  const stateRef = firestore
-    .collection(NOTIFICATION_SYNC_STATE_COLLECTION)
-    .doc(source.collectionName);
-  const stateSnapshot = await stateRef.get();
-  const lastProcessedAt =
-    (stateSnapshot.data()?.lastProcessedAt as
-      | admin.firestore.Timestamp
-      | undefined) ?? timestampNow();
-
-  const snapshot = await firestore
-    .collection(source.collectionName)
-    .where("createdAt", ">", lastProcessedAt)
-    .orderBy("createdAt", "asc")
-    .get();
-
+  let latestCursor = cursor;
   let createdCount = 0;
-  let newestProcessedAt = lastProcessedAt;
 
-  for (const sourceDoc of snapshot.docs) {
-    const data = sourceDoc.data();
-    const eventAt =
-      data.createdAt instanceof admin.firestore.Timestamp
-        ? data.createdAt
-        : timestampNow();
+  for (const doc of snapshot.docs) {
+    const data = doc.data() as Record<string, unknown>;
+    const createdAt = toDate(data.createdAt) ?? new Date();
+    const vendorName =
+      readString(data.businessName) || "Unnamed vendor";
+    const result = await createNotificationEvent({
+      type: "vendor.registered",
+      category: "vendors",
+      title: "New Vendor Registered",
+      message: `${vendorName} has registered as a vendor.`,
+      severity: "success",
+      targetUrl: `/vendors?vendorId=${encodeURIComponent(doc.id)}`,
+      entityType: "vendor",
+      entityId: doc.id,
+      eventKey: `vendor.registered:${doc.id}`,
+      metadata: {
+        vendorId: doc.id,
+        vendorName,
+        onboardingStatus: readNullableString(data.onboardingStatus),
+      },
+      occurredAt: createdAt,
+    });
 
-    if (eventAt.toMillis() > newestProcessedAt.toMillis()) {
-      newestProcessedAt = eventAt;
+    if (result.created) {
+      createdCount += 1;
+      broadcastRecipients(result.recipientAdminIds);
+      void sendPushForNotification({
+        category: result.category,
+        title: result.title,
+        targetUrl: result.targetUrl,
+        recipientAdminIds: result.recipientAdminIds,
+      });
     }
 
-    const payload = source.buildPayload(sourceDoc.id, data);
-    const notificationId = getNotificationDocumentId(
-      source.type,
-      sourceDoc.id
+    latestCursor = createdAt.toISOString();
+  }
+
+  if (latestCursor) {
+    await withAnalyticsTransaction((client) =>
+      setSyncState(client, "vendors", latestCursor as string)
     );
-    const notificationRef = firestore
-      .collection(NOTIFICATIONS_COLLECTION)
-      .doc(notificationId);
+  }
 
-    try {
-      await notificationRef.create({
-        type: source.type,
-        title: payload.title,
-        message: payload.message,
-        entityLabel: payload.entityLabel,
-        sourceCollection: source.collectionName,
-        sourceId: sourceDoc.id,
-        relatedRoute: source.route,
-        icon: source.icon,
-        badgeColor: source.badgeColor,
-        isRead: false,
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        readAt: null,
-        eventAt,
-        metadata: payload.metadata,
-      });
+  return createdCount;
+};
 
+const resolveProductSubmissionVersion = (
+  data: Record<string, unknown>
+) => {
+  const explicitSubmissionDate =
+    toIsoString(
+      data.resubmittedAt ??
+        data.submittedAt ??
+        data.reviewSubmittedAt ??
+        data.pendingSince
+    ) ?? null;
+
+  return explicitSubmissionDate || toIsoString(data.createdAt) || "unknown";
+};
+
+const syncProductNotifications = async () => {
+  const cursor = await getSyncState("products");
+  const query = firestore.collection("products").orderBy("updatedAt", "asc");
+  const snapshot = cursor
+    ? await query.startAfter(admin.firestore.Timestamp.fromDate(new Date(cursor))).get()
+    : await query.get();
+
+  let latestCursor = cursor;
+  let createdCount = 0;
+
+  for (const doc of snapshot.docs) {
+    const data = doc.data() as Record<string, unknown>;
+    const lifecycleStatus = readString(
+      data.lifecycleStatus ?? data.status
+    ).toLowerCase();
+    if (lifecycleStatus !== "pending") {
+      latestCursor = toIsoString(data.updatedAt) ?? latestCursor;
+      continue;
+    }
+
+    const occurredAt = toDate(data.updatedAt ?? data.createdAt) ?? new Date();
+    const productName =
+      getNestedString(data, ["vendor", "basic", "productName"]) ||
+      getNestedString(data, ["product", "title"]) ||
+      "Unnamed product";
+    const vendorName =
+      getNestedString(data, ["vendorResolved", "businessName"]) ||
+      getNestedString(data, ["vendor", "companyName"]) ||
+      readString(data.vendorId) ||
+      "Unknown vendor";
+    const submissionVersion = resolveProductSubmissionVersion(data);
+
+    if (submissionVersion === "unknown") {
+      latestCursor = occurredAt.toISOString();
+      continue;
+    }
+
+    const result = await createNotificationEvent({
+      type: "product.submitted",
+      category: "products",
+      title: "New Product Awaiting Review",
+      message: `${productName} was submitted by ${vendorName}.`,
+      severity: "info",
+      targetUrl: `/products/pending?productId=${encodeURIComponent(doc.id)}`,
+      entityType: "product",
+      entityId: doc.id,
+      eventKey: `product.submitted:${doc.id}:${submissionVersion}`,
+      metadata: {
+        productId: doc.id,
+        productName,
+        vendorName,
+        vendorId: readNullableString(data.vendorId),
+        submissionVersion,
+      },
+      occurredAt,
+    });
+
+    if (result.created) {
       createdCount += 1;
+      broadcastRecipients(result.recipientAdminIds);
+      void sendPushForNotification({
+        category: result.category,
+        title: result.title,
+        targetUrl: result.targetUrl,
+        recipientAdminIds: result.recipientAdminIds,
+      });
+    }
 
-      try {
-        await sendNotificationEmail({
-          type: source.type,
-          title: payload.title,
-          message: payload.message,
-          occurredAt: eventAt.toDate().toISOString(),
-          sourceId: sourceDoc.id,
-          relatedRoute: source.route,
-        });
-      } catch (emailError) {
-        console.error(
-          `[notifications] Failed to send email for ${notificationId}:`,
-          emailError
-        );
-      }
-    } catch (error: any) {
-      if (error?.code === 6 || error?.code === "already-exists") {
-        continue;
-      }
+    latestCursor = occurredAt.toISOString();
+  }
 
-      throw error;
+  if (latestCursor) {
+    await withAnalyticsTransaction((client) =>
+      setSyncState(client, "products", latestCursor as string)
+    );
+  }
+
+  return createdCount;
+};
+
+const syncUserNotifications = async () => {
+  const cursor = await getSyncState("users");
+  const pool = getUserPortalPool();
+  const values: unknown[] = [];
+  let whereClause = "";
+
+  if (cursor) {
+    values.push(cursor);
+    whereClause = "WHERE created_at > $1::timestamp";
+  }
+
+  const result = await pool.query(
+    `
+      SELECT id, full_name, email, created_at
+      FROM users
+      ${whereClause}
+      ORDER BY created_at ASC
+    `,
+    values
+  );
+
+  let latestCursor = cursor;
+  let createdCount = 0;
+
+  for (const row of result.rows) {
+    const createdAt = toDate(row.created_at) ?? new Date();
+    const userLabel =
+      readString(row.full_name) || readString(row.email) || "New user";
+    const notificationResult = await createNotificationEvent({
+      type: "user.registered",
+      category: "users",
+      title: "New User Registered",
+      message: `${userLabel} created a new account.`,
+      severity: "success",
+      targetUrl: "/users",
+      entityType: "user",
+      entityId: readNullableString(row.id),
+      eventKey: `user.registered:${readString(row.id)}`,
+      metadata: {
+        userId: readNullableString(row.id),
+        userName: readNullableString(row.full_name),
+        email: readNullableString(row.email),
+      },
+      occurredAt: createdAt,
+    });
+
+    if (notificationResult.created) {
+      createdCount += 1;
+      broadcastRecipients(notificationResult.recipientAdminIds);
+      void sendPushForNotification({
+        category: notificationResult.category,
+        title: notificationResult.title,
+        targetUrl: notificationResult.targetUrl,
+        recipientAdminIds: notificationResult.recipientAdminIds,
+      });
+    }
+
+    latestCursor = createdAt.toISOString();
+  }
+
+  if (latestCursor) {
+    await withAnalyticsTransaction((client) =>
+      setSyncState(client, "users", latestCursor as string)
+    );
+  }
+
+  return createdCount;
+};
+
+const syncGuestReportNotifications = async () => {
+  const cursor = await getSyncState("guest_reports");
+  const pool = getUserPortalPool();
+  const values: unknown[] = [];
+  let whereClause = "";
+
+  if (cursor) {
+    values.push(cursor);
+    whereClause = `
+      WHERE COALESCE(gr.report_generated_at, gr.created_at) > $1::timestamp
+    `;
+  }
+
+  const result = await pool.query(
+    `
+      SELECT
+        gr.id,
+        gr.report_type,
+        gr.normalized_domain,
+        gr.website,
+        gr.created_at,
+        gr.report_generated_at
+      FROM guest_report gr
+      ${whereClause ? `${whereClause} AND` : "WHERE"}
+      (
+        gr.report_generated_at IS NOT NULL
+        OR EXISTS (
+          SELECT 1
+          FROM guest_activity_events e
+          WHERE e.guest_report_id = gr.id
+            AND e.event_name = ANY($${values.length + 1}::text[])
+        )
+      )
+      ORDER BY COALESCE(gr.report_generated_at, gr.created_at) ASC
+    `,
+    [...values, Array.from(GENERATED_GUEST_REPORT_EVENT_NAMES)]
+  );
+
+  let latestCursor = cursor;
+  let createdCount = 0;
+
+  for (const row of result.rows as Array<Record<string, unknown>>) {
+    const occurredAt =
+      toDate(row.report_generated_at ?? row.created_at) ?? new Date();
+    const reportType = readString(row.report_type) || "Guest Report";
+    const domain =
+      readString(row.normalized_domain) || readString(row.website) || "unknown domain";
+
+    const notificationResult = await createNotificationEvent({
+      type: "guest-report.generated",
+      category: "guest_reports",
+      title: "New Guest Report Generated",
+      message: `A guest generated a ${reportType} for ${domain}.`,
+      severity: "info",
+      targetUrl: "/users/guest-users",
+      entityType: "guest_report",
+      entityId: readNullableString(row.id),
+      eventKey: `guest-report.generated:${readString(row.id)}`,
+      metadata: {
+        guestReportId: readNullableString(row.id),
+        reportType,
+        domain,
+      },
+      occurredAt,
+    });
+
+    if (notificationResult.created) {
+      createdCount += 1;
+      broadcastRecipients(notificationResult.recipientAdminIds);
+      void sendPushForNotification({
+        category: notificationResult.category,
+        title: notificationResult.title,
+        targetUrl: notificationResult.targetUrl,
+        recipientAdminIds: notificationResult.recipientAdminIds,
+      });
+    }
+
+    latestCursor = occurredAt.toISOString();
+  }
+
+  if (latestCursor) {
+    await withAnalyticsTransaction((client) =>
+      setSyncState(client, "guest_reports", latestCursor as string)
+    );
+  }
+
+  return createdCount;
+};
+
+const mapPaymentTransactionToNotification = async (
+  row: Record<string, unknown>
+) => {
+  const eventType = readString(row.event_type).toLowerCase();
+  const gateway = readString(row.gateway) || "unknown";
+  const orderId = readString(row.order_id);
+  const userId = readString(row.user_id);
+  const userLabel =
+    readString(row.full_name) || readString(row.email) || "Unknown customer";
+  const planName = readString(row.plan_name) || "Plan";
+  const amount = readNumber(row.total_amount, readNumber(row.amount_paid, 0));
+  const currencyCode = readString(row.currency_code) || "INR";
+  const targetUrl = "/users";
+  const providerEventKey = `${readString(row.id)}:${readString(row.status)}`;
+
+  if (eventType === "payment_verified") {
+    return {
+      type: "payment.succeeded" as const,
+      title: "Payment Successful",
+      message: `${formatCurrency(amount, currencyCode)} received from ${userLabel} for ${planName}.`,
+      severity: "success" as const,
+      eventKey: `payment:${gateway}:${providerEventKey}`,
+      targetUrl,
+      entityId: orderId,
+      metadata: {
+        orderId,
+        userId,
+        customerName: readNullableString(row.full_name),
+        email: readNullableString(row.email),
+        amount,
+        currencyCode,
+        paymentPurpose: planName,
+        provider: gateway,
+        status: readNullableString(row.status),
+      },
+    };
+  }
+
+  if (eventType === "order_created" || eventType === "gateway_order_created") {
+    return {
+      type: "payment.initiated" as const,
+      title: "Payment Initiated",
+      message: `${userLabel} started a ${formatCurrency(amount, currencyCode)} payment for ${planName}.`,
+      severity: "info" as const,
+      eventKey: `payment:${gateway}:${providerEventKey}`,
+      targetUrl,
+      entityId: orderId,
+      metadata: {
+        orderId,
+        userId,
+        customerName: readNullableString(row.full_name),
+        email: readNullableString(row.email),
+        amount,
+        currencyCode,
+        paymentPurpose: planName,
+        provider: gateway,
+        status: readNullableString(row.status),
+      },
+    };
+  }
+
+  return null;
+};
+
+const syncPaymentTransactionNotifications = async () => {
+  const cursor = await getSyncState("payments");
+  const pool = getUserPortalPool();
+  const values: unknown[] = [];
+  let whereClause = "";
+
+  if (cursor) {
+    values.push(cursor);
+    whereClause = "WHERE t.created_at > $1::timestamp";
+  }
+
+  const result = await pool.query(
+    `
+      SELECT
+        t.id,
+        t.order_id,
+        t.user_id,
+        t.gateway,
+        t.event_type,
+        t.status,
+        t.currency_code,
+        t.total_amount,
+        o.plan_name,
+        o.amount_paid,
+        u.full_name,
+        u.email,
+        t.created_at
+      FROM user_plan_payment_transactions t
+      INNER JOIN user_plan_orders o
+        ON o.id = t.order_id
+      INNER JOIN users u
+        ON u.id = t.user_id
+      ${whereClause}
+      ORDER BY t.created_at ASC
+    `,
+    values
+  );
+
+  let latestCursor = cursor;
+  let createdCount = 0;
+
+  for (const row of result.rows) {
+    const notification = await mapPaymentTransactionToNotification(row);
+    const occurredAt = toDate(row.created_at) ?? new Date();
+    if (!notification) {
+      latestCursor = occurredAt.toISOString();
+      continue;
+    }
+
+    const notificationResult = await createNotificationEvent({
+      type: notification.type,
+      category: "payments",
+      title: notification.title,
+      message: notification.message,
+      severity: notification.severity,
+      targetUrl: notification.targetUrl,
+      entityType: "payment_order",
+      entityId: notification.entityId,
+      eventKey: notification.eventKey,
+      metadata: notification.metadata,
+      occurredAt,
+    });
+
+    if (notificationResult.created) {
+      createdCount += 1;
+      broadcastRecipients(notificationResult.recipientAdminIds);
+      void sendPushForNotification({
+        category: notificationResult.category,
+        title: notificationResult.title,
+        targetUrl: notificationResult.targetUrl,
+        recipientAdminIds: notificationResult.recipientAdminIds,
+      });
+    }
+
+    latestCursor = occurredAt.toISOString();
+  }
+
+  if (latestCursor) {
+    await withAnalyticsTransaction((client) =>
+      setSyncState(client, "payments", latestCursor as string)
+    );
+  }
+
+  return createdCount;
+};
+
+const syncPaymentOrderStatusNotifications = async () => {
+  const cursor = await getSyncState("payment_order_status");
+  const pool = getUserPortalPool();
+  const values: unknown[] = [];
+  let whereClause = "";
+
+  if (cursor) {
+    values.push(cursor);
+    whereClause = "WHERE o.updated_at > $1::timestamp";
+  }
+
+  const result = await pool.query(
+    `
+      SELECT
+        o.id,
+        o.user_id,
+        o.plan_name,
+        o.gateway,
+        o.currency_code,
+        o.total_amount,
+        o.amount_paid,
+        o.status,
+        o.updated_at,
+        u.full_name,
+        u.email
+      FROM user_plan_orders o
+      INNER JOIN users u
+        ON u.id = o.user_id
+      ${whereClause}
+      ORDER BY o.updated_at ASC
+    `,
+    values
+  );
+
+  let latestCursor = cursor;
+  let createdCount = 0;
+
+  for (const row of result.rows) {
+    const status = readString(row.status).toLowerCase();
+    const occurredAt = toDate(row.updated_at) ?? new Date();
+    latestCursor = occurredAt.toISOString();
+
+    if (!PAYMENT_FAILURE_STATUSES.has(status)) {
+      continue;
+    }
+
+    const amount = readNumber(row.total_amount, readNumber(row.amount_paid, 0));
+    const currencyCode = readString(row.currency_code) || "INR";
+    const userLabel =
+      readString(row.full_name) || readString(row.email) || "Unknown customer";
+    const planName = readString(row.plan_name) || "Plan";
+
+    const notificationResult = await createNotificationEvent({
+      type: "payment.failed",
+      category: "payments",
+      title: "Payment Failed",
+      message: `${formatCurrency(amount, currencyCode)} from ${userLabel} for ${planName} is ${status.replace(/_/g, " ")}.`,
+      severity: "error",
+      targetUrl: "/users",
+      entityType: "payment_order",
+      entityId: readNullableString(row.id),
+      eventKey: `payment:${readString(row.gateway)}:${readString(row.id)}:${status}`,
+      metadata: {
+        orderId: readNullableString(row.id),
+        userId: readNullableString(row.user_id),
+        customerName: readNullableString(row.full_name),
+        email: readNullableString(row.email),
+        amount,
+        currencyCode,
+        paymentPurpose: planName,
+        provider: readNullableString(row.gateway),
+        status,
+      },
+      occurredAt,
+    });
+
+    if (notificationResult.created) {
+      createdCount += 1;
+      broadcastRecipients(notificationResult.recipientAdminIds);
+      void sendPushForNotification({
+        category: notificationResult.category,
+        title: notificationResult.title,
+        targetUrl: notificationResult.targetUrl,
+        recipientAdminIds: notificationResult.recipientAdminIds,
+      });
     }
   }
 
-  await stateRef.set(
-    {
-      lastProcessedAt: newestProcessedAt,
-      lastSyncedAt: timestampNow(),
-    },
-    { merge: true }
-  );
+  if (latestCursor) {
+    await withAnalyticsTransaction((client) =>
+      setSyncState(client, "payment_order_status", latestCursor as string)
+    );
+  }
 
   return createdCount;
 };
@@ -383,109 +1474,57 @@ export async function syncNotifications({
 }: {
   force?: boolean;
 } = {}) {
-  const now = Date.now();
-
-  if (
-    !force &&
-    notificationsSyncPromise &&
-    now - lastNotificationsSyncStartedAt < NOTIFICATION_SYNC_COOLDOWN_MS
-  ) {
-    return notificationsSyncPromise;
+  if (syncPromise && !force) {
+    return syncPromise;
   }
 
-  if (
-    !force &&
-    !notificationsSyncPromise &&
-    now - lastNotificationsSyncStartedAt < NOTIFICATION_SYNC_COOLDOWN_MS
-  ) {
-    return { createdCount: 0 };
-  }
-
-  lastNotificationsSyncStartedAt = now;
-  notificationsSyncPromise = (async () => {
+  syncPromise = (async () => {
     let createdCount = 0;
 
-    for (const source of SOURCE_CONFIGS) {
-      createdCount += await syncSourceNotifications(source);
-    }
+    createdCount += await syncVendorNotifications();
+    createdCount += await syncProductNotifications();
+    createdCount += await syncUserNotifications();
+    createdCount += await syncGuestReportNotifications();
+    createdCount += await syncPaymentTransactionNotifications();
+    createdCount += await syncPaymentOrderStatusNotifications();
 
     return { createdCount };
   })();
 
   try {
-    return await notificationsSyncPromise;
+    return await syncPromise;
   } finally {
-    notificationsSyncPromise = null;
+    syncPromise = null;
   }
 }
 
-export async function listNotifications(limit = 50) {
-  const clampedLimit = Math.max(1, Math.min(limit, 100));
-  const snapshot = await firestore
-    .collection(NOTIFICATIONS_COLLECTION)
-    .orderBy("eventAt", "desc")
-    .limit(clampedLimit)
-    .get();
-
-  return snapshot.docs.map(mapNotificationDoc);
-}
-
-export async function getUnreadNotificationCount() {
-  const snapshot = await firestore
-    .collection(NOTIFICATIONS_COLLECTION)
-    .where("isRead", "==", false)
-    .count()
-    .get();
-
-  return Number(snapshot.data().count ?? 0);
-}
-
-export async function markNotificationAsRead(
-  notificationId: string
-) {
-  const notificationRef = firestore
-    .collection(NOTIFICATIONS_COLLECTION)
-    .doc(notificationId);
-  const snapshot = await notificationRef.get();
-
-  if (!snapshot.exists) {
-    return false;
+export const startNotificationsSyncLoop = () => {
+  if (syncIntervalHandle) {
+    return;
   }
 
-  if (snapshot.data()?.isRead) {
-    return true;
-  }
-
-  await notificationRef.update({
-    isRead: true,
-    readAt: admin.firestore.FieldValue.serverTimestamp(),
-    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  void syncNotifications().catch((error) => {
+    console.error(
+      "Initial notification sync failed:",
+      error instanceof Error ? error.message : String(error)
+    );
   });
 
-  return true;
-}
-
-export async function markAllNotificationsAsRead() {
-  const unreadSnapshot = await firestore
-    .collection(NOTIFICATIONS_COLLECTION)
-    .where("isRead", "==", false)
-    .get();
-
-  if (unreadSnapshot.empty) {
-    return 0;
-  }
-
-  const batch = firestore.batch();
-
-  unreadSnapshot.docs.forEach((doc) => {
-    batch.update(doc.ref, {
-      isRead: true,
-      readAt: admin.firestore.FieldValue.serverTimestamp(),
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  syncIntervalHandle = setInterval(() => {
+    void syncNotifications().catch((error) => {
+      console.error(
+        "Notification sync failed:",
+        error instanceof Error ? error.message : String(error)
+      );
     });
-  });
+  }, NOTIFICATION_SYNC_INTERVAL_MS);
+};
 
-  await batch.commit();
+export const getPushPublicKey = () => getWebPushPublicKey();
 
-  return unreadSnapshot.size;
-}
+export const getPushStatus = async (adminId: number) => ({
+  supported: isWebPushConfigured(),
+  publicKey: getWebPushPublicKey(),
+  preferences: await getNotificationPreferences(adminId),
+  subscriptions: await listActivePushSubscriptions(adminId),
+});

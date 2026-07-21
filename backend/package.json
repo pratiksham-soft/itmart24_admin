@@ -15,7 +15,7 @@
     "shopify:sync-rankings": "ts-node src/scripts/syncProductRanking.ts",
     "generate:cloud-services-leads": "ts-node src/scripts/generateCloudServicesCrmLeadsCsv.ts",
     "cleanup:map-scraper-leads": "ts-node --transpile-only src/scripts/cleanupMapScraperMarketingLeads.ts",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node --require ts-node/register --test tests/**/*.test.js"
   },
   "keywords": [],
   "author": "",
@@ -23,6 +23,7 @@
   "dependencies": {
     "@types/multer": "^2.1.0",
     "@types/nodemailer": "^8.0.0",
+    "@types/web-push": "^3.6.4",
     "axios": "^1.13.3",
     "bcrypt": "^6.0.0",
     "cors": "^2.8.6",
@@ -37,7 +38,8 @@
     "mailparser": "^3.9.8",
     "multer": "^2.1.1",
     "nodemailer": "^8.0.5",
-    "pg": "^8.20.0"
+    "pg": "^8.20.0",
+    "web-push": "^3.6.7"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",

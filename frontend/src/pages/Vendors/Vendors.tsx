@@ -1,4 +1,5 @@
 import { type FormEvent, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router";
 import ComponentCard from "../../components/common/ComponentCard";
 import { Modal } from "../../components/ui/modal";
 import {
@@ -148,6 +149,7 @@ const DeleteVendorModal = ({
 };
 
 const Vendors = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -180,6 +182,15 @@ const Vendors = () => {
   useEffect(() => {
     fetchVendors();
   }, []);
+
+  useEffect(() => {
+    const vendorIdFromQuery = searchParams.get("vendorId");
+    if (!vendorIdFromQuery) {
+      return;
+    }
+
+    setSelectedVendorId(vendorIdFromQuery);
+  }, [searchParams]);
 
   const filteredVendors = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -461,7 +472,15 @@ const Vendors = () => {
       <VendorDetailsModal
         isOpen={selectedVendorId !== null}
         vendorId={selectedVendorId}
-        onClose={() => setSelectedVendorId(null)}
+        onClose={() => {
+          setSelectedVendorId(null);
+
+          if (searchParams.get("vendorId")) {
+            const nextSearchParams = new URLSearchParams(searchParams);
+            nextSearchParams.delete("vendorId");
+            setSearchParams(nextSearchParams, { replace: true });
+          }
+        }}
         onUpdated={fetchVendors}
       />
 
