@@ -1,0 +1,579 @@
+Implement a complete visitor analytics feature across these three projects:
+
+Admin dashboard:
+D:\IT MART24\System_Programs\itmart24_admin
+
+Tracked applications:
+D:\IT MART24\System_Programs\user_portal
+D:\IT MART24\System_Programs\vendor_portal
+
+Goal
+
+Add a new “Visitors” menu under the existing “Dashboard” menu in the ITMart24 Admin project. It must collect and display visitor activity from every public and authenticated page of both the User Portal and Vendor Portal.
+
+The feature must support:
+
+1. Live visitors
+2. Today’s visitors
+3. Last 7 days’ visitors
+4. All visitors
+5. Visitor locations
+6. Page-level analytics
+7. Separate User Portal and Vendor Portal reporting
+
+Before implementation
+
+1. Read the existing architecture, authentication, database models, routing, layouts, sidebar/menu configuration, API conventions, environment configuration and documentation in all three projects.
+2. Find any existing analytics, activity logging, session tracking, audit-log or notification implementation that can be reused.
+3. Follow the existing design system and coding conventions.
+4. Do not replace or break existing authentication, middleware, layouts, routes or analytics integrations.
+5. Do not install a large third-party analytics platform unless the existing project already uses one.
+6. Prefer first-party visitor tracking stored in the existing database.
+7. Do not expose database credentials, IP addresses or sensitive tracking information to frontend applications.
+8. Update the relevant project documentation after implementation.
+9. If Documentation/prompt.txt and Documentation/issues.txt exist, read and follow them. Record genuine restrictions or unresolved problems in issues.txt.
+
+Navigation structure
+
+Under the existing “Dashboard” menu, add:
+
+Visitors
+├── Live Visitors
+├── Today
+├── Last 7 Days
+├── All Visitors
+├── Locations
+└── Pages
+
+If the current sidebar works better with a single parent page and tabs, use:
+
+Dashboard
+└── Visitors
+
+Tabs inside the Visitors page:
+
+- Overview
+- Live
+- Today
+- Last 7 Days
+- All Visitors
+- Locations
+- Pages
+
+Use the navigation pattern that best matches the current Admin project. Do not overcrowd the sidebar.
+
+Suggested routes
+
+Use the project’s existing route conventions. Suitable routes may include:
+
+- /dashboard/visitors
+- /dashboard/visitors/live
+- /dashboard/visitors/today
+- /dashboard/visitors/last-7-days
+- /dashboard/visitors/all
+- /dashboard/visitors/locations
+- /dashboard/visitors/pages
+
+Access control
+
+- Restrict visitor analytics to authenticated Admin users.
+- Reuse existing Admin permissions/RBAC.
+- If granular permissions exist, add a permission such as `visitors.view`.
+- Never expose this analytics interface through the User Portal or Vendor Portal.
+- Tracking ingestion endpoints must be secured against abuse but must still support anonymous visitors.
+
+Visitor tracking requirements
+
+Instrument both User Portal and Vendor Portal globally so all pages are tracked without manually editing every page.
+
+Add the tracking component or hook at the highest suitable application layout/router level.
+
+Track:
+
+- Portal: `user_portal` or `vendor_portal`
+- Anonymous visitor ID
+- Session ID
+- Authenticated user/vendor ID when available
+- Visitor type: anonymous, user or vendor
+- Page URL/path
+- Page title
+- Referrer
+- Landing page
+- Previous internal page when available
+- UTM source
+- UTM medium
+- UTM campaign
+- UTM term
+- UTM content
+- Device category: desktop, mobile or tablet
+- Browser family
+- Operating system
+- Screen resolution
+- Preferred language
+- First visit timestamp
+- Current session start
+- Page-view timestamp
+- Last activity timestamp
+- Session duration
+- Page duration where reasonably measurable
+- Entry page
+- Exit page
+- Country
+- Region/state
+- City
+- Approximate latitude and longitude when supplied by IP geolocation
+- Bot/suspicious traffic status
+- IP address only on the trusted server side if genuinely required
+
+Do not request browser GPS/location permission. Location must be approximate and derived server-side from the request IP or trusted proxy/CDN geolocation headers.
+
+Privacy requirements
+
+- Generate an anonymous first-party visitor ID.
+- Do not fingerprint visitors using invasive techniques.
+- Do not collect form contents, passwords, OTPs, payment details, query values containing sensitive information or typed text.
+- Remove or redact sensitive URL parameters before storing URLs.
+- Respect the project’s consent/cookie mechanism if one exists.
+- If there is no consent system, use only strictly limited first-party analytics storage and document the behavior.
+- Provide a configurable data-retention period.
+- Prefer hashing or anonymizing IP addresses after geolocation.
+- Never show full IP addresses in the Admin UI. If IP display is necessary, show only a masked version.
+- Add an environment-controlled way to disable tracking.
+- Exclude Admin project traffic.
+- Exclude known health checks, static assets, crawlers and development traffic where appropriate.
+
+Unique visitor and live visitor definitions
+
+Use clear, consistent definitions:
+
+- Page view: one successfully recorded page navigation/view.
+- Unique visitor: distinct first-party anonymous visitor ID, with authenticated ID used as an additional association rather than the only identity.
+- Session: a group of activity separated by no more than 30 minutes of inactivity.
+- Live visitor: a session with activity or heartbeat received within the last 5 minutes.
+- Today: use the Admin-configured timezone; default to Asia/Kolkata.
+- Last 7 Days: today plus the preceding six calendar days in the configured timezone.
+
+Persist these definitions in shared constants/configuration so backend and frontend calculations remain consistent.
+
+SPA navigation and live presence
+
+Both portals may use client-side navigation. Track:
+
+- Initial page load
+- Every valid SPA route change
+- Browser back/forward navigation
+- Session heartbeat approximately every 30–60 seconds while the page is visible
+- Visibility changes
+- Page exit using `navigator.sendBeacon()` where supported, with a safe fallback
+
+Avoid duplicate page views caused by React Strict Mode, rerenders or repeated mounting.
+
+Do not send excessive heartbeat requests. Pause heartbeats when the page is hidden and resume safely when it becomes active.
+
+Backend/API implementation
+
+Create secure analytics ingestion APIs that both portals can call.
+
+Suggested endpoints, adjusted to existing conventions:
+
+Public ingestion:
+
+- POST /api/analytics/visitor/session
+- POST /api/analytics/visitor/page-view
+- POST /api/analytics/visitor/heartbeat
+- POST /api/analytics/visitor/exit
+
+Admin reporting:
+
+- GET /api/admin/visitors/summary
+- GET /api/admin/visitors/live
+- GET /api/admin/visitors
+- GET /api/admin/visitors/locations
+- GET /api/admin/visitors/pages
+- GET /api/admin/visitors/trends
+- GET /api/admin/visitors/:visitorId
+- GET /api/admin/visitors/sessions/:sessionId
+
+It is acceptable to consolidate ingestion calls where this better matches the project architecture.
+
+Protect public ingestion endpoints with:
+
+- Strict schema validation
+- Payload-size limits
+- Rate limiting
+- Allowed portal/origin validation
+- Server-generated timestamps
+- Safe URL normalization
+- Bot filtering
+- Duplicate-event protection
+- No trust in client-supplied IP address or identity
+- CORS configuration limited to the User Portal and Vendor Portal domains
+- Idempotency/event IDs where useful
+
+If portals and Admin do not share the same backend, implement a secure documented ingestion mechanism into the service/database used by the Admin project. Do not directly expose the Admin database to either portal frontend.
+
+Database design
+
+Create normalized, indexed models/tables using the existing ORM and migration system.
+
+Possible entities:
+
+Visitor
+- id
+- anonymousVisitorId
+- firstSeenAt
+- lastSeenAt
+- firstPortal
+- lastPortal
+- associatedUserId nullable
+- associatedVendorId nullable
+- countryCode
+- countryName
+- region
+- city
+- latitude nullable
+- longitude nullable
+- deviceCategory
+- browser
+- operatingSystem
+- language
+- maskedIp or ipHash
+- isBot
+- createdAt
+- updatedAt
+
+VisitorSession
+- id
+- visitorId
+- portal
+- startedAt
+- lastActivityAt
+- endedAt nullable
+- landingPath
+- exitPath nullable
+- referrer
+- utm fields
+- pageViewCount
+- durationSeconds
+- currentPath nullable
+- isLive
+- createdAt
+- updatedAt
+
+VisitorPageView
+- id
+- sessionId
+- visitorId
+- portal
+- path
+- normalizedUrl
+- pageTitle
+- viewedAt
+- exitedAt nullable
+- durationSeconds nullable
+- eventId
+- createdAt
+
+Adapt these fields to the current database and ORM. Avoid unnecessary duplication.
+
+Add indexes for:
+
+- lastActivityAt
+- viewedAt
+- portal
+- country/city
+- visitorId
+- sessionId
+- path
+- authenticated user/vendor IDs
+- compound date-and-portal queries
+
+Do not run destructive migrations. Preserve all existing data.
+
+IP and location detection
+
+Resolve the real client IP only from trusted infrastructure:
+
+- Use the direct request address by default.
+- Use `X-Forwarded-For`, `CF-Connecting-IP` or similar headers only when the corresponding reverse proxy/CDN is explicitly trusted.
+- Never blindly trust arbitrary forwarded headers.
+
+For location:
+
+1. Prefer location headers already supplied by the trusted CDN or hosting platform.
+2. Otherwise use an appropriate server-side IP geolocation provider or local GeoIP database.
+3. Cache lookup results to prevent repeated external calls.
+4. If no provider is configured, save location as “Unknown” without failing visitor tracking.
+5. Document required environment variables.
+6. Do not fabricate location data.
+7. Do not perform geolocation lookups for private, loopback or invalid IP addresses.
+
+Admin Visitors overview
+
+Create a polished dashboard matching the existing Admin UI.
+
+Summary cards:
+
+- Live visitors now
+- Unique visitors today
+- Visits/sessions today
+- Page views today
+- Unique visitors in last 7 days
+- New visitors
+- Returning visitors
+- Average session duration
+- Bounce rate
+
+Where bounce rate is shown, define it consistently, such as sessions containing only one page view and no meaningful subsequent activity.
+
+Charts:
+
+- Visitors over time
+- Page views over time
+- User Portal vs Vendor Portal
+- New vs returning visitors
+- Device distribution
+- Top countries
+- Top cities
+- Top pages
+- Top referrers
+- UTM campaign performance
+
+Use the chart library already installed in the Admin project. Do not introduce a second charting library without a strong reason.
+
+Live Visitors page
+
+Display currently active visitors with automatic refresh or real-time updates.
+
+Columns:
+
+- Live status
+- Portal
+- Current page
+- Location
+- Visitor type
+- Associated user/vendor when available
+- Device
+- Browser
+- Referrer/source
+- Session started
+- Last activity
+- Page views in session
+
+Features:
+
+- Refresh every 15–30 seconds if WebSockets or SSE are not already available.
+- If a real-time mechanism already exists, reuse it.
+- Provide pause/resume auto-refresh.
+- Show “No active visitors” as a valid empty state.
+- Allow opening a session detail drawer/modal.
+- Do not treat a visitor as live after the 5-minute activity window expires.
+
+Today, Last 7 Days and All Visitors
+
+Provide filterable, paginated server-side tables.
+
+Filters:
+
+- Date and time range
+- Portal
+- Visitor type
+- Country
+- Region
+- City
+- Device
+- Browser
+- New/returning
+- Authenticated/anonymous
+- Referrer
+- UTM source/campaign
+- Page path
+- Bot status
+
+Columns:
+
+- Visitor
+- Portal
+- First seen
+- Last seen
+- Location
+- Sessions
+- Page views
+- Total duration
+- Latest page
+- Device/browser
+- User/vendor association
+- Acquisition source
+
+Add:
+
+- Search
+- Sort
+- Pagination
+- Clear filters
+- CSV export of the currently filtered result set, subject to permission and sensible export limits
+- Loading, empty and error states
+
+Locations page
+
+Provide:
+
+- Country summary
+- Region/state summary
+- City summary
+- Visitor counts
+- Session counts
+- Page-view counts
+- Percentage of total traffic
+- Portal split
+- Date and portal filters
+
+If the project already has a suitable map library, show an aggregated world/India location map. Otherwise, use a clear ranked table and distribution chart rather than installing a heavy map dependency.
+
+Never show exact household-level coordinates. Location visualizations must remain approximate and aggregated.
+
+Pages analytics
+
+Show performance for all tracked routes across both portals:
+
+- Page path
+- Portal
+- Page title
+- Unique visitors
+- Sessions
+- Page views
+- Average time on page
+- Entries
+- Exits
+- Bounce/exit rate
+- Last viewed
+
+Support filtering by date, portal and page path.
+
+Correctly normalize dynamic routes where possible. Do not accidentally combine unrelated pages or expose sensitive route parameters. Replace sensitive identifiers with safe route templates when the routing system makes this possible.
+
+Visitor/session detail
+
+Clicking a visitor or session should open a detail page or drawer showing:
+
+- First and last activity
+- Portal
+- Approximate location
+- Device/browser
+- Acquisition information
+- Associated account, when available and permitted
+- Session list
+- Chronological page journey
+- Page duration
+- Landing and exit pages
+
+Do not display credentials, form contents, payment data or other sensitive account information.
+
+Frontend quality requirements
+
+- Match existing colors, typography, components and responsive layout.
+- Support desktop, tablet and mobile Admin layouts.
+- Use proper skeleton loaders.
+- Add useful empty states.
+- Add error recovery/retry actions.
+- Keep filters in the URL query string when consistent with existing pages.
+- Make tables accessible by keyboard.
+- Use semantic labels and tooltips where needed.
+- Avoid fabricated demo statistics in production.
+
+Performance
+
+- All large tables must use server-side pagination.
+- Aggregate summary and chart queries efficiently.
+- Avoid one query per row.
+- Add suitable indexes.
+- Use batching/debouncing for tracking events where appropriate.
+- Apply a reasonable maximum date range for expensive granular queries.
+- Consider daily aggregate tables only if raw-event queries would be inefficient at the expected traffic level.
+- Tracking failures must never prevent portal pages from loading or navigating.
+- Analytics calls should run asynchronously with short timeouts and safe error handling.
+
+Environment configuration
+
+Add documented environment variables following current naming conventions, such as:
+
+- VISITOR_ANALYTICS_ENABLED
+- VISITOR_ANALYTICS_ALLOWED_ORIGINS
+- VISITOR_SESSION_TIMEOUT_MINUTES=30
+- LIVE_VISITOR_WINDOW_MINUTES=5
+- VISITOR_ANALYTICS_RETENTION_DAYS
+- VISITOR_ANALYTICS_TIMEZONE=Asia/Kolkata
+- GEOLOCATION_PROVIDER
+- GEOLOCATION_API_KEY
+
+Do not commit actual secrets.
+
+Testing
+
+Add meaningful tests for:
+
+- Visitor ID creation
+- Session creation and expiration
+- Live visitor calculation
+- Unique visitor calculation
+- Timezone-aware date ranges
+- SPA route tracking
+- Strict Mode duplicate prevention
+- Heartbeat behavior
+- Page exit tracking
+- URL redaction
+- IP extraction behind trusted proxies
+- Geolocation failure fallback
+- Bot/static-resource exclusion
+- Portal separation
+- Admin authorization
+- Filters and pagination
+- Aggregation accuracy
+- CSV export permissions and limits
+
+Verification
+
+After implementation:
+
+1. Run migrations using the project’s normal safe procedure.
+2. Run linting, type checking, unit tests and production builds for all modified projects.
+3. Start the relevant applications if the environment permits.
+4. Visit multiple pages in User Portal and Vendor Portal.
+5. Confirm initial loads and SPA navigations create correct page views without duplication.
+6. Confirm the live visitor appears in Admin.
+7. Confirm the visitor disappears from Live after the configured inactivity window.
+8. Confirm Today and Last 7 Days respect Asia/Kolkata timezone.
+9. Confirm location failure does not block tracking.
+10. Confirm portal filters correctly separate User Portal and Vendor Portal.
+11. Confirm Admin authentication and permissions protect every reporting endpoint.
+12. Confirm tracking failures do not affect either portal.
+13. Confirm no sensitive URL parameters, raw form data or full IP addresses appear in the Admin interface.
+
+Deliverables
+
+When finished, report:
+
+- Files changed in each project
+- Database models and migrations added
+- Routes and API endpoints added
+- How visitor/session uniqueness works
+- How “live visitor” is calculated
+- How location is resolved
+- Privacy protections added
+- New environment variables
+- Tests/builds run and their results
+- Any limitations or configuration still required
+
+Important restrictions
+
+- Do not use fake visitor data in production.
+- Do not count bots as normal visitors.
+- Do not collect invasive browser fingerprints.
+- Do not request precise GPS permission.
+- Do not expose raw IP addresses.
+- Do not trust client-submitted identity, timestamps or IP information.
+- Do not allow public analytics reporting access.
+- Do not break either portal if the analytics service is unavailable.
+- Do not perform unrelated refactoring.
+- Do not send notifications, emails or external communications.
+- Do not deploy or alter production infrastructure unless explicitly instructed.

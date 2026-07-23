@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.listAnalyticsPreaggregated = exports.getAnalyticsPool = exports.initializeAnalyticsPostgres = exports.ensureTables = exports.ensureDatabase = exports.formatAnalyticsConnectionError = exports.getLastSuccessfulAnalyticsConfigSummary = exports.getAnalyticsConfigSummary = void 0;
+exports.listAnalyticsPreaggregated = exports.queryAnalytics = exports.getAnalyticsPool = exports.initializeAnalyticsPostgres = exports.ensureTables = exports.ensureDatabase = exports.formatAnalyticsConnectionError = exports.getLastSuccessfulAnalyticsConfigSummary = exports.getAnalyticsConfigSummary = void 0;
 const pg_1 = __importDefault(require("pg"));
 const databaseTargets_1 = require("../config/databaseTargets");
 const planPromoCodes_schema_1 = require("./planPromoCodes.schema");
@@ -1499,6 +1499,126 @@ const TABLE_STATEMENTS = [
     `
     CREATE INDEX IF NOT EXISTS idx_crm_segments_entity_type ON crm_segments (entity_type, created_at DESC) WHERE deleted_at IS NULL
   `,
+    `
+    CREATE TABLE IF NOT EXISTS analytics_visitors (
+      anonymous_visitor_id TEXT PRIMARY KEY,
+      first_seen_at TIMESTAMP NOT NULL,
+      last_seen_at TIMESTAMP NOT NULL,
+      first_portal TEXT NOT NULL,
+      last_portal TEXT NOT NULL,
+      associated_user_id TEXT,
+      associated_vendor_id TEXT,
+      last_visitor_type TEXT NOT NULL DEFAULT 'anonymous',
+      country_code TEXT,
+      country_name TEXT,
+      region TEXT,
+      city TEXT,
+      latitude NUMERIC(9, 6),
+      longitude NUMERIC(9, 6),
+      device_category TEXT,
+      browser TEXT,
+      operating_system TEXT,
+      language TEXT,
+      screen_resolution TEXT,
+      masked_ip TEXT,
+      ip_hash TEXT,
+      is_bot BOOLEAN NOT NULL DEFAULT FALSE,
+      is_suspicious BOOLEAN NOT NULL DEFAULT FALSE,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `,
+    `
+    CREATE INDEX IF NOT EXISTS idx_analytics_visitors_last_seen
+    ON analytics_visitors (last_seen_at DESC)
+  `,
+    `
+    CREATE INDEX IF NOT EXISTS idx_analytics_visitors_location
+    ON analytics_visitors (country_code, region, city)
+  `,
+    `
+    CREATE TABLE IF NOT EXISTS analytics_visitor_sessions (
+      id TEXT PRIMARY KEY,
+      anonymous_visitor_id TEXT NOT NULL REFERENCES analytics_visitors(anonymous_visitor_id) ON DELETE CASCADE,
+      portal TEXT NOT NULL,
+      visitor_type TEXT NOT NULL DEFAULT 'anonymous',
+      authenticated_user_id TEXT,
+      authenticated_vendor_id TEXT,
+      started_at TIMESTAMP NOT NULL,
+      last_activity_at TIMESTAMP NOT NULL,
+      ended_at TIMESTAMP,
+      landing_path TEXT,
+      entry_path TEXT,
+      exit_path TEXT,
+      current_path TEXT,
+      current_page_title TEXT,
+      referrer TEXT,
+      initial_referrer TEXT,
+      landing_page TEXT,
+      previous_internal_path TEXT,
+      utm_source TEXT,
+      utm_medium TEXT,
+      utm_campaign TEXT,
+      utm_term TEXT,
+      utm_content TEXT,
+      device_category TEXT,
+      browser TEXT,
+      operating_system TEXT,
+      language TEXT,
+      screen_resolution TEXT,
+      country_code TEXT,
+      country_name TEXT,
+      region TEXT,
+      city TEXT,
+      latitude NUMERIC(9, 6),
+      longitude NUMERIC(9, 6),
+      page_view_count INTEGER NOT NULL DEFAULT 0,
+      duration_seconds INTEGER NOT NULL DEFAULT 0,
+      is_live BOOLEAN NOT NULL DEFAULT TRUE,
+      is_bot BOOLEAN NOT NULL DEFAULT FALSE,
+      is_suspicious BOOLEAN NOT NULL DEFAULT FALSE,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `,
+    `
+    CREATE INDEX IF NOT EXISTS idx_analytics_visitor_sessions_live
+    ON analytics_visitor_sessions (last_activity_at DESC, portal, is_live)
+  `,
+    `
+    CREATE INDEX IF NOT EXISTS idx_analytics_visitor_sessions_visitor
+    ON analytics_visitor_sessions (anonymous_visitor_id, started_at DESC)
+  `,
+    `
+    CREATE TABLE IF NOT EXISTS analytics_visitor_page_views (
+      id TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL REFERENCES analytics_visitor_sessions(id) ON DELETE CASCADE,
+      anonymous_visitor_id TEXT NOT NULL REFERENCES analytics_visitors(anonymous_visitor_id) ON DELETE CASCADE,
+      portal TEXT NOT NULL,
+      path TEXT,
+      normalized_url TEXT,
+      route_template TEXT,
+      page_title TEXT,
+      referrer TEXT,
+      previous_internal_path TEXT,
+      viewed_at TIMESTAMP NOT NULL,
+      exited_at TIMESTAMP,
+      duration_seconds INTEGER,
+      is_entry BOOLEAN NOT NULL DEFAULT FALSE,
+      is_exit BOOLEAN NOT NULL DEFAULT FALSE,
+      event_id TEXT UNIQUE,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `,
+    `
+    CREATE INDEX IF NOT EXISTS idx_analytics_visitor_page_views_viewed
+    ON analytics_visitor_page_views (viewed_at DESC, portal)
+  `,
+    `
+    CREATE INDEX IF NOT EXISTS idx_analytics_visitor_page_views_path
+    ON analytics_visitor_page_views (portal, route_template, path)
+  `,
     ...planPromoCodes_schema_1.PROMO_CODE_TABLE_STATEMENTS,
 ];
 const ensureTables = async () => {
@@ -1562,6 +1682,11 @@ const getAnalyticsPool = async () => {
     return analyticsPool;
 };
 exports.getAnalyticsPool = getAnalyticsPool;
+const queryAnalytics = async (text, params) => {
+    const pool = await (0, exports.getAnalyticsPool)();
+    return pool.query(text, params);
+};
+exports.queryAnalytics = queryAnalytics;
 const listAnalyticsPreaggregated = async (range, success = true) => {
     const pool = await (0, exports.getAnalyticsPool)();
     const result = await pool.query(`

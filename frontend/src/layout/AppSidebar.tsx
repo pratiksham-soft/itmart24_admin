@@ -171,7 +171,10 @@ const navItems: NavItem[] = [
   {
     icon: <GridIcon />,
     name: "Dashboard",
-    subItems: [{ name: "Analytics", path: "/" }],
+    subItems: [
+      { name: "Analytics", path: "/" },
+      { name: "Visitors", path: "/dashboard/visitors" },
+    ],
   },
   {
     icon: <ChatIcon />,

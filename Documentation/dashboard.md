@@ -22,6 +22,7 @@ It helps you see important numbers very fast.
 2. Business numbers
 3. Quick action buttons
 4. Helpful charts or overview boxes
+5. `Dashboard > Visitors` for cross-portal visitor analytics
 
 ## How To Use Dashboard Step By Step
 

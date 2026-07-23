@@ -19,6 +19,7 @@ import AppLayout from "./layout/AppLayout";
 import AuthGuard from "./auth/AuthGuard";
 import { ScrollToTop } from "./components/common/ScrollToTop";
 import Home from "./pages/Dashboard/Home";
+import VisitorsPage from "./pages/Dashboard/Visitors";
 import PendingProducts from "./pages/Products/PendingProducts";
 import ActiveProducts from "./pages/Products/ActiveProducts";
 import RejectedProducts from "./pages/Products/RejectedProducts";
@@ -71,6 +72,7 @@ export default function App() {
             }
           >
             <Route index path="/" element={<Home />} />
+            <Route path="/dashboard/visitors" element={<VisitorsPage />} />
 
             {/* Others Page */}
             <Route path="/profile" element={<UserProfiles />} />
