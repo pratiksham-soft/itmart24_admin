@@ -4,10 +4,12 @@ import {
   updateUserPortalPlan,
   UserPlanFeature,
   UserPlanPeriod,
+  UserPlanProjectKey,
 } from "../services/userPortalPlans.service";
 
 type SeedPlan = {
   id: string;
+  projectKey: UserPlanProjectKey;
   name: string;
   slug: string;
   description: string;
@@ -61,6 +63,7 @@ const enterpriseFeatures: UserPlanFeature[] = [
 const seedPlans: SeedPlan[] = [
   {
     id: "basic",
+    projectKey: "user-portal",
     name: "Basic",
     slug: "basic",
     description:
@@ -107,6 +110,7 @@ const seedPlans: SeedPlan[] = [
   },
   {
     id: "enterprise",
+    projectKey: "user-portal",
     name: "Enterprise",
     slug: "enterprise",
     description:

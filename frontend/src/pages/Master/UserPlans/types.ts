@@ -7,6 +7,8 @@ export type CountryPricing = {
   discountPercentage?: number;
 };
 
+export type UserPlanProjectKey = "user-portal" | "b2b-lead-zone";
+
 export type PlanPeriod = {
   id: string;
   label: string;
@@ -23,6 +25,7 @@ export type PlanFeature = {
 
 export type SubscriptionPlan = {
   id?: string;
+  projectKey: UserPlanProjectKey;
   name: string;
   slug: string;
   description: string;

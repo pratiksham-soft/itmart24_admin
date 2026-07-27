@@ -3,10 +3,11 @@ import { SubscriptionPlan } from "./types";
 
 type Props = {
   plan: SubscriptionPlan;
+  projectLabel: string;
   onClose: () => void;
 };
 
-const PlanView = ({ plan, onClose }: Props) => {
+const PlanView = ({ plan, projectLabel, onClose }: Props) => {
   return (
     <div className="fixed inset-0 z-50 bg-slate-950/45 backdrop-blur-sm">
       <div className="absolute inset-y-0 right-0 flex w-full justify-end">
@@ -15,7 +16,7 @@ const PlanView = ({ plan, onClose }: Props) => {
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.24em] text-brand-500">
-                  Plan Overview
+                  {projectLabel} Plan Overview
                 </p>
                 <h2 className="mt-2 text-2xl font-semibold text-gray-900 dark:text-white">
                   {plan.name}

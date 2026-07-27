@@ -28,8 +28,16 @@ export type UserPlanFeature = {
   description: string;
 };
 
+export const USER_PLAN_PROJECT_KEYS = [
+  "user-portal",
+  "b2b-lead-zone",
+] as const;
+
+export type UserPlanProjectKey = (typeof USER_PLAN_PROJECT_KEYS)[number];
+
 export type UserPlanRecord = {
   id: string;
+  projectKey: UserPlanProjectKey;
   name: string;
   slug: string;
   description: string;
@@ -50,6 +58,7 @@ type UserPlanPayload = Omit<
 
 type UserPlanRow = {
   id: string;
+  project_key: string | null;
   name: string;
   slug: string;
   description: string | null;
@@ -63,6 +72,77 @@ type UserPlanRow = {
 
 let userPortalPool: UserPortalPool | null = null;
 let schemaReady = false;
+
+const DEFAULT_USER_PLAN_PROJECT_KEY: UserPlanProjectKey = "user-portal";
+const B2B_LEAD_ZONE_PROJECT_KEY: UserPlanProjectKey = "b2b-lead-zone";
+
+const B2B_LEAD_ZONE_DEFAULT_PLANS: UserPlanPayload[] = [
+  {
+    projectKey: B2B_LEAD_ZONE_PROJECT_KEY,
+    name: "Free",
+    slug: "free",
+    description: "Try the core extraction workflow for smaller searches.",
+    periods: [
+      {
+        id: "monthly-1",
+        label: "Monthly",
+        durationInMonths: 1,
+        price: 0,
+        discountPercentage: 0,
+        countryPricing: [],
+      },
+    ],
+    features: [
+      { title: "Google Maps supported", description: "" },
+      { title: "Bing Maps supported", description: "" },
+      { title: "Up to 30 leads per extraction", description: "" },
+      { title: "Business name", description: "" },
+      { title: "Phone number", description: "" },
+      { title: "Email address", description: "" },
+      { title: "Website", description: "" },
+      { title: "Social media URL", description: "" },
+      { title: "Map URL", description: "" },
+      { title: "Export collected leads", description: "" },
+    ],
+    isActive: true,
+    sortOrder: 1,
+  },
+  {
+    projectKey: B2B_LEAD_ZONE_PROJECT_KEY,
+    name: "Pro",
+    slug: "pro",
+    description: "Automate larger, multi-location lead collection.",
+    periods: [
+      {
+        id: "monthly-1",
+        label: "Monthly",
+        durationInMonths: 1,
+        price: 599,
+        discountPercentage: 0,
+        countryPricing: [],
+      },
+    ],
+    features: [
+      { title: "Everything in Free", description: "" },
+      { title: "Multiple-location support", description: "" },
+      { title: "CSV location-list upload", description: "" },
+      {
+        title: "Unlimited lead extraction, subject to browser and platform constraints",
+        description: "",
+      },
+      { title: "Automatic location-by-location searching", description: "" },
+      { title: "Automatic lead collection across queued locations", description: "" },
+      {
+        title: "Start once and let the app process your location queue automatically",
+        description: "",
+      },
+      { title: "Combined lead export", description: "" },
+      { title: "Designed for larger lead-research tasks", description: "" },
+    ],
+    isActive: true,
+    sortOrder: 2,
+  },
+];
 
 const parseBooleanEnv = (value: string | undefined, fallback = false) => {
   if (value == null || value === "") {
@@ -104,6 +184,9 @@ const createPeriodId = (label: string, durationInMonths: number, index: number) 
 
 const createCountryPricingId = (countryName: string, currencyCode: string, index: number) =>
   `${slugify(countryName) || "country"}-${slugify(currencyCode) || "currency"}-${index + 1}`;
+
+const buildPlanId = (projectKey: UserPlanProjectKey, slug: string) =>
+  projectKey === DEFAULT_USER_PLAN_PROJECT_KEY ? slug : `${projectKey}:${slug}`;
 
 const getUserPortalPoolConfig = () => {
   const connectionString =
@@ -234,8 +317,9 @@ const ensureUserPlansSchema = async () => {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS user_subscription_plans (
       id TEXT PRIMARY KEY,
+      project_key TEXT NOT NULL DEFAULT 'user-portal',
       name TEXT NOT NULL,
-      slug TEXT NOT NULL UNIQUE,
+      slug TEXT NOT NULL,
       description TEXT NOT NULL DEFAULT '',
       periods JSONB NOT NULL DEFAULT '[]'::jsonb,
       features JSONB NOT NULL DEFAULT '[]'::jsonb,
@@ -247,6 +331,29 @@ const ensureUserPlansSchema = async () => {
   `);
   await pool.query(
     `CREATE INDEX IF NOT EXISTS idx_user_subscription_plans_sort_order ON user_subscription_plans (sort_order ASC, created_at ASC)`
+  );
+  await pool.query(
+    `ALTER TABLE user_subscription_plans ADD COLUMN IF NOT EXISTS project_key TEXT NOT NULL DEFAULT 'user-portal'`
+  );
+  await pool.query(`
+    DO $$
+    BEGIN
+      IF EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'user_subscription_plans_slug_key'
+      ) THEN
+        ALTER TABLE user_subscription_plans
+        DROP CONSTRAINT user_subscription_plans_slug_key;
+      END IF;
+    END
+    $$;
+  `);
+  await pool.query(
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_user_subscription_plans_project_slug ON user_subscription_plans (project_key, slug)`
+  );
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS idx_user_subscription_plans_project_sort_order ON user_subscription_plans (project_key ASC, sort_order ASC, created_at ASC)`
   );
 
   schemaReady = true;
@@ -290,6 +397,20 @@ const normalizeDiscountPercentage = (value: unknown) => {
   }
 
   return Math.min(100, Math.max(0, parsedValue));
+};
+
+const normalizeProjectKey = (value: unknown): UserPlanProjectKey => {
+  const normalizedValue = String(value ?? "")
+    .trim()
+    .toLowerCase();
+
+  if (
+    USER_PLAN_PROJECT_KEYS.includes(normalizedValue as UserPlanProjectKey)
+  ) {
+    return normalizedValue as UserPlanProjectKey;
+  }
+
+  return DEFAULT_USER_PLAN_PROJECT_KEY;
 };
 
 const normalizeCountryPricing = (countryPricing: unknown): UserPlanCountryPricing[] => {
@@ -466,6 +587,7 @@ const validateFeatures = (features: unknown): UserPlanFeature[] => {
 
 const mapUserPlanRow = (row: UserPlanRow): UserPlanRecord => ({
   id: row.id,
+  projectKey: normalizeProjectKey(row.project_key),
   name: row.name,
   slug: row.slug,
   description: row.description ?? "",
@@ -478,16 +600,26 @@ const mapUserPlanRow = (row: UserPlanRow): UserPlanRecord => ({
 });
 
 const resolveNextSortOrder = async () => {
+  return resolveNextSortOrderForProject(DEFAULT_USER_PLAN_PROJECT_KEY);
+};
+
+const resolveNextSortOrderForProject = async (projectKey: UserPlanProjectKey) => {
   await ensureUserPlansSchema();
   const pool = getUserPortalPool();
   const result = (await pool.query(
-    `SELECT COALESCE(MAX(sort_order), 0) + 1 AS next_sort_order FROM user_subscription_plans`
+    `
+      SELECT COALESCE(MAX(sort_order), 0) + 1 AS next_sort_order
+      FROM user_subscription_plans
+      WHERE project_key = $1
+    `,
+    [projectKey]
   )) as { rows: Array<{ next_sort_order: number }> };
 
   return Number(result.rows[0]?.next_sort_order ?? 1);
 };
 
 const validatePlanPayload = async (payload: UserPlanPayload) => {
+  const projectKey = normalizeProjectKey(payload.projectKey);
   const name = assertNonEmptyString(payload.name, "Plan name is required.");
   const slug = slugify(payload.slug || payload.name);
 
@@ -496,6 +628,8 @@ const validatePlanPayload = async (payload: UserPlanPayload) => {
   }
 
   return {
+    id: buildPlanId(projectKey, slug),
+    projectKey,
     name,
     slug,
     description: String(payload.description ?? "").trim(),
@@ -504,17 +638,20 @@ const validatePlanPayload = async (payload: UserPlanPayload) => {
     isActive: Boolean(payload.isActive),
     sortOrder: Number.isFinite(Number(payload.sortOrder))
       ? Number(payload.sortOrder)
-      : await resolveNextSortOrder(),
+      : await resolveNextSortOrderForProject(projectKey),
   };
 };
 
-export const listUserPortalPlans = async () => {
+export const listUserPortalPlans = async (
+  projectKey: UserPlanProjectKey = DEFAULT_USER_PLAN_PROJECT_KEY
+) => {
   await ensureUserPlansSchema();
   const pool = getUserPortalPool();
   const result = (await pool.query(
     `
       SELECT
         id,
+        project_key,
         name,
         slug,
         description,
@@ -525,35 +662,63 @@ export const listUserPortalPlans = async () => {
         created_at,
         updated_at
       FROM user_subscription_plans
+      WHERE project_key = $1
       ORDER BY sort_order ASC, created_at ASC
-    `
+    `,
+    [projectKey]
   )) as { rows: UserPlanRow[] };
 
   return result.rows.map(mapUserPlanRow);
 };
 
-export const getUserPortalPlanById = async (planId: string) => {
+export const getUserPortalPlanById = async (
+  planId: string,
+  projectKey?: UserPlanProjectKey
+) => {
   await ensureUserPlansSchema();
   const pool = getUserPortalPool();
-  const result = (await pool.query(
-    `
-      SELECT
-        id,
-        name,
-        slug,
-        description,
-        periods,
-        features,
-        is_active,
-        sort_order,
-        created_at,
-        updated_at
-      FROM user_subscription_plans
-      WHERE id = $1
-      LIMIT 1
-    `,
-    [planId]
-  )) as { rows: UserPlanRow[] };
+  const hasProjectKey = Boolean(projectKey);
+  const result = hasProjectKey
+    ? ((await pool.query(
+        `
+          SELECT
+            id,
+            project_key,
+            name,
+            slug,
+            description,
+            periods,
+            features,
+            is_active,
+            sort_order,
+            created_at,
+            updated_at
+          FROM user_subscription_plans
+          WHERE id = $1 AND project_key = $2
+          LIMIT 1
+        `,
+        [planId, projectKey]
+      )) as { rows: UserPlanRow[] })
+    : ((await pool.query(
+        `
+          SELECT
+            id,
+            project_key,
+            name,
+            slug,
+            description,
+            periods,
+            features,
+            is_active,
+            sort_order,
+            created_at,
+            updated_at
+          FROM user_subscription_plans
+          WHERE id = $1
+          LIMIT 1
+        `,
+        [planId]
+      )) as { rows: UserPlanRow[] });
 
   const row = result.rows[0];
   return row ? mapUserPlanRow(row) : null;
@@ -568,6 +733,7 @@ export const createUserPortalPlan = async (payload: UserPlanPayload) => {
     `
       INSERT INTO user_subscription_plans (
         id,
+        project_key,
         name,
         slug,
         description,
@@ -575,10 +741,11 @@ export const createUserPortalPlan = async (payload: UserPlanPayload) => {
         features,
         is_active,
         sort_order
-      ) VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7, $8)
+      ) VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8, $9)
     `,
     [
-      validated.slug,
+      validated.id,
+      validated.projectKey,
       validated.name,
       validated.slug,
       validated.description,
@@ -589,7 +756,7 @@ export const createUserPortalPlan = async (payload: UserPlanPayload) => {
     ]
   );
 
-  return getUserPortalPlanById(validated.slug);
+  return getUserPortalPlanById(validated.id, validated.projectKey);
 };
 
 export const updateUserPortalPlan = async (
@@ -606,6 +773,7 @@ export const updateUserPortalPlan = async (
   const validated = await validatePlanPayload({
     ...existing,
     ...payload,
+    projectKey: existing.projectKey,
     slug: existing.slug,
   });
 
@@ -633,7 +801,7 @@ export const updateUserPortalPlan = async (
     ]
   );
 
-  return getUserPortalPlanById(planId);
+  return getUserPortalPlanById(planId, existing.projectKey);
 };
 
 export const deleteUserPortalPlan = async (planId: string) => {
@@ -642,4 +810,52 @@ export const deleteUserPortalPlan = async (planId: string) => {
     `DELETE FROM user_subscription_plans WHERE id = $1`,
     [planId]
   );
+};
+
+export const seedB2BLeadZonePlans = async () => {
+  await ensureUserPlansSchema();
+  const pool = getUserPortalPool();
+
+  for (const plan of B2B_LEAD_ZONE_DEFAULT_PLANS) {
+    const validated = await validatePlanPayload(plan);
+
+    await pool.query(
+      `
+        INSERT INTO user_subscription_plans (
+          id,
+          project_key,
+          name,
+          slug,
+          description,
+          periods,
+          features,
+          is_active,
+          sort_order
+        ) VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8, $9)
+        ON CONFLICT (id) DO UPDATE
+        SET
+          name = EXCLUDED.name,
+          slug = EXCLUDED.slug,
+          description = EXCLUDED.description,
+          periods = EXCLUDED.periods,
+          features = EXCLUDED.features,
+          is_active = EXCLUDED.is_active,
+          sort_order = EXCLUDED.sort_order,
+          updated_at = NOW()
+      `,
+      [
+        validated.id,
+        validated.projectKey,
+        validated.name,
+        validated.slug,
+        validated.description,
+        JSON.stringify(validated.periods),
+        JSON.stringify(validated.features),
+        validated.isActive,
+        validated.sortOrder,
+      ]
+    );
+  }
+
+  return listUserPortalPlans(B2B_LEAD_ZONE_PROJECT_KEY);
 };

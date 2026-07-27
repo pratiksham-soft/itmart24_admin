@@ -1,7 +1,12 @@
 import { DragEvent, useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import CountryPricingEditor from "./CountryPricingEditor";
-import { PlanFeature, PlanPeriod, SubscriptionPlan } from "./types";
+import {
+  PlanFeature,
+  PlanPeriod,
+  SubscriptionPlan,
+  UserPlanProjectKey,
+} from "./types";
 import {
   calculateDiscountedPrice,
   createCountryPricingDraft,
@@ -13,11 +18,14 @@ import {
 
 type PlanFormProps = {
   plan: SubscriptionPlan | null;
+  projectKey: UserPlanProjectKey;
+  projectLabel: string;
   onClose: () => void;
   onSaved: (plan: SubscriptionPlan) => void;
 };
 
 const DEFAULT_PLAN: SubscriptionPlan = {
+  projectKey: "user-portal",
   name: "",
   slug: "",
   description: "",
@@ -60,8 +68,9 @@ const mapPeriodsForForm = (periods: PlanPeriod[]): FormPeriod[] =>
     })),
   }));
 
-const createDefaultPlan = (): PlanFormState => ({
+const createDefaultPlan = (projectKey: UserPlanProjectKey): PlanFormState => ({
   ...DEFAULT_PLAN,
+  projectKey,
   periods: [],
   features: [],
 });
@@ -118,8 +127,8 @@ const sanitizePeriods = (periods: FormPeriod[]) =>
     countryPricing: sanitizeCountryPricing(period.countryPricing),
   }));
 
-const PlanForm = ({ plan, onClose, onSaved }: PlanFormProps) => {
-  const [form, setForm] = useState<PlanFormState>(createDefaultPlan);
+const PlanForm = ({ plan, projectKey, projectLabel, onClose, onSaved }: PlanFormProps) => {
+  const [form, setForm] = useState<PlanFormState>(() => createDefaultPlan(projectKey));
   const [saving, setSaving] = useState(false);
   const [draggedFeatureIndex, setDraggedFeatureIndex] = useState<number | null>(null);
 
@@ -129,8 +138,8 @@ const PlanForm = ({ plan, onClose, onSaved }: PlanFormProps) => {
       return;
     }
 
-    setForm(createDefaultPlan());
-  }, [plan]);
+    setForm(createDefaultPlan(projectKey));
+  }, [plan, projectKey]);
 
   const planHealth = useMemo(() => {
     const activePeriods = form.periods.length;
@@ -382,14 +391,14 @@ const PlanForm = ({ plan, onClose, onSaved }: PlanFormProps) => {
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.24em] text-brand-500">
-                  User Plan
+                  {projectLabel} Plan
                 </p>
                 <h2 className="mt-2 text-2xl font-semibold text-gray-900 dark:text-white">
-                  {plan ? "Refine user plan pricing" : "Create a new user plan"}
+                  {plan?.id ? "Refine plan pricing" : `Create a new ${projectLabel} plan`}
                 </h2>
                 <p className="mt-2 max-w-2xl text-sm text-gray-600 dark:text-gray-400">
                   Configure global pricing, country-specific overrides, and feature
-                  content for the user portal billing catalog.
+                  content for the {projectLabel} recurring plan catalog.
                 </p>
               </div>
 
@@ -447,6 +456,15 @@ const PlanForm = ({ plan, onClose, onSaved }: PlanFormProps) => {
                           setForm((prev) => ({ ...prev, name: event.target.value }))
                         }
                       />
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-sm font-semibold text-gray-700 dark:text-gray-300">
+                        Project
+                      </label>
+                      <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm font-medium text-gray-700 dark:border-white/[0.08] dark:bg-white/[0.03] dark:text-gray-200">
+                        {projectLabel}
+                      </div>
                     </div>
 
                     <div>

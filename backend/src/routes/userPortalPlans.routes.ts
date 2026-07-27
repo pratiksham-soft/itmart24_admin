@@ -4,6 +4,8 @@ import {
   deleteUserPortalPlan,
   getUserPortalPlanById,
   listUserPortalPlans,
+  seedB2BLeadZonePlans,
+  type UserPlanProjectKey,
   updateUserPortalPlan,
 } from "../services/userPortalPlans.service";
 import {
@@ -23,9 +25,18 @@ const resolveRequestedCountryCode = (req: Request) => {
   );
 };
 
-router.get("/", async (_req, res) => {
+const resolveRequestedProjectKey = (req: Request): UserPlanProjectKey => {
+  const queryProjectKey =
+    typeof req.query.projectKey === "string" ? req.query.projectKey : null;
+
+  return queryProjectKey?.trim().toLowerCase() === "b2b-lead-zone"
+    ? "b2b-lead-zone"
+    : "user-portal";
+};
+
+router.get("/", async (req, res) => {
   try {
-    const plans = await listUserPortalPlans();
+    const plans = await listUserPortalPlans(resolveRequestedProjectKey(req));
     res.json(plans);
   } catch (error) {
     console.error("Fetch user plans error:", error);
@@ -36,7 +47,8 @@ router.get("/", async (_req, res) => {
 router.get("/public", async (req, res) => {
   try {
     const requestedCountryCode = resolveRequestedCountryCode(req);
-    const plans = await listUserPortalPlans();
+    const projectKey = resolveRequestedProjectKey(req);
+    const plans = await listUserPortalPlans(projectKey);
 
     const activePlans = plans
       .filter((plan: Awaited<typeof plans>[number]) => plan.isActive)
@@ -46,6 +58,7 @@ router.get("/public", async (req, res) => {
       );
 
     res.json({
+      projectKey,
       detectedCountryCode: requestedCountryCode,
       plans: activePlans.map((plan: Awaited<typeof plans>[number]) => {
         const monthlyReference =
@@ -82,6 +95,18 @@ router.get("/public", async (req, res) => {
   } catch (error) {
     console.error("Fetch public user plans error:", error);
     res.status(500).json({ error: "Failed to fetch public user plans" });
+  }
+});
+
+router.post("/seed/b2b-lead-zone", async (_req, res) => {
+  try {
+    const plans = await seedB2BLeadZonePlans();
+    res.json({ success: true, plans });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Failed to seed B2B Lead Zone plans";
+    console.error("Seed B2B Lead Zone plans error:", error);
+    res.status(400).json({ error: message });
   }
 });
 
