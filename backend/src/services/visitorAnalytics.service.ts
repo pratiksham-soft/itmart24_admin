@@ -132,6 +132,14 @@ function getRelativeDateRange(period: "today" | "last7", timeZone = DEFAULT_TIME
   };
 }
 
+function getLastNDaysRange(days: number, timeZone = DEFAULT_TIMEZONE) {
+  const today = getCurrentTimezoneDate(timeZone);
+  return {
+    startDate: shiftDateString(today, -(Math.max(1, days) - 1)),
+    endDate: today,
+  };
+}
+
 function parseVisitorsFilters(input: VisitorsFilterInput): ParsedVisitorsFilters {
   const page = toPositiveInteger(input.page, 1, 5000);
   const limit = toPositiveInteger(input.limit, 25, 200);
@@ -162,6 +170,14 @@ function parseVisitorsFilters(input: VisitorsFilterInput): ParsedVisitorsFilters
     sortDirection: normalizeSortDirection(input.sortDirection),
     format: String(input.format ?? "").toLowerCase() === "csv" ? "csv" : "json",
   };
+}
+
+function parseDownloadAnalyticsRange(input: Pick<VisitorsFilterInput, "startDate" | "endDate">) {
+  const defaultRange = getLastNDaysRange(30);
+  const startDate = normalizeDate(input.startDate) ?? defaultRange.startDate;
+  const endDate = normalizeDate(input.endDate) ?? defaultRange.endDate;
+
+  return { startDate, endDate };
 }
 
 function buildSessionFilterClause(filters: ParsedVisitorsFilters) {
@@ -405,6 +421,240 @@ export async function getVisitorAnalyticsSummary() {
         sessions: Number(row.sessions ?? 0),
       })),
     },
+  };
+}
+
+export async function getB2BLeadZoneDownloadAnalytics(input: Pick<VisitorsFilterInput, "startDate" | "endDate">) {
+  const range = parseDownloadAnalyticsRange(input);
+  const todayRange = getRelativeDateRange("today");
+  const last7Range = getRelativeDateRange("last7");
+  const last30Range = getLastNDaysRange(30);
+  const projectKey = "b2b-lead-zone";
+
+  const [
+    summaryResult,
+    downloadsOverTimeResult,
+    topCountriesResult,
+    topCitiesResult,
+    sourceBreakdownResult,
+    pageBreakdownResult,
+    deviceBreakdownResult,
+    recentDownloadsResult,
+  ] = await Promise.all([
+    queryAnalytics(
+      `
+        SELECT
+          COUNT(*) AS total_downloads,
+          COUNT(DISTINCT anonymous_visitor_id) AS unique_visitors,
+          COUNT(DISTINCT session_id) AS unique_sessions,
+          COUNT(*) FILTER (WHERE timezone($1, created_at)::date = $2::date) AS downloads_today,
+          COUNT(*) FILTER (WHERE timezone($1, created_at)::date BETWEEN $3::date AND $4::date) AS downloads_last7_days,
+          COUNT(*) FILTER (WHERE timezone($1, created_at)::date BETWEEN $5::date AND $6::date) AS downloads_last30_days,
+          COUNT(*) FILTER (
+            WHERE COALESCE(NULLIF(country_name, ''), NULLIF(region, ''), NULLIF(city, '')) IS NOT NULL
+          ) AS known_location_downloads
+        FROM analytics_download_events
+        WHERE is_bot = FALSE
+          AND project_key = $7
+          AND timezone($1, created_at)::date BETWEEN $8::date AND $9::date
+      `,
+      [
+        DEFAULT_TIMEZONE,
+        todayRange.startDate,
+        last7Range.startDate,
+        last7Range.endDate,
+        last30Range.startDate,
+        last30Range.endDate,
+        projectKey,
+        range.startDate,
+        range.endDate,
+      ]
+    ),
+    queryAnalytics(
+      `
+        SELECT
+          timezone($1, created_at)::date AS day,
+          COUNT(*) AS downloads,
+          COUNT(DISTINCT anonymous_visitor_id) AS unique_visitors
+        FROM analytics_download_events
+        WHERE is_bot = FALSE
+          AND project_key = $2
+          AND timezone($1, created_at)::date BETWEEN $3::date AND $4::date
+        GROUP BY day
+        ORDER BY day ASC
+      `,
+      [DEFAULT_TIMEZONE, projectKey, range.startDate, range.endDate]
+    ),
+    queryAnalytics(
+      `
+        SELECT
+          COALESCE(NULLIF(country_name, ''), 'Unknown') AS country,
+          COUNT(*) AS downloads,
+          COUNT(DISTINCT anonymous_visitor_id) AS unique_visitors
+        FROM analytics_download_events
+        WHERE is_bot = FALSE
+          AND project_key = $1
+          AND timezone($2, created_at)::date BETWEEN $3::date AND $4::date
+        GROUP BY COALESCE(NULLIF(country_name, ''), 'Unknown')
+        ORDER BY downloads DESC, unique_visitors DESC
+        LIMIT 10
+      `,
+      [projectKey, DEFAULT_TIMEZONE, range.startDate, range.endDate]
+    ),
+    queryAnalytics(
+      `
+        SELECT
+          COALESCE(NULLIF(city, ''), 'Unknown') AS city,
+          COALESCE(NULLIF(country_name, ''), 'Unknown') AS country,
+          COUNT(*) AS downloads,
+          COUNT(DISTINCT anonymous_visitor_id) AS unique_visitors
+        FROM analytics_download_events
+        WHERE is_bot = FALSE
+          AND project_key = $1
+          AND timezone($2, created_at)::date BETWEEN $3::date AND $4::date
+        GROUP BY COALESCE(NULLIF(city, ''), 'Unknown'), COALESCE(NULLIF(country_name, ''), 'Unknown')
+        ORDER BY downloads DESC, unique_visitors DESC
+        LIMIT 10
+      `,
+      [projectKey, DEFAULT_TIMEZONE, range.startDate, range.endDate]
+    ),
+    queryAnalytics(
+      `
+        SELECT
+          COALESCE(NULLIF(utm_source, ''), NULLIF(referrer, ''), 'Direct / None') AS source,
+          COUNT(*) AS downloads
+        FROM analytics_download_events
+        WHERE is_bot = FALSE
+          AND project_key = $1
+          AND timezone($2, created_at)::date BETWEEN $3::date AND $4::date
+        GROUP BY COALESCE(NULLIF(utm_source, ''), NULLIF(referrer, ''), 'Direct / None')
+        ORDER BY downloads DESC
+        LIMIT 10
+      `,
+      [projectKey, DEFAULT_TIMEZONE, range.startDate, range.endDate]
+    ),
+    queryAnalytics(
+      `
+        SELECT
+          COALESCE(NULLIF(route_template, ''), NULLIF(page_path, ''), 'Unknown') AS path,
+          COUNT(*) AS downloads,
+          COUNT(DISTINCT anonymous_visitor_id) AS unique_visitors
+        FROM analytics_download_events
+        WHERE is_bot = FALSE
+          AND project_key = $1
+          AND timezone($2, created_at)::date BETWEEN $3::date AND $4::date
+        GROUP BY COALESCE(NULLIF(route_template, ''), NULLIF(page_path, ''), 'Unknown')
+        ORDER BY downloads DESC, unique_visitors DESC
+        LIMIT 10
+      `,
+      [projectKey, DEFAULT_TIMEZONE, range.startDate, range.endDate]
+    ),
+    queryAnalytics(
+      `
+        SELECT
+          COALESCE(NULLIF(device_category, ''), 'Unknown') AS device,
+          COUNT(*) AS downloads
+        FROM analytics_download_events
+        WHERE is_bot = FALSE
+          AND project_key = $1
+          AND timezone($2, created_at)::date BETWEEN $3::date AND $4::date
+        GROUP BY COALESCE(NULLIF(device_category, ''), 'Unknown')
+        ORDER BY downloads DESC
+        LIMIT 10
+      `,
+      [projectKey, DEFAULT_TIMEZONE, range.startDate, range.endDate]
+    ),
+    queryAnalytics(
+      `
+        SELECT
+          id,
+          anonymous_visitor_id,
+          session_id,
+          asset_label,
+          download_url,
+          page_path,
+          referrer,
+          utm_source,
+          browser,
+          operating_system,
+          country_name,
+          region,
+          city,
+          created_at
+        FROM analytics_download_events
+        WHERE is_bot = FALSE
+          AND project_key = $1
+          AND timezone($2, created_at)::date BETWEEN $3::date AND $4::date
+        ORDER BY created_at DESC
+        LIMIT 100
+      `,
+      [projectKey, DEFAULT_TIMEZONE, range.startDate, range.endDate]
+    ),
+  ]);
+
+  const summaryRow = summaryResult.rows[0] ?? {};
+  const totalDownloads = Number(summaryRow.total_downloads ?? 0);
+  const knownLocationDownloads = Number(summaryRow.known_location_downloads ?? 0);
+
+  return {
+    timezone: DEFAULT_TIMEZONE,
+    generatedAt: new Date().toISOString(),
+    range,
+    summary: {
+      totalDownloads,
+      uniqueVisitors: Number(summaryRow.unique_visitors ?? 0),
+      uniqueSessions: Number(summaryRow.unique_sessions ?? 0),
+      downloadsToday: Number(summaryRow.downloads_today ?? 0),
+      downloadsLast7Days: Number(summaryRow.downloads_last7_days ?? 0),
+      downloadsLast30Days: Number(summaryRow.downloads_last30_days ?? 0),
+      knownLocationDownloads,
+      locationCoverageRate: totalDownloads > 0 ? (knownLocationDownloads / totalDownloads) * 100 : 0,
+    },
+    charts: {
+      downloadsOverTime: downloadsOverTimeResult.rows.map((row: AnalyticsRow) => ({
+        day: String(row.day),
+        downloads: Number(row.downloads ?? 0),
+        uniqueVisitors: Number(row.unique_visitors ?? 0),
+      })),
+      topCountries: topCountriesResult.rows.map((row: AnalyticsRow) => ({
+        country: String(row.country),
+        downloads: Number(row.downloads ?? 0),
+        uniqueVisitors: Number(row.unique_visitors ?? 0),
+      })),
+      topCities: topCitiesResult.rows.map((row: AnalyticsRow) => ({
+        city: String(row.city),
+        country: String(row.country),
+        downloads: Number(row.downloads ?? 0),
+        uniqueVisitors: Number(row.unique_visitors ?? 0),
+      })),
+      sourceBreakdown: sourceBreakdownResult.rows.map((row: AnalyticsRow) => ({
+        source: String(row.source),
+        downloads: Number(row.downloads ?? 0),
+      })),
+      pageBreakdown: pageBreakdownResult.rows.map((row: AnalyticsRow) => ({
+        path: String(row.path),
+        downloads: Number(row.downloads ?? 0),
+        uniqueVisitors: Number(row.unique_visitors ?? 0),
+      })),
+      deviceBreakdown: deviceBreakdownResult.rows.map((row: AnalyticsRow) => ({
+        device: String(row.device),
+        downloads: Number(row.downloads ?? 0),
+      })),
+    },
+    recentDownloads: recentDownloadsResult.rows.map((row: AnalyticsRow) => ({
+      id: String(row.id),
+      anonymousVisitorId: String(row.anonymous_visitor_id),
+      sessionId: String(row.session_id),
+      assetLabel: row.asset_label ? String(row.asset_label) : null,
+      downloadUrl: row.download_url ? String(row.download_url) : null,
+      pagePath: row.page_path ? String(row.page_path) : null,
+      referrer: row.referrer ? String(row.referrer) : null,
+      utmSource: row.utm_source ? String(row.utm_source) : null,
+      browser: row.browser ? String(row.browser) : null,
+      operatingSystem: row.operating_system ? String(row.operating_system) : null,
+      location: [row.country_name, row.region, row.city].filter(Boolean).join(" / ") || "Unknown",
+      createdAt: String(row.created_at),
+    })),
   };
 }
 

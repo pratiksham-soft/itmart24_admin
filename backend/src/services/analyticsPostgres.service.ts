@@ -1689,6 +1689,62 @@ const TABLE_STATEMENTS = [
     CREATE INDEX IF NOT EXISTS idx_analytics_visitor_page_views_path
     ON analytics_visitor_page_views (portal, route_template, path)
   `,
+  `
+    CREATE TABLE IF NOT EXISTS analytics_download_events (
+      id TEXT PRIMARY KEY,
+      portal TEXT NOT NULL,
+      project_key TEXT NOT NULL,
+      source_tool TEXT,
+      anonymous_visitor_id TEXT NOT NULL,
+      session_id TEXT NOT NULL,
+      visitor_type TEXT NOT NULL DEFAULT 'anonymous',
+      authenticated_user_id TEXT,
+      page_path TEXT,
+      page_title TEXT,
+      current_url TEXT,
+      normalized_url TEXT,
+      route_template TEXT,
+      referrer TEXT,
+      landing_page TEXT,
+      previous_internal_path TEXT,
+      utm_source TEXT,
+      utm_medium TEXT,
+      utm_campaign TEXT,
+      utm_term TEXT,
+      utm_content TEXT,
+      asset_label TEXT,
+      asset_url TEXT,
+      download_url TEXT,
+      device_category TEXT,
+      browser TEXT,
+      operating_system TEXT,
+      screen_resolution TEXT,
+      language TEXT,
+      country_code TEXT,
+      country_name TEXT,
+      region TEXT,
+      city TEXT,
+      latitude NUMERIC(9, 6),
+      longitude NUMERIC(9, 6),
+      masked_ip TEXT,
+      ip_hash TEXT,
+      is_bot BOOLEAN NOT NULL DEFAULT FALSE,
+      is_suspicious BOOLEAN NOT NULL DEFAULT FALSE,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `,
+  `
+    CREATE INDEX IF NOT EXISTS idx_analytics_download_events_created
+    ON analytics_download_events (created_at DESC, project_key)
+  `,
+  `
+    CREATE INDEX IF NOT EXISTS idx_analytics_download_events_location
+    ON analytics_download_events (project_key, country_code, region, city)
+  `,
+  `
+    CREATE INDEX IF NOT EXISTS idx_analytics_download_events_visitor
+    ON analytics_download_events (anonymous_visitor_id, session_id, created_at DESC)
+  `,
   ...PROMO_CODE_TABLE_STATEMENTS,
 ];
 

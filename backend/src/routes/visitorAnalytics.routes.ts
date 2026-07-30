@@ -1,6 +1,7 @@
 import { RequestHandler, Router } from "express";
 import { requireAdminAuth } from "../middleware/adminAuth.middleware";
 import {
+  getB2BLeadZoneDownloadAnalytics,
   getLiveVisitors,
   getLocationAnalytics,
   getPageAnalytics,
@@ -41,6 +42,13 @@ router.get("/live", withRouteErrorLogging("live", async (_req, res) => {
   res.json({
     success: true,
     data: await getLiveVisitors(),
+  });
+}));
+
+router.get("/downloads/b2b-lead-zone", withRouteErrorLogging("downloads-b2b-lead-zone", async (req, res) => {
+  res.json({
+    success: true,
+    data: await getB2BLeadZoneDownloadAnalytics(req.query as Record<string, string | null | undefined>),
   });
 }));
 

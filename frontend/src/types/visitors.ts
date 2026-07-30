@@ -30,6 +30,47 @@ export type VisitorSummaryResponse = {
   charts: VisitorCharts;
 };
 
+export type B2BLeadZoneDownloadAnalyticsResponse = {
+  timezone: string;
+  generatedAt: string;
+  range: {
+    startDate: string;
+    endDate: string;
+  };
+  summary: {
+    totalDownloads: number;
+    uniqueVisitors: number;
+    uniqueSessions: number;
+    downloadsToday: number;
+    downloadsLast7Days: number;
+    downloadsLast30Days: number;
+    knownLocationDownloads: number;
+    locationCoverageRate: number;
+  };
+  charts: {
+    downloadsOverTime: Array<{ day: string; downloads: number; uniqueVisitors: number }>;
+    topCountries: Array<{ country: string; downloads: number; uniqueVisitors: number }>;
+    topCities: Array<{ city: string; country: string; downloads: number; uniqueVisitors: number }>;
+    sourceBreakdown: Array<{ source: string; downloads: number }>;
+    pageBreakdown: Array<{ path: string; downloads: number; uniqueVisitors: number }>;
+    deviceBreakdown: Array<{ device: string; downloads: number }>;
+  };
+  recentDownloads: Array<{
+    id: string;
+    anonymousVisitorId: string;
+    sessionId: string;
+    assetLabel: string | null;
+    downloadUrl: string | null;
+    pagePath: string | null;
+    referrer: string | null;
+    utmSource: string | null;
+    browser: string | null;
+    operatingSystem: string | null;
+    location: string;
+    createdAt: string;
+  }>;
+};
+
 export type LiveVisitor = {
   id: string;
   portal: string;

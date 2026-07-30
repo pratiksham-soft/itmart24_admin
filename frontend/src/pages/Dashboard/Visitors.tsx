@@ -7,6 +7,7 @@ import { Modal } from "../../components/ui/modal";
 import { Table, TableBody, TableCell, TableHeader, TableRow } from "../../components/ui/table";
 import {
   exportVisitorsCsv,
+  fetchB2BLeadZoneDownloadAnalytics,
   fetchLiveVisitors,
   fetchVisitorDetails,
   fetchVisitorLocations,
@@ -16,6 +17,7 @@ import {
   fetchVisitorSummary,
 } from "../../services/visitorAnalytics.service";
 import type {
+  B2BLeadZoneDownloadAnalyticsResponse,
   LiveVisitor,
   VisitorDetails,
   VisitorFilters,
@@ -26,7 +28,7 @@ import type {
   VisitorSummaryResponse,
 } from "../../types/visitors";
 
-type VisitorsTab = "overview" | "live" | "today" | "last7" | "all" | "locations" | "pages";
+type VisitorsTab = "overview" | "live" | "today" | "last7" | "all" | "locations" | "pages" | "b2bLeadZone";
 
 const TABS: Array<{ key: VisitorsTab; label: string }> = [
   { key: "overview", label: "Overview" },
@@ -36,6 +38,7 @@ const TABS: Array<{ key: VisitorsTab; label: string }> = [
   { key: "all", label: "All Visitors" },
   { key: "locations", label: "Locations" },
   { key: "pages", label: "Pages" },
+  { key: "b2bLeadZone", label: "B2B Lead Zone" },
 ];
 
 const formatNumber = (value: number) =>
@@ -69,6 +72,7 @@ const formatDuration = (seconds: number) => {
 function useDateRange(tab: VisitorsTab) {
   const today = new Date().toISOString().slice(0, 10);
   const last7 = new Date(Date.now() - 6 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const last30 = new Date(Date.now() - 29 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
   if (tab === "today") {
     return { startDate: today, endDate: today };
@@ -78,12 +82,17 @@ function useDateRange(tab: VisitorsTab) {
     return { startDate: last7, endDate: today };
   }
 
+  if (tab === "b2bLeadZone") {
+    return { startDate: last30, endDate: today };
+  }
+
   return { startDate: "", endDate: "" };
 }
 
 export default function VisitorsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [summary, setSummary] = useState<VisitorSummaryResponse | null>(null);
+  const [b2bDownloadAnalytics, setB2BDownloadAnalytics] = useState<B2BLeadZoneDownloadAnalyticsResponse | null>(null);
   const [liveVisitors, setLiveVisitors] = useState<LiveVisitor[]>([]);
   const [visitorRows, setVisitorRows] = useState<VisitorListItem[]>([]);
   const [locationRows, setLocationRows] = useState<VisitorLocationItem[]>([]);
@@ -148,6 +157,17 @@ export default function VisitorsPage() {
       setTableLoading(true);
       setTableError(null);
       try {
+        if (currentTab === "b2bLeadZone") {
+          const data = await fetchB2BLeadZoneDownloadAnalytics({
+            startDate: filters.startDate,
+            endDate: filters.endDate,
+          });
+          if (isMounted) {
+            setB2BDownloadAnalytics(data);
+          }
+          return;
+        }
+
         if (currentTab === "live") {
           const data = await fetchLiveVisitors();
           if (isMounted) setLiveVisitors(data);
@@ -283,6 +303,55 @@ export default function VisitorsPage() {
     [summary]
   );
 
+  const b2bDownloadsSeries = useMemo(
+    () => [
+      {
+        name: "Downloads",
+        data: b2bDownloadAnalytics?.charts.downloadsOverTime.map((item) => item.downloads) ?? [],
+      },
+      {
+        name: "Unique visitors",
+        data: b2bDownloadAnalytics?.charts.downloadsOverTime.map((item) => item.uniqueVisitors) ?? [],
+      },
+    ],
+    [b2bDownloadAnalytics]
+  );
+
+  const b2bCountrySeries = useMemo(
+    () => [
+      {
+        name: "Downloads",
+        data: b2bDownloadAnalytics?.charts.topCountries.map((item) => item.downloads) ?? [],
+      },
+    ],
+    [b2bDownloadAnalytics]
+  );
+
+  const b2bCitySeries = useMemo(
+    () => [
+      {
+        name: "Downloads",
+        data: b2bDownloadAnalytics?.charts.topCities.map((item) => item.downloads) ?? [],
+      },
+    ],
+    [b2bDownloadAnalytics]
+  );
+
+  const b2bDeviceSeries = useMemo(
+    () => b2bDownloadAnalytics?.charts.deviceBreakdown.map((item) => item.downloads) ?? [],
+    [b2bDownloadAnalytics]
+  );
+
+  const b2bSourceSeries = useMemo(
+    () => [
+      {
+        name: "Downloads",
+        data: b2bDownloadAnalytics?.charts.sourceBreakdown.map((item) => item.downloads) ?? [],
+      },
+    ],
+    [b2bDownloadAnalytics]
+  );
+
   const openVisitorDetails = async (visitorId: string) => {
     try {
       setDetailLoading(true);
@@ -357,6 +426,17 @@ export default function VisitorsPage() {
     ["Bounce rate", summary?.summary.bounceRate ?? 0, "percent"],
   ] as const;
 
+  const b2bSummaryCards = [
+    ["Total downloads", b2bDownloadAnalytics?.summary.totalDownloads ?? 0, "count"],
+    ["Unique download visitors", b2bDownloadAnalytics?.summary.uniqueVisitors ?? 0, "count"],
+    ["Unique sessions", b2bDownloadAnalytics?.summary.uniqueSessions ?? 0, "count"],
+    ["Downloads today", b2bDownloadAnalytics?.summary.downloadsToday ?? 0, "count"],
+    ["Downloads in last 7 days", b2bDownloadAnalytics?.summary.downloadsLast7Days ?? 0, "count"],
+    ["Downloads in last 30 days", b2bDownloadAnalytics?.summary.downloadsLast30Days ?? 0, "count"],
+    ["Known location downloads", b2bDownloadAnalytics?.summary.knownLocationDownloads ?? 0, "count"],
+    ["Location coverage", b2bDownloadAnalytics?.summary.locationCoverageRate ?? 0, "percent"],
+  ] as const;
+
   return (
     <>
       <PageMeta title="Visitors Analytics | ITMart24 Admin" description="Visitor analytics across the User Portal and Vendor Portal." />
@@ -366,7 +446,9 @@ export default function VisitorsPage() {
             Visitors Analytics
           </h1>
           <p className="text-sm text-gray-500 dark:text-gray-400">
-            Cross-portal traffic visibility for the User Portal and Vendor Portal.
+            {currentTab === "b2bLeadZone"
+              ? "Enterprise download intelligence for B2B Lead Zone installer activity on /guest/map-scraper."
+              : "Cross-portal traffic visibility for the User Portal and Vendor Portal."}
           </p>
         </div>
         {summary ? (
@@ -399,11 +481,11 @@ export default function VisitorsPage() {
         </div>
       ) : null}
 
-      <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
-        {summaryCards.map(([label, value, kind]) => (
+      <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-4">
+        {(currentTab === "b2bLeadZone" ? b2bSummaryCards : summaryCards).map(([label, value, kind]) => (
           <ComponentCard key={label} title={String(label)}>
             <p className="text-3xl font-semibold text-gray-900 dark:text-white/90">
-              {loading
+              {loading || (currentTab === "b2bLeadZone" && tableLoading)
                 ? "..."
                 : kind === "duration"
                   ? formatDuration(Number(value))
@@ -415,7 +497,168 @@ export default function VisitorsPage() {
         ))}
       </div>
 
-      {summary ? (
+      {currentTab === "b2bLeadZone" && b2bDownloadAnalytics ? (
+        <div className="mb-6 space-y-6">
+          <ComponentCard title="Download Range">
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+              <input
+                type="date"
+                value={filters.startDate ?? ""}
+                onChange={(event) => handleFilterChange("startDate", event.target.value)}
+                className="rounded-xl border border-gray-200 px-4 py-2.5 text-sm dark:border-gray-800 dark:bg-gray-900"
+              />
+              <input
+                type="date"
+                value={filters.endDate ?? ""}
+                onChange={(event) => handleFilterChange("endDate", event.target.value)}
+                className="rounded-xl border border-gray-200 px-4 py-2.5 text-sm dark:border-gray-800 dark:bg-gray-900"
+              />
+              <button
+                type="button"
+                onClick={() => setSearchParams({ tab: currentTab })}
+                className="rounded-full border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 dark:border-gray-800 dark:text-gray-300"
+              >
+                Reset to last 30 days
+              </button>
+            </div>
+            <p className="mt-3 text-sm text-gray-500 dark:text-gray-400">
+              Tracking confirmed B2B Lead Zone installer downloads from {b2bDownloadAnalytics.range.startDate} to {b2bDownloadAnalytics.range.endDate}.
+            </p>
+          </ComponentCard>
+
+          <div className="grid grid-cols-12 gap-4 md:gap-6">
+            <div className="col-span-12 xl:col-span-8">
+              <ComponentCard title="Downloads Over Time">
+                <ReactApexChart
+                  type="line"
+                  height={320}
+                  options={{
+                    chart: { toolbar: { show: false } },
+                    xaxis: { categories: b2bDownloadAnalytics.charts.downloadsOverTime.map((item) => item.day) },
+                    stroke: { curve: "smooth", width: 3 },
+                    legend: { position: "top" },
+                  }}
+                  series={b2bDownloadsSeries}
+                />
+              </ComponentCard>
+            </div>
+            <div className="col-span-12 xl:col-span-4">
+              <ComponentCard title="Device Mix">
+                <ReactApexChart
+                  type="donut"
+                  height={320}
+                  options={{
+                    labels: b2bDownloadAnalytics.charts.deviceBreakdown.map((item) => item.device),
+                    legend: { position: "bottom" },
+                  }}
+                  series={b2bDeviceSeries}
+                />
+              </ComponentCard>
+            </div>
+            <div className="col-span-12 xl:col-span-6">
+              <ComponentCard title="Top Countries">
+                <ReactApexChart
+                  type="bar"
+                  height={300}
+                  options={{
+                    chart: { toolbar: { show: false } },
+                    xaxis: { categories: b2bDownloadAnalytics.charts.topCountries.map((item) => item.country) },
+                  }}
+                  series={b2bCountrySeries}
+                />
+              </ComponentCard>
+            </div>
+            <div className="col-span-12 xl:col-span-6">
+              <ComponentCard title="Top Cities">
+                <ReactApexChart
+                  type="bar"
+                  height={300}
+                  options={{
+                    chart: { toolbar: { show: false } },
+                    xaxis: { categories: b2bDownloadAnalytics.charts.topCities.map((item) => `${item.city} (${item.country})`) },
+                  }}
+                  series={b2bCitySeries}
+                />
+              </ComponentCard>
+            </div>
+            <div className="col-span-12">
+              <ComponentCard title="Acquisition Sources">
+                <ReactApexChart
+                  type="bar"
+                  height={320}
+                  options={{
+                    chart: { toolbar: { show: false } },
+                    xaxis: { categories: b2bDownloadAnalytics.charts.sourceBreakdown.map((item) => item.source) },
+                  }}
+                  series={b2bSourceSeries}
+                />
+              </ComponentCard>
+            </div>
+          </div>
+
+          <ComponentCard title="Top Download Pages">
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="border-b border-gray-100 dark:border-gray-800">
+                    {["Path", "Downloads", "Unique visitors"].map((label) => (
+                      <TableCell key={label} isHeader className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.12em] text-gray-500">
+                        {label}
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {b2bDownloadAnalytics.charts.pageBreakdown.map((row) => (
+                    <TableRow key={row.path} className="border-b border-gray-100 dark:border-gray-800">
+                      <TableCell className="px-4 py-3 text-sm">{row.path}</TableCell>
+                      <TableCell className="px-4 py-3 text-sm">{formatNumber(row.downloads)}</TableCell>
+                      <TableCell className="px-4 py-3 text-sm">{formatNumber(row.uniqueVisitors)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </ComponentCard>
+
+          <ComponentCard title="Recent Downloads">
+            {tableLoading ? (
+              <p className="text-sm text-gray-500 dark:text-gray-400">Loading download events...</p>
+            ) : b2bDownloadAnalytics.recentDownloads.length === 0 ? (
+              <p className="text-sm text-gray-500 dark:text-gray-400">No download events found for the selected range.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="border-b border-gray-100 dark:border-gray-800">
+                      {["Downloaded", "Location", "Page", "Source", "Browser / OS", "Asset", "Visitor"].map((label) => (
+                        <TableCell key={label} isHeader className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.12em] text-gray-500">
+                          {label}
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {b2bDownloadAnalytics.recentDownloads.map((row) => (
+                      <TableRow key={row.id} className="border-b border-gray-100 dark:border-gray-800">
+                        <TableCell className="px-4 py-3 text-sm">{formatDateTime(row.createdAt)}</TableCell>
+                        <TableCell className="px-4 py-3 text-sm">{row.location}</TableCell>
+                        <TableCell className="px-4 py-3 text-sm">{row.pagePath ?? "-"}</TableCell>
+                        <TableCell className="px-4 py-3 text-sm">{row.utmSource ?? row.referrer ?? "-"}</TableCell>
+                        <TableCell className="px-4 py-3 text-sm">{[row.browser, row.operatingSystem].filter(Boolean).join(" / ") || "-"}</TableCell>
+                        <TableCell className="px-4 py-3 text-sm">{row.assetLabel ?? "Installer"}</TableCell>
+                        <TableCell className="px-4 py-3 text-sm">{row.anonymousVisitorId}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </ComponentCard>
+        </div>
+      ) : null}
+
+      {currentTab !== "b2bLeadZone" && summary ? (
         <div className="mb-6 grid grid-cols-12 gap-4 md:gap-6">
           <div className="col-span-12 xl:col-span-8">
             <ComponentCard title="Visitors And Page Views">
@@ -539,6 +782,7 @@ export default function VisitorsPage() {
         </div>
       ) : null}
 
+      {currentTab !== "b2bLeadZone" ? (
       <ComponentCard title="Filters">
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
           <input
@@ -587,6 +831,7 @@ export default function VisitorsPage() {
           ) : null}
         </div>
       </ComponentCard>
+      ) : null}
 
       <div className="mt-6">
         {tableError ? (
@@ -639,7 +884,7 @@ export default function VisitorsPage() {
           </ComponentCard>
         ) : null}
 
-        {currentTab !== "live" && currentTab !== "locations" && currentTab !== "pages" ? (
+        {currentTab !== "live" && currentTab !== "locations" && currentTab !== "pages" && currentTab !== "b2bLeadZone" ? (
           <ComponentCard title={`${currentTab === "today" ? "Today's" : currentTab === "last7" ? "Last 7 Days" : "All"} Visitors`}>
             {tableLoading ? (
               <p className="text-sm text-gray-500 dark:text-gray-400">Loading visitors...</p>

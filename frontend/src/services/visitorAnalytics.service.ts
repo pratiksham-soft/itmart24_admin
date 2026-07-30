@@ -1,6 +1,7 @@
 import { API_BASE_URL } from "../config/api";
 import { getAdminAuthHeaders, readApiError } from "./adminApi";
 import type {
+  B2BLeadZoneDownloadAnalyticsResponse,
   LiveVisitor,
   VisitorDetails,
   VisitorFilters,
@@ -47,6 +48,13 @@ export async function fetchLiveVisitors() {
     headers: getAdminAuthHeaders(),
   });
   return readData<LiveVisitor[]>(response);
+}
+
+export async function fetchB2BLeadZoneDownloadAnalytics(filters: Pick<VisitorFilters, "startDate" | "endDate">) {
+  const response = await fetch(buildUrl("/api/admin/visitors/downloads/b2b-lead-zone", filters), {
+    headers: getAdminAuthHeaders(),
+  });
+  return readData<B2BLeadZoneDownloadAnalyticsResponse>(response);
 }
 
 export async function fetchVisitors(filters: VisitorFilters) {
