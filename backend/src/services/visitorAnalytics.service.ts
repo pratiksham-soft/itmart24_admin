@@ -90,6 +90,25 @@ function normalizeDate(value: string | null | undefined) {
   return /^\d{4}-\d{2}-\d{2}$/.test(normalized) ? normalized : null;
 }
 
+function normalizeLocationPart(value: unknown) {
+  const normalized = normalizeText(typeof value === "string" ? value : value == null ? undefined : String(value), 120);
+  if (!normalized || normalized.toLowerCase() === "unknown") {
+    return null;
+  }
+
+  return normalized;
+}
+
+function formatLocationLabel(city: unknown, region: unknown, country: unknown) {
+  const parts = [
+    normalizeLocationPart(city),
+    normalizeLocationPart(region),
+    normalizeLocationPart(country),
+  ].filter(Boolean);
+
+  return parts.length > 0 ? parts.join(", ") : "Unknown";
+}
+
 function getDatePartsInTimezone(date: Date, timeZone: string) {
   const formatter = new Intl.DateTimeFormat("en-CA", {
     timeZone,
@@ -652,7 +671,7 @@ export async function getB2BLeadZoneDownloadAnalytics(input: Pick<VisitorsFilter
       utmSource: row.utm_source ? String(row.utm_source) : null,
       browser: row.browser ? String(row.browser) : null,
       operatingSystem: row.operating_system ? String(row.operating_system) : null,
-      location: [row.country_name, row.region, row.city].filter(Boolean).join(" / ") || "Unknown",
+      location: formatLocationLabel(row.city, row.region, row.country_name),
       createdAt: String(row.created_at),
     })),
   };
@@ -666,7 +685,9 @@ export async function getLiveVisitors() {
         s.portal,
         s.current_path,
         s.current_page_title,
-        COALESCE(s.city, s.region, s.country_name, 'Unknown') AS location,
+        s.country_name,
+        s.region,
+        s.city,
         s.visitor_type,
         s.authenticated_user_id,
         s.authenticated_vendor_id,
@@ -690,7 +711,7 @@ export async function getLiveVisitors() {
     portal: String(row.portal),
     currentPath: row.current_path ? String(row.current_path) : null,
     pageTitle: row.current_page_title ? String(row.current_page_title) : null,
-    location: String(row.location ?? "Unknown"),
+    location: formatLocationLabel(row.city, row.region, row.country_name),
     visitorType: String(row.visitor_type ?? "anonymous"),
     associatedUserId: row.authenticated_user_id ? String(row.authenticated_user_id) : null,
     associatedVendorId: row.authenticated_vendor_id ? String(row.authenticated_vendor_id) : null,
@@ -806,7 +827,7 @@ export async function listVisitors(input: VisitorsFilterInput) {
         row.portal,
         row.first_seen,
         row.last_seen,
-        [row.country_name, row.region, row.city].filter(Boolean).join(" / "),
+        formatLocationLabel(row.city, row.region, row.country_name),
         row.sessions,
         row.page_views,
         row.total_duration,
@@ -842,7 +863,7 @@ export async function listVisitors(input: VisitorsFilterInput) {
       portal: String(row.portal),
       firstSeen: row.first_seen,
       lastSeen: row.last_seen,
-      location: [row.country_name, row.region, row.city].filter(Boolean).join(" / ") || "Unknown",
+      location: formatLocationLabel(row.city, row.region, row.country_name),
       sessions: Number(row.sessions ?? 0),
       pageViews: Number(row.page_views ?? 0),
       totalDurationSeconds: Number(row.total_duration ?? 0),
@@ -981,7 +1002,7 @@ export async function getVisitorDetails(visitorId: string) {
       visitorType: String(visitor.last_visitor_type ?? "anonymous"),
       associatedUserId: visitor.associated_user_id ? String(visitor.associated_user_id) : null,
       associatedVendorId: visitor.associated_vendor_id ? String(visitor.associated_vendor_id) : null,
-      location: [visitor.country_name, visitor.region, visitor.city].filter(Boolean).join(" / ") || "Unknown",
+      location: formatLocationLabel(visitor.city, visitor.region, visitor.country_name),
       device: visitor.device_category ? String(visitor.device_category) : null,
       browser: visitor.browser ? String(visitor.browser) : null,
       operatingSystem: visitor.operating_system ? String(visitor.operating_system) : null,
@@ -1057,7 +1078,7 @@ export async function getVisitorSessionDetails(sessionId: string) {
       referrer: session.referrer ? String(session.referrer) : null,
       utmSource: session.utm_source ? String(session.utm_source) : null,
       utmCampaign: session.utm_campaign ? String(session.utm_campaign) : null,
-      location: [session.country_name, session.region, session.city].filter(Boolean).join(" / ") || "Unknown",
+      location: formatLocationLabel(session.city, session.region, session.country_name),
       device: session.device_category ? String(session.device_category) : null,
       browser: session.browser ? String(session.browser) : null,
       pageViews: Number(session.page_view_count ?? 0),
