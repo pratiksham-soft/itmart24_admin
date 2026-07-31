@@ -69,6 +69,13 @@ const formatDuration = (seconds: number) => {
   return `${hours}h ${minutes % 60}m`;
 };
 
+const filterControlClassName =
+  "rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm text-gray-800 placeholder:text-gray-400 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:placeholder:text-gray-500";
+
+const dataCellClassName = "px-4 py-3 text-sm text-gray-700 dark:text-gray-200";
+const headerCellClassName =
+  "px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.12em] text-gray-500 dark:text-gray-400";
+
 function useDateRange(tab: VisitorsTab) {
   const today = new Date().toISOString().slice(0, 10);
   const last7 = new Date(Date.now() - 6 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
@@ -505,13 +512,13 @@ export default function VisitorsPage() {
                 type="date"
                 value={filters.startDate ?? ""}
                 onChange={(event) => handleFilterChange("startDate", event.target.value)}
-                className="rounded-xl border border-gray-200 px-4 py-2.5 text-sm dark:border-gray-800 dark:bg-gray-900"
+                className={filterControlClassName}
               />
               <input
                 type="date"
                 value={filters.endDate ?? ""}
                 onChange={(event) => handleFilterChange("endDate", event.target.value)}
-                className="rounded-xl border border-gray-200 px-4 py-2.5 text-sm dark:border-gray-800 dark:bg-gray-900"
+                className={filterControlClassName}
               />
               <button
                 type="button"
@@ -789,33 +796,33 @@ export default function VisitorsPage() {
             value={filters.search ?? ""}
             onChange={(event) => handleFilterChange("search", event.target.value)}
             placeholder="Search visitor, account, location"
-            className="rounded-xl border border-gray-200 px-4 py-2.5 text-sm dark:border-gray-800 dark:bg-gray-900"
+            className={filterControlClassName}
           />
-          <select value={filters.portal ?? "all"} onChange={(event) => handleFilterChange("portal", event.target.value)} className="rounded-xl border border-gray-200 px-4 py-2.5 text-sm dark:border-gray-800 dark:bg-gray-900">
+          <select value={filters.portal ?? "all"} onChange={(event) => handleFilterChange("portal", event.target.value)} className={filterControlClassName}>
             <option value="all">All portals</option>
             <option value="user_portal">User Portal</option>
             <option value="vendor_portal">Vendor Portal</option>
           </select>
-          <select value={filters.visitorType ?? "all"} onChange={(event) => handleFilterChange("visitorType", event.target.value)} className="rounded-xl border border-gray-200 px-4 py-2.5 text-sm dark:border-gray-800 dark:bg-gray-900">
+          <select value={filters.visitorType ?? "all"} onChange={(event) => handleFilterChange("visitorType", event.target.value)} className={filterControlClassName}>
             <option value="all">All visitor types</option>
             <option value="anonymous">Anonymous</option>
             <option value="user">User</option>
             <option value="vendor">Vendor</option>
           </select>
-          <input value={filters.country ?? ""} onChange={(event) => handleFilterChange("country", event.target.value)} placeholder="Country" className="rounded-xl border border-gray-200 px-4 py-2.5 text-sm dark:border-gray-800 dark:bg-gray-900" />
-          <input value={filters.city ?? ""} onChange={(event) => handleFilterChange("city", event.target.value)} placeholder="City" className="rounded-xl border border-gray-200 px-4 py-2.5 text-sm dark:border-gray-800 dark:bg-gray-900" />
-          <input value={filters.device ?? ""} onChange={(event) => handleFilterChange("device", event.target.value)} placeholder="Device" className="rounded-xl border border-gray-200 px-4 py-2.5 text-sm dark:border-gray-800 dark:bg-gray-900" />
-          <input value={filters.browser ?? ""} onChange={(event) => handleFilterChange("browser", event.target.value)} placeholder="Browser" className="rounded-xl border border-gray-200 px-4 py-2.5 text-sm dark:border-gray-800 dark:bg-gray-900" />
-          <input value={filters.pagePath ?? ""} onChange={(event) => handleFilterChange("pagePath", event.target.value)} placeholder="Page path" className="rounded-xl border border-gray-200 px-4 py-2.5 text-sm dark:border-gray-800 dark:bg-gray-900" />
-          <input value={filters.referrer ?? ""} onChange={(event) => handleFilterChange("referrer", event.target.value)} placeholder="Referrer" className="rounded-xl border border-gray-200 px-4 py-2.5 text-sm dark:border-gray-800 dark:bg-gray-900" />
-          <input value={filters.utmSource ?? ""} onChange={(event) => handleFilterChange("utmSource", event.target.value)} placeholder="UTM source" className="rounded-xl border border-gray-200 px-4 py-2.5 text-sm dark:border-gray-800 dark:bg-gray-900" />
-          <input value={filters.utmCampaign ?? ""} onChange={(event) => handleFilterChange("utmCampaign", event.target.value)} placeholder="UTM campaign" className="rounded-xl border border-gray-200 px-4 py-2.5 text-sm dark:border-gray-800 dark:bg-gray-900" />
-          <select value={filters.botStatus ?? "exclude"} onChange={(event) => handleFilterChange("botStatus", event.target.value)} className="rounded-xl border border-gray-200 px-4 py-2.5 text-sm dark:border-gray-800 dark:bg-gray-900">
+          <input value={filters.country ?? ""} onChange={(event) => handleFilterChange("country", event.target.value)} placeholder="Country" className={filterControlClassName} />
+          <input value={filters.city ?? ""} onChange={(event) => handleFilterChange("city", event.target.value)} placeholder="City" className={filterControlClassName} />
+          <input value={filters.device ?? ""} onChange={(event) => handleFilterChange("device", event.target.value)} placeholder="Device" className={filterControlClassName} />
+          <input value={filters.browser ?? ""} onChange={(event) => handleFilterChange("browser", event.target.value)} placeholder="Browser" className={filterControlClassName} />
+          <input value={filters.pagePath ?? ""} onChange={(event) => handleFilterChange("pagePath", event.target.value)} placeholder="Page path" className={filterControlClassName} />
+          <input value={filters.referrer ?? ""} onChange={(event) => handleFilterChange("referrer", event.target.value)} placeholder="Referrer" className={filterControlClassName} />
+          <input value={filters.utmSource ?? ""} onChange={(event) => handleFilterChange("utmSource", event.target.value)} placeholder="UTM source" className={filterControlClassName} />
+          <input value={filters.utmCampaign ?? ""} onChange={(event) => handleFilterChange("utmCampaign", event.target.value)} placeholder="UTM campaign" className={filterControlClassName} />
+          <select value={filters.botStatus ?? "exclude"} onChange={(event) => handleFilterChange("botStatus", event.target.value)} className={filterControlClassName}>
             <option value="exclude">Exclude bots</option>
             <option value="bots_only">Bots only</option>
           </select>
-          <input type="date" value={filters.startDate ?? ""} onChange={(event) => handleFilterChange("startDate", event.target.value)} className="rounded-xl border border-gray-200 px-4 py-2.5 text-sm dark:border-gray-800 dark:bg-gray-900" />
-          <input type="date" value={filters.endDate ?? ""} onChange={(event) => handleFilterChange("endDate", event.target.value)} className="rounded-xl border border-gray-200 px-4 py-2.5 text-sm dark:border-gray-800 dark:bg-gray-900" />
+          <input type="date" value={filters.startDate ?? ""} onChange={(event) => handleFilterChange("startDate", event.target.value)} className={filterControlClassName} />
+          <input type="date" value={filters.endDate ?? ""} onChange={(event) => handleFilterChange("endDate", event.target.value)} className={filterControlClassName} />
         </div>
         <div className="mt-4 flex flex-wrap gap-2">
           <button type="button" onClick={() => setSearchParams({ tab: currentTab })} className="rounded-full border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 dark:border-gray-800 dark:text-gray-300">
@@ -852,7 +859,7 @@ export default function VisitorsPage() {
                   <TableHeader>
                     <TableRow className="border-b border-gray-100 dark:border-gray-800">
                       {["Portal", "Current page", "Location", "Visitor type", "Device", "Browser", "Source", "Started", "Last activity", "Views"].map((label) => (
-                        <TableCell key={label} isHeader className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.12em] text-gray-500">
+                        <TableCell key={label} isHeader className={headerCellClassName}>
                           {label}
                         </TableCell>
                       ))}
@@ -861,20 +868,20 @@ export default function VisitorsPage() {
                   <TableBody>
                     {liveVisitors.map((visitor) => (
                       <TableRow key={visitor.id} className="border-b border-gray-100 dark:border-gray-800">
-                        <TableCell className="px-4 py-3 text-sm">{visitor.portal}</TableCell>
-                        <TableCell className="px-4 py-3 text-sm">
+                        <TableCell className={dataCellClassName}>{visitor.portal}</TableCell>
+                        <TableCell className={dataCellClassName}>
                           <button type="button" onClick={() => void openSessionDetails(visitor.id)} className="text-left font-medium text-brand-600 hover:underline">
                             {visitor.currentPath ?? visitor.pageTitle ?? "-"}
                           </button>
                         </TableCell>
-                        <TableCell className="px-4 py-3 text-sm">{visitor.location}</TableCell>
-                        <TableCell className="px-4 py-3 text-sm">{visitor.visitorType}</TableCell>
-                        <TableCell className="px-4 py-3 text-sm">{visitor.device ?? "-"}</TableCell>
-                        <TableCell className="px-4 py-3 text-sm">{visitor.browser ?? "-"}</TableCell>
-                        <TableCell className="px-4 py-3 text-sm">{visitor.source ?? visitor.referrer ?? "-"}</TableCell>
-                        <TableCell className="px-4 py-3 text-sm">{formatDateTime(visitor.startedAt)}</TableCell>
-                        <TableCell className="px-4 py-3 text-sm">{formatDateTime(visitor.lastActivityAt)}</TableCell>
-                        <TableCell className="px-4 py-3 text-sm">{formatNumber(visitor.pageViews)}</TableCell>
+                        <TableCell className={dataCellClassName}>{visitor.location}</TableCell>
+                        <TableCell className={dataCellClassName}>{visitor.visitorType}</TableCell>
+                        <TableCell className={dataCellClassName}>{visitor.device ?? "-"}</TableCell>
+                        <TableCell className={dataCellClassName}>{visitor.browser ?? "-"}</TableCell>
+                        <TableCell className={dataCellClassName}>{visitor.source ?? visitor.referrer ?? "-"}</TableCell>
+                        <TableCell className={dataCellClassName}>{formatDateTime(visitor.startedAt)}</TableCell>
+                        <TableCell className={dataCellClassName}>{formatDateTime(visitor.lastActivityAt)}</TableCell>
+                        <TableCell className={dataCellClassName}>{formatNumber(visitor.pageViews)}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -900,7 +907,7 @@ export default function VisitorsPage() {
                     <TableHeader>
                       <TableRow className="border-b border-gray-100 dark:border-gray-800">
                         {["Visitor", "Portal", "First seen", "Last seen", "Location", "Sessions", "Page views", "Duration", "Latest page", "Device / Browser", "Association", "Source"].map((label) => (
-                          <TableCell key={label} isHeader className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.12em] text-gray-500">
+                          <TableCell key={label} isHeader className={headerCellClassName}>
                             {label}
                           </TableCell>
                         ))}
@@ -909,22 +916,22 @@ export default function VisitorsPage() {
                     <TableBody>
                       {visitorRows.map((row) => (
                         <TableRow key={row.visitorId} className="border-b border-gray-100 dark:border-gray-800">
-                          <TableCell className="px-4 py-3 text-sm">
+                          <TableCell className={dataCellClassName}>
                             <button type="button" onClick={() => void openVisitorDetails(row.visitorId)} className="text-left font-medium text-brand-600 hover:underline">
                               {row.visitorId}
                             </button>
                           </TableCell>
-                          <TableCell className="px-4 py-3 text-sm">{row.portal}</TableCell>
-                          <TableCell className="px-4 py-3 text-sm">{formatDateTime(row.firstSeen)}</TableCell>
-                          <TableCell className="px-4 py-3 text-sm">{formatDateTime(row.lastSeen)}</TableCell>
-                          <TableCell className="px-4 py-3 text-sm">{row.location}</TableCell>
-                          <TableCell className="px-4 py-3 text-sm">{formatNumber(row.sessions)}</TableCell>
-                          <TableCell className="px-4 py-3 text-sm">{formatNumber(row.pageViews)}</TableCell>
-                          <TableCell className="px-4 py-3 text-sm">{formatDuration(row.totalDurationSeconds)}</TableCell>
-                          <TableCell className="px-4 py-3 text-sm">{row.latestPage ?? "-"}</TableCell>
-                          <TableCell className="px-4 py-3 text-sm">{[row.device, row.browser].filter(Boolean).join(" / ") || "-"}</TableCell>
-                          <TableCell className="px-4 py-3 text-sm">{row.associatedUserId ?? row.associatedVendorId ?? "-"}</TableCell>
-                          <TableCell className="px-4 py-3 text-sm">{row.acquisitionSource ?? "-"}</TableCell>
+                          <TableCell className={dataCellClassName}>{row.portal}</TableCell>
+                          <TableCell className={dataCellClassName}>{formatDateTime(row.firstSeen)}</TableCell>
+                          <TableCell className={dataCellClassName}>{formatDateTime(row.lastSeen)}</TableCell>
+                          <TableCell className={dataCellClassName}>{row.location}</TableCell>
+                          <TableCell className={dataCellClassName}>{formatNumber(row.sessions)}</TableCell>
+                          <TableCell className={dataCellClassName}>{formatNumber(row.pageViews)}</TableCell>
+                          <TableCell className={dataCellClassName}>{formatDuration(row.totalDurationSeconds)}</TableCell>
+                          <TableCell className={dataCellClassName}>{row.latestPage ?? "-"}</TableCell>
+                          <TableCell className={dataCellClassName}>{[row.device, row.browser].filter(Boolean).join(" / ") || "-"}</TableCell>
+                          <TableCell className={dataCellClassName}>{row.associatedUserId ?? row.associatedVendorId ?? "-"}</TableCell>
+                          <TableCell className={dataCellClassName}>{row.acquisitionSource ?? "-"}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
