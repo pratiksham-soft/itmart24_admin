@@ -609,7 +609,7 @@ export default function VisitorsPage() {
                 <TableHeader>
                   <TableRow className="border-b border-gray-100 dark:border-gray-800">
                     {["Path", "Downloads", "Unique visitors"].map((label) => (
-                      <TableCell key={label} isHeader className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.12em] text-gray-500">
+                      <TableCell key={label} isHeader className={headerCellClassName}>
                         {label}
                       </TableCell>
                     ))}
@@ -618,9 +618,9 @@ export default function VisitorsPage() {
                 <TableBody>
                   {b2bDownloadAnalytics.charts.pageBreakdown.map((row) => (
                     <TableRow key={row.path} className="border-b border-gray-100 dark:border-gray-800">
-                      <TableCell className="px-4 py-3 text-sm">{row.path}</TableCell>
-                      <TableCell className="px-4 py-3 text-sm">{formatNumber(row.downloads)}</TableCell>
-                      <TableCell className="px-4 py-3 text-sm">{formatNumber(row.uniqueVisitors)}</TableCell>
+                      <TableCell className={dataCellClassName}>{row.path}</TableCell>
+                      <TableCell className={dataCellClassName}>{formatNumber(row.downloads)}</TableCell>
+                      <TableCell className={dataCellClassName}>{formatNumber(row.uniqueVisitors)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -637,28 +637,28 @@ export default function VisitorsPage() {
               <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
-                    <TableRow className="border-b border-gray-100 dark:border-gray-800">
-                      {["Downloaded", "Location", "Page", "Source", "Browser / OS", "Asset", "Visitor"].map((label) => (
-                        <TableCell key={label} isHeader className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-[0.12em] text-gray-500">
+                  <TableRow className="border-b border-gray-100 dark:border-gray-800">
+                    {["Downloaded", "Location", "Page", "Source", "Browser / OS", "Asset", "Visitor"].map((label) => (
+                        <TableCell key={label} isHeader className={headerCellClassName}>
                           {label}
                         </TableCell>
                       ))}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {b2bDownloadAnalytics.recentDownloads.map((row) => (
+                    <TableRow key={row.id} className="border-b border-gray-100 dark:border-gray-800">
+                        <TableCell className={dataCellClassName}>{formatDateTime(row.createdAt)}</TableCell>
+                        <TableCell className={dataCellClassName}>{row.location}</TableCell>
+                        <TableCell className={dataCellClassName}>{row.pagePath ?? "-"}</TableCell>
+                        <TableCell className={dataCellClassName}>{row.utmSource ?? row.referrer ?? "-"}</TableCell>
+                        <TableCell className={dataCellClassName}>{[row.browser, row.operatingSystem].filter(Boolean).join(" / ") || "-"}</TableCell>
+                        <TableCell className={dataCellClassName}>{row.assetLabel ?? "Installer"}</TableCell>
+                        <TableCell className={dataCellClassName}>{row.anonymousVisitorId}</TableCell>
                     </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {b2bDownloadAnalytics.recentDownloads.map((row) => (
-                      <TableRow key={row.id} className="border-b border-gray-100 dark:border-gray-800">
-                        <TableCell className="px-4 py-3 text-sm">{formatDateTime(row.createdAt)}</TableCell>
-                        <TableCell className="px-4 py-3 text-sm">{row.location}</TableCell>
-                        <TableCell className="px-4 py-3 text-sm">{row.pagePath ?? "-"}</TableCell>
-                        <TableCell className="px-4 py-3 text-sm">{row.utmSource ?? row.referrer ?? "-"}</TableCell>
-                        <TableCell className="px-4 py-3 text-sm">{[row.browser, row.operatingSystem].filter(Boolean).join(" / ") || "-"}</TableCell>
-                        <TableCell className="px-4 py-3 text-sm">{row.assetLabel ?? "Installer"}</TableCell>
-                        <TableCell className="px-4 py-3 text-sm">{row.anonymousVisitorId}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                  ))}
+                </TableBody>
+              </Table>
               </div>
             )}
           </ComponentCard>
