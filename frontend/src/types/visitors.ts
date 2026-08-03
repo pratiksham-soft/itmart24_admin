@@ -47,6 +47,208 @@ export type B2BLeadZoneDownloadAnalyticsResponse = {
     knownLocationDownloads: number;
     locationCoverageRate: number;
   };
+  insights: {
+    availability: {
+      emailLinkRequests: boolean;
+      linkShares: boolean;
+      linkCopies: boolean;
+      failedLinkRequests: boolean;
+      appFirstOpen: boolean;
+      firstExtraction: boolean;
+      freeLimitReached: boolean;
+      plansOpened: boolean;
+      checkoutStarted: boolean;
+      paymentCompleted: boolean;
+      crossDeviceAttribution: boolean;
+      appVersion: boolean;
+      authenticationStatus: boolean;
+    };
+    trackedEvents: Array<{
+      eventName: string;
+      status: string;
+      table: string | null;
+      timestampColumn: string | null;
+      visitorIdColumn: string | null;
+      sessionIdColumn: string | null;
+    }>;
+    traffic: {
+      totalLandingPageVisitors: number;
+      uniqueVisitors: number;
+      mobileTabletVisitors: number;
+      windowsDesktopVisitors: number;
+      otherDesktopVisitors: number;
+      unknownDeviceVisitors: number;
+      mobileVisitorPercentage: number;
+      mobileLandingViews: number;
+    };
+    mobileActions: {
+      mobileLandingViews: number;
+      emailLinkRequests: number;
+      successfulLinkShares: number;
+      downloadLinkCopies: number;
+      mobileExeDownloads: number;
+      mobileLinkSaveConversionRate: number | null;
+    };
+    windowsFunnel: {
+      windowsInstallerDownloads: number;
+      uniqueWindowsDownloaders: number;
+      appFirstOpens: number | null;
+      firstExtractionsCompleted: number | null;
+      free30LimitReached: number | null;
+      plansOpened: number | null;
+      checkoutStarted: number | null;
+      paymentsCompleted: number | null;
+    };
+    conversionRates: {
+      visitorToWindowsDownloadRate: number;
+      windowsDownloadToFirstOpenRate: number | null;
+      firstOpenToFirstExtractionRate: number | null;
+      firstExtractionToFreeLimitRate: number | null;
+      freeLimitToPlansOpenedRate: number | null;
+      plansOpenedToCheckoutRate: number | null;
+      checkoutToPaymentRate: number | null;
+      overallVisitorToPaymentRate: number | null;
+    };
+    deviceBreakdown: Array<{
+      segment: string;
+      uniqueVisitors: number;
+      downloadEvents: number;
+      uniqueDownloaders: number;
+      windowsDownloads: number;
+      linkSaveActions: number;
+    }>;
+    downloadClassification: Array<{
+      classification: string;
+      downloadEvents: number;
+      uniqueDownloaders: number;
+    }>;
+    downloadsOverTime: Array<{
+      day: string;
+      allDownloads: number;
+      uniqueDownloaders: number;
+      windowsDownloads: number;
+      mobileExeDownloads: number;
+      emailLinkRequests: number;
+      successfulLinkShares: number;
+      downloadLinkCopies: number;
+      appFirstOpens: number;
+      firstExtractions: number;
+      payments: number;
+    }>;
+    sourcePerformance: Array<{
+      source: string;
+      medium: string;
+      campaign: string;
+      referrerDomain: string | null;
+      label: string;
+      uniqueVisitors: number;
+      mobileVisitors: number;
+      linkSaveConversions: number;
+      windowsDownloads: number;
+      appFirstOpens: number;
+      firstExtractions: number;
+      checkoutStarts: number;
+      payments: number;
+      visitorToPaymentRate: number;
+      visitorToPaymentRateAvailable: boolean;
+    }>;
+    topCountries: Array<{
+      country: string;
+      uniqueVisitors: number;
+      mobileVisitors: number;
+      linkRequests: number;
+      windowsDownloads: number;
+      appFirstOpens: number;
+      payments: number;
+    }>;
+    topCities: Array<{
+      city: string;
+      country: string;
+      uniqueVisitors: number;
+      mobileVisitors: number;
+      linkRequests: number;
+      windowsDownloads: number;
+      appFirstOpens: number;
+      payments: number;
+    }>;
+    mobileFunnel: {
+      crossDeviceAttributionAvailable: boolean;
+      note: string;
+      stages: Array<{
+        key: string;
+        label: string;
+        value: number;
+        available: boolean;
+      }>;
+    };
+    failedLinkRequests: {
+      available: boolean;
+      total: number;
+      breakdown: Array<{
+        category: string;
+        count: number;
+      }>;
+    };
+    recentMobileActions: {
+      items: Array<{
+        occurredAt: string;
+        action: string;
+        device: string;
+        operatingSystem: string;
+        browser: string;
+        location: string;
+        sourceCampaign: string;
+        page: string;
+        visitorId: string;
+        attributionStatus: string;
+      }>;
+      pagination: {
+        page: number;
+        limit: number;
+        total: number;
+        totalPages: number;
+      };
+    };
+    recentDownloadTable: {
+      items: Array<{
+        downloadedAt: string;
+        deviceCategory: string;
+        operatingSystem: string;
+        browser: string;
+        location: string;
+        sourceCampaign: string;
+        downloadClassification: string;
+        installerVersion: string | null;
+        isRepeatDownload: boolean;
+        visitorId: string;
+        laterAppFirstOpen: boolean | null;
+        laterFirstExtraction: boolean | null;
+        paymentStatus: boolean | null;
+        pagePath: string;
+        assetLabel: string;
+      }>;
+      pagination: {
+        page: number;
+        limit: number;
+        total: number;
+        totalPages: number;
+      };
+    };
+    filterOptions: {
+      deviceCategories: Array<{ value: string; label: string; available: boolean }>;
+      operatingSystems: string[];
+      browsers: string[];
+      countries: string[];
+      cities: string[];
+      sources: string[];
+      mediums: string[];
+      campaigns: string[];
+      actionTypes: Array<{ value: string; label: string; available: boolean }>;
+      applicationVersions: string[];
+      authenticationStatuses: string[];
+    };
+    historicalNote: string;
+  };
   charts: {
     downloadsOverTime: Array<{ day: string; downloads: number; uniqueVisitors: number }>;
     topCountries: Array<{ country: string; downloads: number; uniqueVisitors: number }>;
@@ -222,12 +424,19 @@ export type VisitorFilters = {
   region?: string;
   city?: string;
   device?: string;
+  operatingSystem?: string;
   browser?: string;
   search?: string;
   pagePath?: string;
   referrer?: string;
   utmSource?: string;
   utmCampaign?: string;
+  source?: string;
+  medium?: string;
+  campaign?: string;
+  actionType?: string;
+  recentMobileActionsPage?: number;
+  recentDownloadsPage?: number;
   botStatus?: string;
   startDate?: string;
   endDate?: string;

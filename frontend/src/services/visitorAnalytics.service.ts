@@ -50,7 +50,7 @@ export async function fetchLiveVisitors() {
   return readData<LiveVisitor[]>(response);
 }
 
-export async function fetchB2BLeadZoneDownloadAnalytics(filters: Pick<VisitorFilters, "startDate" | "endDate">) {
+export async function fetchB2BLeadZoneDownloadAnalytics(filters: VisitorFilters) {
   const response = await fetch(buildUrl("/api/admin/visitors/downloads/b2b-lead-zone", filters), {
     headers: getAdminAuthHeaders(),
   });

@@ -199,6 +199,388 @@ function parseDownloadAnalyticsRange(input: Pick<VisitorsFilterInput, "startDate
   return { startDate, endDate };
 }
 
+const B2B_LEAD_ZONE_PROJECT_KEY = "b2b-lead-zone";
+const B2B_LEAD_ZONE_ROUTE = "/guest/map-scraper";
+const B2B_TABLE_PAGE_SIZE = 10;
+const B2B_FILTER_OPTION_LIMIT = 50;
+
+const B2B_UNAVAILABLE_EVENT_KEYS = new Set([
+  "email_link_request",
+  "link_shared",
+  "link_copied",
+  "failed_link_request",
+  "app_first_open",
+  "first_extraction",
+  "free_limit_reached",
+  "plans_opened",
+  "checkout_started",
+  "payment_completed",
+]);
+
+type B2BActionType =
+  | "all"
+  | "landing_view"
+  | "mobile_landing_view"
+  | "valid_windows_download"
+  | "mobile_exe_download"
+  | "other_non_windows_download"
+  | "unknown_device_download"
+  | "email_link_request"
+  | "link_shared"
+  | "link_copied"
+  | "failed_link_request"
+  | "app_first_open"
+  | "first_extraction"
+  | "free_limit_reached"
+  | "plans_opened"
+  | "checkout_started"
+  | "payment_completed";
+
+type ParsedB2BLeadZoneFilters = {
+  startDate: string;
+  endDate: string;
+  device: string | null;
+  operatingSystem: string | null;
+  browser: string | null;
+  country: string | null;
+  city: string | null;
+  source: string | null;
+  medium: string | null;
+  campaign: string | null;
+  actionType: B2BActionType;
+  recentMobileActionsPage: number;
+  recentDownloadsPage: number;
+};
+
+type QueryFilterClause = {
+  whereClause: string;
+  values: unknown[];
+};
+
+export function normalizeB2BOperatingSystem(value: string | null | undefined) {
+  const normalized = normalizeText(value, 120);
+  if (!normalized) {
+    return "Other / Unknown";
+  }
+
+  if (/^windows/i.test(normalized)) return "Windows";
+  if (/^android/i.test(normalized)) return "Android";
+  if (/^ios/i.test(normalized) || /^ipad/i.test(normalized)) return "iOS / iPadOS";
+  if (/^mac/i.test(normalized)) return "macOS";
+  if (/^linux/i.test(normalized)) return "Linux";
+
+  return "Other / Unknown";
+}
+
+export function normalizeB2BBrowser(value: string | null | undefined) {
+  const normalized = normalizeText(value, 120);
+  if (!normalized) {
+    return "Other / Unknown";
+  }
+
+  if (/instagram/i.test(normalized)) return "Instagram in-app browser";
+  if (/facebook/i.test(normalized)) return "Facebook in-app browser";
+  if (/edge/i.test(normalized)) return "Edge";
+  if (/chrome/i.test(normalized)) return "Chrome";
+  if (/safari/i.test(normalized)) return "Safari";
+  if (/firefox/i.test(normalized)) return "Firefox";
+
+  return "Other / Unknown";
+}
+
+export function classifyB2BDeviceSegment(
+  deviceCategory: string | null | undefined,
+  operatingSystem: string | null | undefined
+) {
+  const normalizedDevice = normalizeText(deviceCategory, 32)?.toLowerCase() ?? "unknown";
+  const normalizedOs = normalizeB2BOperatingSystem(operatingSystem);
+
+  if (normalizedDevice === "desktop" && normalizedOs === "Windows") return "Windows desktop";
+  if (normalizedOs === "Android") return "Android";
+  if (normalizedOs === "iOS / iPadOS") return "iPhone/iPad";
+  if (normalizedOs === "macOS") return "macOS";
+  if (normalizedOs === "Linux") return "Linux";
+
+  return "Other / Unknown";
+}
+
+export function classifyB2BDownload(
+  deviceCategory: string | null | undefined,
+  operatingSystem: string | null | undefined
+) {
+  const normalizedDevice = normalizeText(deviceCategory, 32)?.toLowerCase() ?? "unknown";
+  const normalizedOs = normalizeB2BOperatingSystem(operatingSystem);
+
+  if (normalizedDevice === "desktop" && normalizedOs === "Windows") {
+    return "Valid Windows download";
+  }
+
+  if (normalizedDevice === "mobile" || normalizedDevice === "tablet") {
+    return "Mobile .exe download";
+  }
+
+  if (normalizedDevice === "desktop") {
+    return "Other non-Windows download";
+  }
+
+  return "Unknown device";
+}
+
+export function calculateSafeRate(numerator: number, denominator: number) {
+  if (!Number.isFinite(numerator) || !Number.isFinite(denominator) || denominator <= 0) {
+    return 0;
+  }
+
+  return (numerator / denominator) * 100;
+}
+
+function isMobileDevice(deviceCategory: string | null | undefined) {
+  const normalized = normalizeText(deviceCategory, 32)?.toLowerCase();
+  return normalized === "mobile" || normalized === "tablet";
+}
+
+function getAcquisitionSourceLabel(utmSource: unknown, referrer: unknown) {
+  const normalizedSource = normalizeText(typeof utmSource === "string" ? utmSource : utmSource == null ? undefined : String(utmSource), 160);
+  if (normalizedSource) {
+    return normalizedSource;
+  }
+
+  const normalizedReferrer = normalizeText(typeof referrer === "string" ? referrer : referrer == null ? undefined : String(referrer), 255);
+  if (!normalizedReferrer) {
+    return "Direct / Unknown";
+  }
+
+  const match = normalizedReferrer.match(/^https?:\/\/([^/?#]+)/i);
+  if (match?.[1]) {
+    return match[1].toLowerCase();
+  }
+
+  return normalizedReferrer;
+}
+
+function formatCampaignLabel(source: unknown, medium: unknown, campaign: unknown) {
+  const normalizedSource = normalizeText(typeof source === "string" ? source : source == null ? undefined : String(source), 160) ?? "Direct / Unknown";
+  const normalizedMedium = normalizeText(typeof medium === "string" ? medium : medium == null ? undefined : String(medium), 160) ?? "Unknown";
+  const normalizedCampaign = normalizeText(typeof campaign === "string" ? campaign : campaign == null ? undefined : String(campaign), 160) ?? "Unknown";
+
+  return `${normalizedSource} / ${normalizedMedium} / ${normalizedCampaign}`;
+}
+
+function normalizeActionType(value: string | null | undefined): B2BActionType {
+  const normalized = normalizeText(value, 64)?.toLowerCase() ?? "all";
+  const allowed: B2BActionType[] = [
+    "all",
+    "landing_view",
+    "mobile_landing_view",
+    "valid_windows_download",
+    "mobile_exe_download",
+    "other_non_windows_download",
+    "unknown_device_download",
+    "email_link_request",
+    "link_shared",
+    "link_copied",
+    "failed_link_request",
+    "app_first_open",
+    "first_extraction",
+    "free_limit_reached",
+    "plans_opened",
+    "checkout_started",
+    "payment_completed",
+  ];
+
+  return allowed.includes(normalized as B2BActionType) ? (normalized as B2BActionType) : "all";
+}
+
+function parseB2BLeadZoneFilters(input: VisitorsFilterInput): ParsedB2BLeadZoneFilters {
+  const range = parseDownloadAnalyticsRange(input);
+
+  return {
+    ...range,
+    device: normalizeText(input.device, 32),
+    operatingSystem: normalizeText((input as Record<string, string | null | undefined>).operatingSystem, 120),
+    browser: normalizeText(input.browser, 120),
+    country: normalizeText(input.country, 120),
+    city: normalizeText(input.city, 120),
+    source: normalizeText((input as Record<string, string | null | undefined>).source, 160),
+    medium: normalizeText((input as Record<string, string | null | undefined>).medium, 160),
+    campaign: normalizeText((input as Record<string, string | null | undefined>).campaign, 160),
+    actionType: normalizeActionType((input as Record<string, string | null | undefined>).actionType),
+    recentMobileActionsPage: toPositiveInteger(
+      (input as Record<string, string | null | undefined>).recentMobileActionsPage,
+      1,
+      500
+    ),
+    recentDownloadsPage: toPositiveInteger(
+      (input as Record<string, string | null | undefined>).recentDownloadsPage,
+      1,
+      500
+    ),
+  };
+}
+
+function buildB2BLandingFilterClause(filters: ParsedB2BLeadZoneFilters): QueryFilterClause {
+  const conditions = [
+    `timezone($1, p.viewed_at)::date BETWEEN $2::date AND $3::date`,
+    `p.portal = 'user_portal'`,
+    `COALESCE(p.route_template, p.path, '') = $4`,
+    `s.is_bot = FALSE`,
+  ];
+  const values: unknown[] = [DEFAULT_TIMEZONE, filters.startDate, filters.endDate, B2B_LEAD_ZONE_ROUTE];
+
+  const push = (condition: string, value: unknown) => {
+    values.push(value);
+    conditions.push(condition.replace("?", `$${values.length}`));
+  };
+
+  if (filters.device) {
+    if (filters.device === "unknown") {
+      conditions.push(`COALESCE(NULLIF(LOWER(s.device_category), ''), 'unknown') = 'unknown'`);
+    } else if (filters.device === "mobile_or_tablet") {
+      conditions.push(`COALESCE(LOWER(s.device_category), '') IN ('mobile', 'tablet')`);
+    } else {
+      push(`COALESCE(LOWER(s.device_category), 'unknown') = ?`, filters.device.toLowerCase());
+    }
+  }
+
+  if (filters.operatingSystem) {
+    push(
+      `CASE
+        WHEN COALESCE(s.operating_system, '') ILIKE 'windows%%' THEN 'Windows'
+        WHEN COALESCE(s.operating_system, '') ILIKE 'android%%' THEN 'Android'
+        WHEN COALESCE(s.operating_system, '') ILIKE 'ios%%' OR COALESCE(s.operating_system, '') ILIKE 'ipad%%' THEN 'iOS / iPadOS'
+        WHEN COALESCE(s.operating_system, '') ILIKE 'mac%%' THEN 'macOS'
+        WHEN COALESCE(s.operating_system, '') ILIKE 'linux%%' THEN 'Linux'
+        ELSE 'Other / Unknown'
+      END = ?`,
+      filters.operatingSystem
+    );
+  }
+
+  if (filters.browser) {
+    push(
+      `CASE
+        WHEN COALESCE(s.browser, '') ILIKE '%%instagram%%' THEN 'Instagram in-app browser'
+        WHEN COALESCE(s.browser, '') ILIKE '%%facebook%%' THEN 'Facebook in-app browser'
+        WHEN COALESCE(s.browser, '') ILIKE '%%edge%%' THEN 'Edge'
+        WHEN COALESCE(s.browser, '') ILIKE '%%chrome%%' THEN 'Chrome'
+        WHEN COALESCE(s.browser, '') ILIKE '%%safari%%' THEN 'Safari'
+        WHEN COALESCE(s.browser, '') ILIKE '%%firefox%%' THEN 'Firefox'
+        ELSE 'Other / Unknown'
+      END = ?`,
+      filters.browser
+    );
+  }
+
+  if (filters.country) push(`COALESCE(s.country_name, '') ILIKE ?`, `%${filters.country}%`);
+  if (filters.city) push(`COALESCE(s.city, '') ILIKE ?`, `%${filters.city}%`);
+  if (filters.source) {
+    push(
+      `COALESCE(NULLIF(s.utm_source, ''), NULLIF(REGEXP_REPLACE(COALESCE(s.referrer, ''), '^https?://([^/?#]+).*$', '\\1'), ''), 'Direct / Unknown') = ?`,
+      filters.source
+    );
+  }
+  if (filters.medium) push(`COALESCE(NULLIF(s.utm_medium, ''), 'Unknown') = ?`, filters.medium);
+  if (filters.campaign) push(`COALESCE(NULLIF(s.utm_campaign, ''), 'Unknown') = ?`, filters.campaign);
+
+  if (filters.actionType !== "all") {
+    if (filters.actionType === "mobile_landing_view") {
+      conditions.push(`COALESCE(LOWER(s.device_category), '') IN ('mobile', 'tablet')`);
+    } else if (filters.actionType !== "landing_view") {
+      conditions.push(`1 = 0`);
+    }
+  }
+
+  return {
+    whereClause: conditions.join(" AND "),
+    values,
+  };
+}
+
+function buildB2BDownloadFilterClause(filters: ParsedB2BLeadZoneFilters): QueryFilterClause {
+  const conditions = [
+    `timezone($1, d.created_at)::date BETWEEN $2::date AND $3::date`,
+    `d.project_key = $4`,
+    `d.is_bot = FALSE`,
+  ];
+  const values: unknown[] = [DEFAULT_TIMEZONE, filters.startDate, filters.endDate, B2B_LEAD_ZONE_PROJECT_KEY];
+
+  const push = (condition: string, value: unknown) => {
+    values.push(value);
+    conditions.push(condition.replace("?", `$${values.length}`));
+  };
+
+  if (filters.device) {
+    if (filters.device === "unknown") {
+      conditions.push(`COALESCE(NULLIF(LOWER(d.device_category), ''), 'unknown') = 'unknown'`);
+    } else if (filters.device === "mobile_or_tablet") {
+      conditions.push(`COALESCE(LOWER(d.device_category), '') IN ('mobile', 'tablet')`);
+    } else {
+      push(`COALESCE(LOWER(d.device_category), 'unknown') = ?`, filters.device.toLowerCase());
+    }
+  }
+
+  if (filters.operatingSystem) {
+    push(
+      `CASE
+        WHEN COALESCE(d.operating_system, '') ILIKE 'windows%%' THEN 'Windows'
+        WHEN COALESCE(d.operating_system, '') ILIKE 'android%%' THEN 'Android'
+        WHEN COALESCE(d.operating_system, '') ILIKE 'ios%%' OR COALESCE(d.operating_system, '') ILIKE 'ipad%%' THEN 'iOS / iPadOS'
+        WHEN COALESCE(d.operating_system, '') ILIKE 'mac%%' THEN 'macOS'
+        WHEN COALESCE(d.operating_system, '') ILIKE 'linux%%' THEN 'Linux'
+        ELSE 'Other / Unknown'
+      END = ?`,
+      filters.operatingSystem
+    );
+  }
+
+  if (filters.browser) {
+    push(
+      `CASE
+        WHEN COALESCE(d.browser, '') ILIKE '%%instagram%%' THEN 'Instagram in-app browser'
+        WHEN COALESCE(d.browser, '') ILIKE '%%facebook%%' THEN 'Facebook in-app browser'
+        WHEN COALESCE(d.browser, '') ILIKE '%%edge%%' THEN 'Edge'
+        WHEN COALESCE(d.browser, '') ILIKE '%%chrome%%' THEN 'Chrome'
+        WHEN COALESCE(d.browser, '') ILIKE '%%safari%%' THEN 'Safari'
+        WHEN COALESCE(d.browser, '') ILIKE '%%firefox%%' THEN 'Firefox'
+        ELSE 'Other / Unknown'
+      END = ?`,
+      filters.browser
+    );
+  }
+
+  if (filters.country) push(`COALESCE(d.country_name, '') ILIKE ?`, `%${filters.country}%`);
+  if (filters.city) push(`COALESCE(d.city, '') ILIKE ?`, `%${filters.city}%`);
+  if (filters.source) {
+    push(
+      `COALESCE(NULLIF(d.utm_source, ''), NULLIF(REGEXP_REPLACE(COALESCE(d.referrer, ''), '^https?://([^/?#]+).*$', '\\1'), ''), 'Direct / Unknown') = ?`,
+      filters.source
+    );
+  }
+  if (filters.medium) push(`COALESCE(NULLIF(d.utm_medium, ''), 'Unknown') = ?`, filters.medium);
+  if (filters.campaign) push(`COALESCE(NULLIF(d.utm_campaign, ''), 'Unknown') = ?`, filters.campaign);
+
+  if (filters.actionType !== "all") {
+    if (filters.actionType === "valid_windows_download") {
+      conditions.push(`COALESCE(LOWER(d.device_category), '') = 'desktop'`);
+      conditions.push(`COALESCE(d.operating_system, '') ILIKE 'windows%'`);
+    } else if (filters.actionType === "mobile_exe_download") {
+      conditions.push(`COALESCE(LOWER(d.device_category), '') IN ('mobile', 'tablet')`);
+    } else if (filters.actionType === "other_non_windows_download") {
+      conditions.push(`COALESCE(LOWER(d.device_category), '') = 'desktop'`);
+      conditions.push(`COALESCE(d.operating_system, '') NOT ILIKE 'windows%'`);
+    } else if (filters.actionType === "unknown_device_download") {
+      conditions.push(`COALESCE(NULLIF(LOWER(d.device_category), ''), 'unknown') = 'unknown'`);
+    } else if (filters.actionType === "landing_view" || filters.actionType === "mobile_landing_view" || B2B_UNAVAILABLE_EVENT_KEYS.has(filters.actionType)) {
+      conditions.push(`1 = 0`);
+    }
+  }
+
+  return {
+    whereClause: conditions.join(" AND "),
+    values,
+  };
+}
+
 function buildSessionFilterClause(filters: ParsedVisitorsFilters) {
   const conditions = [
     `timezone($1, s.last_activity_at)::date BETWEEN $2::date AND $3::date`,
@@ -443,221 +825,977 @@ export async function getVisitorAnalyticsSummary() {
   };
 }
 
-export async function getB2BLeadZoneDownloadAnalytics(input: Pick<VisitorsFilterInput, "startDate" | "endDate">) {
-  const range = parseDownloadAnalyticsRange(input);
+export async function getB2BLeadZoneDownloadAnalytics(input: VisitorsFilterInput) {
+  const filters = parseB2BLeadZoneFilters(input);
   const todayRange = getRelativeDateRange("today");
   const last7Range = getRelativeDateRange("last7");
   const last30Range = getLastNDaysRange(30);
-  const projectKey = "b2b-lead-zone";
+  const landingFilters = buildB2BLandingFilterClause(filters);
+  const downloadFilters = buildB2BDownloadFilterClause(filters);
+  const recentMobileActionsOffset = (filters.recentMobileActionsPage - 1) * B2B_TABLE_PAGE_SIZE;
+  const recentDownloadsOffset = (filters.recentDownloadsPage - 1) * B2B_TABLE_PAGE_SIZE;
 
   const [
-    summaryResult,
-    downloadsOverTimeResult,
-    topCountriesResult,
-    topCitiesResult,
-    sourceBreakdownResult,
+    landingSummaryResult,
+    downloadSummaryResult,
+    downloadsByDayResult,
+    landingByDayResult,
+    landingDeviceBreakdownResult,
+    downloadDeviceBreakdownResult,
+    downloadClassificationResult,
+    sourceLandingResult,
+    sourceDownloadResult,
+    countryLandingResult,
+    countryDownloadResult,
+    cityLandingResult,
+    cityDownloadResult,
     pageBreakdownResult,
-    deviceBreakdownResult,
+    landingMobileActionsCountResult,
+    downloadMobileActionsCountResult,
+    landingMobileActionsResult,
+    downloadMobileActionsResult,
+    recentDownloadsCountResult,
     recentDownloadsResult,
+    filterOptionsResult,
   ] = await Promise.all([
     queryAnalytics(
       `
+        WITH filtered_landing AS (
+          SELECT
+            p.anonymous_visitor_id,
+            p.session_id,
+            s.device_category,
+            s.operating_system
+          FROM analytics_visitor_page_views p
+          INNER JOIN analytics_visitor_sessions s ON s.id = p.session_id
+          WHERE ${landingFilters.whereClause}
+        )
+        SELECT
+          COUNT(DISTINCT session_id) AS landing_sessions,
+          COUNT(DISTINCT anonymous_visitor_id) AS unique_visitors,
+          COUNT(DISTINCT anonymous_visitor_id) FILTER (WHERE COALESCE(LOWER(device_category), '') IN ('mobile', 'tablet')) AS mobile_visitors,
+          COUNT(DISTINCT anonymous_visitor_id) FILTER (
+            WHERE COALESCE(LOWER(device_category), '') = 'desktop'
+              AND COALESCE(operating_system, '') ILIKE 'windows%'
+          ) AS windows_desktop_visitors,
+          COUNT(DISTINCT anonymous_visitor_id) FILTER (
+            WHERE COALESCE(LOWER(device_category), '') = 'desktop'
+              AND COALESCE(operating_system, '') <> ''
+              AND COALESCE(operating_system, '') NOT ILIKE 'windows%'
+          ) AS other_desktop_visitors,
+          COUNT(DISTINCT anonymous_visitor_id) FILTER (
+            WHERE COALESCE(NULLIF(LOWER(device_category), ''), 'unknown') = 'unknown'
+          ) AS unknown_device_visitors,
+          COUNT(*) FILTER (WHERE COALESCE(LOWER(device_category), '') IN ('mobile', 'tablet')) AS mobile_landing_views
+        FROM filtered_landing
+      `,
+      landingFilters.values
+    ),
+    queryAnalytics(
+      `
+        WITH filtered_downloads AS (
+          SELECT
+            d.*,
+            CASE
+              WHEN COALESCE(LOWER(d.device_category), '') = 'desktop' AND COALESCE(d.operating_system, '') ILIKE 'windows%' THEN 'Valid Windows download'
+              WHEN COALESCE(LOWER(d.device_category), '') IN ('mobile', 'tablet') THEN 'Mobile .exe download'
+              WHEN COALESCE(LOWER(d.device_category), '') = 'desktop' THEN 'Other non-Windows download'
+              ELSE 'Unknown device'
+            END AS download_classification
+          FROM analytics_download_events d
+          WHERE ${downloadFilters.whereClause}
+        )
         SELECT
           COUNT(*) AS total_downloads,
           COUNT(DISTINCT anonymous_visitor_id) AS unique_visitors,
           COUNT(DISTINCT session_id) AS unique_sessions,
-          COUNT(*) FILTER (WHERE timezone($1, created_at)::date = $2::date) AS downloads_today,
-          COUNT(*) FILTER (WHERE timezone($1, created_at)::date BETWEEN $3::date AND $4::date) AS downloads_last7_days,
-          COUNT(*) FILTER (WHERE timezone($1, created_at)::date BETWEEN $5::date AND $6::date) AS downloads_last30_days,
+          COUNT(*) FILTER (WHERE timezone($1, created_at)::date = $5::date) AS downloads_today,
+          COUNT(*) FILTER (WHERE timezone($1, created_at)::date BETWEEN $6::date AND $7::date) AS downloads_last7_days,
+          COUNT(*) FILTER (WHERE timezone($1, created_at)::date BETWEEN $8::date AND $9::date) AS downloads_last30_days,
           COUNT(*) FILTER (
             WHERE COALESCE(NULLIF(country_name, ''), NULLIF(region, ''), NULLIF(city, '')) IS NOT NULL
-          ) AS known_location_downloads
-        FROM analytics_download_events
-        WHERE is_bot = FALSE
-          AND project_key = $7
-          AND timezone($1, created_at)::date BETWEEN $8::date AND $9::date
+          ) AS known_location_downloads,
+          COUNT(*) FILTER (WHERE download_classification = 'Valid Windows download') AS windows_downloads,
+          COUNT(DISTINCT anonymous_visitor_id) FILTER (WHERE download_classification = 'Valid Windows download') AS unique_windows_downloaders,
+          COUNT(*) FILTER (WHERE download_classification = 'Mobile .exe download') AS mobile_exe_downloads,
+          COUNT(*) FILTER (WHERE download_classification = 'Other non-Windows download') AS other_non_windows_downloads,
+          COUNT(*) FILTER (WHERE download_classification = 'Unknown device') AS unknown_device_downloads
+        FROM filtered_downloads
       `,
       [
-        DEFAULT_TIMEZONE,
+        ...downloadFilters.values,
         todayRange.startDate,
         last7Range.startDate,
         last7Range.endDate,
         last30Range.startDate,
         last30Range.endDate,
-        projectKey,
-        range.startDate,
-        range.endDate,
       ]
     ),
     queryAnalytics(
       `
+        WITH filtered_downloads AS (
+          SELECT
+            timezone($1, d.created_at)::date AS day,
+            d.anonymous_visitor_id,
+            CASE
+              WHEN COALESCE(LOWER(d.device_category), '') = 'desktop' AND COALESCE(d.operating_system, '') ILIKE 'windows%' THEN 'Valid Windows download'
+              WHEN COALESCE(LOWER(d.device_category), '') IN ('mobile', 'tablet') THEN 'Mobile .exe download'
+              WHEN COALESCE(LOWER(d.device_category), '') = 'desktop' THEN 'Other non-Windows download'
+              ELSE 'Unknown device'
+            END AS download_classification
+          FROM analytics_download_events d
+          WHERE ${downloadFilters.whereClause}
+        )
         SELECT
-          timezone($1, created_at)::date AS day,
+          day,
+          download_classification,
           COUNT(*) AS downloads,
-          COUNT(DISTINCT anonymous_visitor_id) AS unique_visitors
-        FROM analytics_download_events
-        WHERE is_bot = FALSE
-          AND project_key = $2
-          AND timezone($1, created_at)::date BETWEEN $3::date AND $4::date
+          COUNT(DISTINCT anonymous_visitor_id) AS unique_downloaders
+        FROM filtered_downloads
+        GROUP BY day, download_classification
+        ORDER BY day ASC
+      `,
+      downloadFilters.values
+    ),
+    queryAnalytics(
+      `
+        SELECT
+          timezone($1, p.viewed_at)::date AS day,
+          COUNT(*) FILTER (WHERE COALESCE(LOWER(s.device_category), '') IN ('mobile', 'tablet')) AS mobile_landing_views,
+          COUNT(DISTINCT p.anonymous_visitor_id) FILTER (WHERE COALESCE(LOWER(s.device_category), '') IN ('mobile', 'tablet')) AS unique_mobile_visitors
+        FROM analytics_visitor_page_views p
+        INNER JOIN analytics_visitor_sessions s ON s.id = p.session_id
+        WHERE ${landingFilters.whereClause}
         GROUP BY day
         ORDER BY day ASC
       `,
-      [DEFAULT_TIMEZONE, projectKey, range.startDate, range.endDate]
+      landingFilters.values
     ),
     queryAnalytics(
       `
         SELECT
-          COALESCE(NULLIF(country_name, ''), 'Unknown') AS country,
-          COUNT(*) AS downloads,
-          COUNT(DISTINCT anonymous_visitor_id) AS unique_visitors
-        FROM analytics_download_events
-        WHERE is_bot = FALSE
-          AND project_key = $1
-          AND timezone($2, created_at)::date BETWEEN $3::date AND $4::date
-        GROUP BY COALESCE(NULLIF(country_name, ''), 'Unknown')
-        ORDER BY downloads DESC, unique_visitors DESC
-        LIMIT 10
+          CASE
+            WHEN COALESCE(LOWER(s.device_category), '') = 'desktop' AND COALESCE(s.operating_system, '') ILIKE 'windows%' THEN 'Windows desktop'
+            WHEN COALESCE(s.operating_system, '') ILIKE 'android%' THEN 'Android'
+            WHEN COALESCE(s.operating_system, '') ILIKE 'ios%' OR COALESCE(s.operating_system, '') ILIKE 'ipad%' THEN 'iPhone/iPad'
+            WHEN COALESCE(s.operating_system, '') ILIKE 'mac%' THEN 'macOS'
+            WHEN COALESCE(s.operating_system, '') ILIKE 'linux%' THEN 'Linux'
+            ELSE 'Other / Unknown'
+          END AS device_segment,
+          COUNT(DISTINCT p.anonymous_visitor_id) AS unique_visitors
+        FROM analytics_visitor_page_views p
+        INNER JOIN analytics_visitor_sessions s ON s.id = p.session_id
+        WHERE ${landingFilters.whereClause}
+        GROUP BY device_segment
       `,
-      [projectKey, DEFAULT_TIMEZONE, range.startDate, range.endDate]
+      landingFilters.values
     ),
     queryAnalytics(
       `
+        SELECT
+          CASE
+            WHEN COALESCE(LOWER(d.device_category), '') = 'desktop' AND COALESCE(d.operating_system, '') ILIKE 'windows%' THEN 'Windows desktop'
+            WHEN COALESCE(d.operating_system, '') ILIKE 'android%' THEN 'Android'
+            WHEN COALESCE(d.operating_system, '') ILIKE 'ios%' OR COALESCE(d.operating_system, '') ILIKE 'ipad%' THEN 'iPhone/iPad'
+            WHEN COALESCE(d.operating_system, '') ILIKE 'mac%' THEN 'macOS'
+            WHEN COALESCE(d.operating_system, '') ILIKE 'linux%' THEN 'Linux'
+            ELSE 'Other / Unknown'
+          END AS device_segment,
+          COUNT(*) AS download_events,
+          COUNT(DISTINCT d.anonymous_visitor_id) AS unique_downloaders,
+          COUNT(*) FILTER (
+            WHERE COALESCE(LOWER(d.device_category), '') = 'desktop'
+              AND COALESCE(d.operating_system, '') ILIKE 'windows%'
+          ) AS windows_downloads
+        FROM analytics_download_events d
+        WHERE ${downloadFilters.whereClause}
+        GROUP BY device_segment
+      `,
+      downloadFilters.values
+    ),
+    queryAnalytics(
+      `
+        WITH filtered_downloads AS (
+          SELECT
+            d.anonymous_visitor_id,
+            CASE
+              WHEN COALESCE(LOWER(d.device_category), '') = 'desktop' AND COALESCE(d.operating_system, '') ILIKE 'windows%' THEN 'Valid Windows download'
+              WHEN COALESCE(LOWER(d.device_category), '') IN ('mobile', 'tablet') THEN 'Mobile .exe download'
+              WHEN COALESCE(LOWER(d.device_category), '') = 'desktop' THEN 'Other non-Windows download'
+              ELSE 'Unknown device'
+            END AS download_classification
+          FROM analytics_download_events d
+          WHERE ${downloadFilters.whereClause}
+        )
+        SELECT
+          download_classification,
+          COUNT(*) AS download_events,
+          COUNT(DISTINCT anonymous_visitor_id) AS unique_downloaders
+        FROM filtered_downloads
+        GROUP BY download_classification
+      `,
+      downloadFilters.values
+    ),
+    queryAnalytics(
+      `
+        SELECT
+          COALESCE(NULLIF(s.utm_source, ''), NULLIF(REGEXP_REPLACE(COALESCE(s.referrer, ''), '^https?://([^/?#]+).*$','\\1'), ''), 'Direct / Unknown') AS source,
+          COALESCE(NULLIF(s.utm_medium, ''), 'Unknown') AS medium,
+          COALESCE(NULLIF(s.utm_campaign, ''), 'Unknown') AS campaign,
+          NULLIF(REGEXP_REPLACE(COALESCE(s.referrer, ''), '^https?://([^/?#]+).*$','\\1'), '') AS referrer_domain,
+          COUNT(DISTINCT p.anonymous_visitor_id) AS unique_visitors,
+          COUNT(DISTINCT p.anonymous_visitor_id) FILTER (WHERE COALESCE(LOWER(s.device_category), '') IN ('mobile', 'tablet')) AS mobile_visitors
+        FROM analytics_visitor_page_views p
+        INNER JOIN analytics_visitor_sessions s ON s.id = p.session_id
+        WHERE ${landingFilters.whereClause}
+        GROUP BY source, medium, campaign, referrer_domain
+        ORDER BY unique_visitors DESC
+        LIMIT 100
+      `,
+      landingFilters.values
+    ),
+    queryAnalytics(
+      `
+        WITH filtered_downloads AS (
+          SELECT
+            d.*,
+            CASE
+              WHEN COALESCE(LOWER(d.device_category), '') = 'desktop' AND COALESCE(d.operating_system, '') ILIKE 'windows%' THEN 'Valid Windows download'
+              WHEN COALESCE(LOWER(d.device_category), '') IN ('mobile', 'tablet') THEN 'Mobile .exe download'
+              WHEN COALESCE(LOWER(d.device_category), '') = 'desktop' THEN 'Other non-Windows download'
+              ELSE 'Unknown device'
+            END AS download_classification
+          FROM analytics_download_events d
+          WHERE ${downloadFilters.whereClause}
+        )
+        SELECT
+          COALESCE(NULLIF(utm_source, ''), NULLIF(REGEXP_REPLACE(COALESCE(referrer, ''), '^https?://([^/?#]+).*$','\\1'), ''), 'Direct / Unknown') AS source,
+          COALESCE(NULLIF(utm_medium, ''), 'Unknown') AS medium,
+          COALESCE(NULLIF(utm_campaign, ''), 'Unknown') AS campaign,
+          NULLIF(REGEXP_REPLACE(COALESCE(referrer, ''), '^https?://([^/?#]+).*$','\\1'), '') AS referrer_domain,
+          COUNT(*) AS download_events,
+          COUNT(*) FILTER (WHERE download_classification = 'Valid Windows download') AS windows_downloads,
+          COUNT(DISTINCT anonymous_visitor_id) FILTER (WHERE download_classification = 'Valid Windows download') AS unique_windows_downloaders
+        FROM filtered_downloads
+        GROUP BY source, medium, campaign, referrer_domain
+        ORDER BY download_events DESC
+        LIMIT 100
+      `,
+      downloadFilters.values
+    ),
+    queryAnalytics(
+      `
+        SELECT
+          COALESCE(NULLIF(s.country_name, ''), 'Unknown') AS country,
+          COUNT(DISTINCT p.anonymous_visitor_id) AS unique_visitors,
+          COUNT(DISTINCT p.anonymous_visitor_id) FILTER (WHERE COALESCE(LOWER(s.device_category), '') IN ('mobile', 'tablet')) AS mobile_visitors
+        FROM analytics_visitor_page_views p
+        INNER JOIN analytics_visitor_sessions s ON s.id = p.session_id
+        WHERE ${landingFilters.whereClause}
+        GROUP BY country
+        ORDER BY unique_visitors DESC
+        LIMIT 20
+      `,
+      landingFilters.values
+    ),
+    queryAnalytics(
+      `
+        WITH filtered_downloads AS (
+          SELECT
+            d.country_name,
+            d.anonymous_visitor_id,
+            CASE
+              WHEN COALESCE(LOWER(d.device_category), '') = 'desktop' AND COALESCE(d.operating_system, '') ILIKE 'windows%' THEN 1
+              ELSE 0
+            END AS is_windows_download
+          FROM analytics_download_events d
+          WHERE ${downloadFilters.whereClause}
+        )
+        SELECT
+          COALESCE(NULLIF(country_name, ''), 'Unknown') AS country,
+          COUNT(*) FILTER (WHERE is_windows_download = 1) AS windows_downloads
+        FROM filtered_downloads
+        GROUP BY country
+      `,
+      downloadFilters.values
+    ),
+    queryAnalytics(
+      `
+        SELECT
+          COALESCE(NULLIF(s.city, ''), 'Unknown') AS city,
+          COALESCE(NULLIF(s.country_name, ''), 'Unknown') AS country,
+          COUNT(DISTINCT p.anonymous_visitor_id) AS unique_visitors,
+          COUNT(DISTINCT p.anonymous_visitor_id) FILTER (WHERE COALESCE(LOWER(s.device_category), '') IN ('mobile', 'tablet')) AS mobile_visitors
+        FROM analytics_visitor_page_views p
+        INNER JOIN analytics_visitor_sessions s ON s.id = p.session_id
+        WHERE ${landingFilters.whereClause}
+        GROUP BY city, country
+        ORDER BY unique_visitors DESC
+        LIMIT 20
+      `,
+      landingFilters.values
+    ),
+    queryAnalytics(
+      `
+        WITH filtered_downloads AS (
+          SELECT
+            d.city,
+            d.country_name,
+            CASE
+              WHEN COALESCE(LOWER(d.device_category), '') = 'desktop' AND COALESCE(d.operating_system, '') ILIKE 'windows%' THEN 1
+              ELSE 0
+            END AS is_windows_download
+          FROM analytics_download_events d
+          WHERE ${downloadFilters.whereClause}
+        )
         SELECT
           COALESCE(NULLIF(city, ''), 'Unknown') AS city,
           COALESCE(NULLIF(country_name, ''), 'Unknown') AS country,
+          COUNT(*) FILTER (WHERE is_windows_download = 1) AS windows_downloads
+        FROM filtered_downloads
+        GROUP BY city, country
+      `,
+      downloadFilters.values
+    ),
+    queryAnalytics(
+      `
+        SELECT
+          COALESCE(NULLIF(d.route_template, ''), NULLIF(d.page_path, ''), 'Unknown') AS path,
           COUNT(*) AS downloads,
-          COUNT(DISTINCT anonymous_visitor_id) AS unique_visitors
-        FROM analytics_download_events
-        WHERE is_bot = FALSE
-          AND project_key = $1
-          AND timezone($2, created_at)::date BETWEEN $3::date AND $4::date
-        GROUP BY COALESCE(NULLIF(city, ''), 'Unknown'), COALESCE(NULLIF(country_name, ''), 'Unknown')
+          COUNT(DISTINCT d.anonymous_visitor_id) AS unique_visitors
+        FROM analytics_download_events d
+        WHERE ${downloadFilters.whereClause}
+        GROUP BY path
         ORDER BY downloads DESC, unique_visitors DESC
         LIMIT 10
       `,
-      [projectKey, DEFAULT_TIMEZONE, range.startDate, range.endDate]
+      downloadFilters.values
+    ),
+    queryAnalytics(
+      `
+        SELECT COUNT(*) AS total
+        FROM analytics_visitor_page_views p
+        INNER JOIN analytics_visitor_sessions s ON s.id = p.session_id
+        WHERE ${landingFilters.whereClause}
+          AND COALESCE(LOWER(s.device_category), '') IN ('mobile', 'tablet')
+      `,
+      landingFilters.values
+    ),
+    queryAnalytics(
+      `
+        SELECT COUNT(*) AS total
+        FROM analytics_download_events d
+        WHERE ${downloadFilters.whereClause}
+          AND COALESCE(LOWER(d.device_category), '') IN ('mobile', 'tablet')
+      `,
+      downloadFilters.values
     ),
     queryAnalytics(
       `
         SELECT
-          COALESCE(NULLIF(utm_source, ''), NULLIF(referrer, ''), 'Direct / None') AS source,
-          COUNT(*) AS downloads
-        FROM analytics_download_events
-        WHERE is_bot = FALSE
-          AND project_key = $1
-          AND timezone($2, created_at)::date BETWEEN $3::date AND $4::date
-        GROUP BY COALESCE(NULLIF(utm_source, ''), NULLIF(referrer, ''), 'Direct / None')
-        ORDER BY downloads DESC
-        LIMIT 10
+          p.viewed_at AS occurred_at,
+          'Mobile landing viewed' AS action_label,
+          COALESCE(s.device_category, 'unknown') AS device_category,
+          s.operating_system,
+          s.browser,
+          s.country_name,
+          s.region,
+          s.city,
+          COALESCE(NULLIF(s.utm_source, ''), NULLIF(REGEXP_REPLACE(COALESCE(s.referrer, ''), '^https?://([^/?#]+).*$','\\1'), ''), 'Direct / Unknown') AS source,
+          COALESCE(NULLIF(s.utm_campaign, ''), 'Unknown') AS campaign,
+          COALESCE(p.route_template, p.path, 'Unknown') AS page_path,
+          p.anonymous_visitor_id,
+          'First-party visitor ID' AS attribution_status
+        FROM analytics_visitor_page_views p
+        INNER JOIN analytics_visitor_sessions s ON s.id = p.session_id
+        WHERE ${landingFilters.whereClause}
+          AND COALESCE(LOWER(s.device_category), '') IN ('mobile', 'tablet')
+        ORDER BY p.viewed_at DESC
+        LIMIT 100
       `,
-      [projectKey, DEFAULT_TIMEZONE, range.startDate, range.endDate]
+      landingFilters.values
     ),
     queryAnalytics(
       `
         SELECT
-          COALESCE(NULLIF(route_template, ''), NULLIF(page_path, ''), 'Unknown') AS path,
-          COUNT(*) AS downloads,
-          COUNT(DISTINCT anonymous_visitor_id) AS unique_visitors
-        FROM analytics_download_events
-        WHERE is_bot = FALSE
-          AND project_key = $1
-          AND timezone($2, created_at)::date BETWEEN $3::date AND $4::date
-        GROUP BY COALESCE(NULLIF(route_template, ''), NULLIF(page_path, ''), 'Unknown')
-        ORDER BY downloads DESC, unique_visitors DESC
-        LIMIT 10
+          d.created_at AS occurred_at,
+          'Mobile .exe downloaded' AS action_label,
+          COALESCE(d.device_category, 'unknown') AS device_category,
+          d.operating_system,
+          d.browser,
+          d.country_name,
+          d.region,
+          d.city,
+          COALESCE(NULLIF(d.utm_source, ''), NULLIF(REGEXP_REPLACE(COALESCE(d.referrer, ''), '^https?://([^/?#]+).*$','\\1'), ''), 'Direct / Unknown') AS source,
+          COALESCE(NULLIF(d.utm_campaign, ''), 'Unknown') AS campaign,
+          COALESCE(d.route_template, d.page_path, 'Unknown') AS page_path,
+          d.anonymous_visitor_id,
+          'First-party visitor ID' AS attribution_status
+        FROM analytics_download_events d
+        WHERE ${downloadFilters.whereClause}
+          AND COALESCE(LOWER(d.device_category), '') IN ('mobile', 'tablet')
+        ORDER BY d.created_at DESC
+        LIMIT 100
       `,
-      [projectKey, DEFAULT_TIMEZONE, range.startDate, range.endDate]
+      downloadFilters.values
     ),
     queryAnalytics(
       `
-        SELECT
-          COALESCE(NULLIF(device_category, ''), 'Unknown') AS device,
-          COUNT(*) AS downloads
-        FROM analytics_download_events
-        WHERE is_bot = FALSE
-          AND project_key = $1
-          AND timezone($2, created_at)::date BETWEEN $3::date AND $4::date
-        GROUP BY COALESCE(NULLIF(device_category, ''), 'Unknown')
-        ORDER BY downloads DESC
-        LIMIT 10
+        WITH filtered_downloads AS (
+          SELECT
+            d.*,
+            ROW_NUMBER() OVER (PARTITION BY d.anonymous_visitor_id ORDER BY d.created_at ASC) AS visitor_download_index
+          FROM analytics_download_events d
+          WHERE ${downloadFilters.whereClause}
+        )
+        SELECT COUNT(*) AS total
+        FROM filtered_downloads
       `,
-      [projectKey, DEFAULT_TIMEZONE, range.startDate, range.endDate]
+      downloadFilters.values
     ),
     queryAnalytics(
       `
+        WITH filtered_downloads AS (
+          SELECT
+            d.*,
+            ROW_NUMBER() OVER (PARTITION BY d.anonymous_visitor_id ORDER BY d.created_at ASC) AS visitor_download_index
+          FROM analytics_download_events d
+          WHERE ${downloadFilters.whereClause}
+        )
         SELECT
           id,
           anonymous_visitor_id,
           session_id,
           asset_label,
-          download_url,
           page_path,
-          referrer,
+          route_template,
           utm_source,
-          browser,
+          utm_medium,
+          utm_campaign,
+          referrer,
+          device_category,
           operating_system,
+          browser,
           country_name,
           region,
           city,
-          created_at
-        FROM analytics_download_events
-        WHERE is_bot = FALSE
-          AND project_key = $1
-          AND timezone($2, created_at)::date BETWEEN $3::date AND $4::date
+          created_at,
+          visitor_download_index
+        FROM filtered_downloads
         ORDER BY created_at DESC
-        LIMIT 100
+        LIMIT $${downloadFilters.values.length + 1}
+        OFFSET $${downloadFilters.values.length + 2}
       `,
-      [projectKey, DEFAULT_TIMEZONE, range.startDate, range.endDate]
+      [...downloadFilters.values, B2B_TABLE_PAGE_SIZE, recentDownloadsOffset]
+    ),
+    queryAnalytics(
+      `
+        WITH landing_filter_options AS (
+          SELECT
+            COALESCE(NULLIF(s.country_name, ''), 'Unknown') AS country,
+            COALESCE(NULLIF(s.city, ''), 'Unknown') AS city,
+            COALESCE(NULLIF(s.utm_source, ''), NULLIF(REGEXP_REPLACE(COALESCE(s.referrer, ''), '^https?://([^/?#]+).*$','\\1'), ''), 'Direct / Unknown') AS source,
+            COALESCE(NULLIF(s.utm_medium, ''), 'Unknown') AS medium,
+            COALESCE(NULLIF(s.utm_campaign, ''), 'Unknown') AS campaign,
+            CASE
+              WHEN COALESCE(s.operating_system, '') ILIKE 'windows%%' THEN 'Windows'
+              WHEN COALESCE(s.operating_system, '') ILIKE 'android%%' THEN 'Android'
+              WHEN COALESCE(s.operating_system, '') ILIKE 'ios%%' OR COALESCE(s.operating_system, '') ILIKE 'ipad%%' THEN 'iOS / iPadOS'
+              WHEN COALESCE(s.operating_system, '') ILIKE 'mac%%' THEN 'macOS'
+              WHEN COALESCE(s.operating_system, '') ILIKE 'linux%%' THEN 'Linux'
+              ELSE 'Other / Unknown'
+            END AS operating_system,
+            CASE
+              WHEN COALESCE(s.browser, '') ILIKE '%%instagram%%' THEN 'Instagram in-app browser'
+              WHEN COALESCE(s.browser, '') ILIKE '%%facebook%%' THEN 'Facebook in-app browser'
+              WHEN COALESCE(s.browser, '') ILIKE '%%edge%%' THEN 'Edge'
+              WHEN COALESCE(s.browser, '') ILIKE '%%chrome%%' THEN 'Chrome'
+              WHEN COALESCE(s.browser, '') ILIKE '%%safari%%' THEN 'Safari'
+              WHEN COALESCE(s.browser, '') ILIKE '%%firefox%%' THEN 'Firefox'
+              ELSE 'Other / Unknown'
+            END AS browser
+          FROM analytics_visitor_page_views p
+          INNER JOIN analytics_visitor_sessions s ON s.id = p.session_id
+          WHERE timezone($1, p.viewed_at)::date BETWEEN $2::date AND $3::date
+            AND p.portal = 'user_portal'
+            AND COALESCE(p.route_template, p.path, '') = $4
+            AND s.is_bot = FALSE
+        ),
+        download_filter_options AS (
+          SELECT
+            COALESCE(NULLIF(country_name, ''), 'Unknown') AS country,
+            COALESCE(NULLIF(city, ''), 'Unknown') AS city,
+            COALESCE(NULLIF(utm_source, ''), NULLIF(REGEXP_REPLACE(COALESCE(referrer, ''), '^https?://([^/?#]+).*$','\\1'), ''), 'Direct / Unknown') AS source,
+            COALESCE(NULLIF(utm_medium, ''), 'Unknown') AS medium,
+            COALESCE(NULLIF(utm_campaign, ''), 'Unknown') AS campaign,
+            CASE
+              WHEN COALESCE(operating_system, '') ILIKE 'windows%%' THEN 'Windows'
+              WHEN COALESCE(operating_system, '') ILIKE 'android%%' THEN 'Android'
+              WHEN COALESCE(operating_system, '') ILIKE 'ios%%' OR COALESCE(operating_system, '') ILIKE 'ipad%%' THEN 'iOS / iPadOS'
+              WHEN COALESCE(operating_system, '') ILIKE 'mac%%' THEN 'macOS'
+              WHEN COALESCE(operating_system, '') ILIKE 'linux%%' THEN 'Linux'
+              ELSE 'Other / Unknown'
+            END AS operating_system,
+            CASE
+              WHEN COALESCE(browser, '') ILIKE '%%instagram%%' THEN 'Instagram in-app browser'
+              WHEN COALESCE(browser, '') ILIKE '%%facebook%%' THEN 'Facebook in-app browser'
+              WHEN COALESCE(browser, '') ILIKE '%%edge%%' THEN 'Edge'
+              WHEN COALESCE(browser, '') ILIKE '%%chrome%%' THEN 'Chrome'
+              WHEN COALESCE(browser, '') ILIKE '%%safari%%' THEN 'Safari'
+              WHEN COALESCE(browser, '') ILIKE '%%firefox%%' THEN 'Firefox'
+              ELSE 'Other / Unknown'
+            END AS browser
+          FROM analytics_download_events
+          WHERE timezone($1, created_at)::date BETWEEN $2::date AND $3::date
+            AND project_key = $5
+            AND is_bot = FALSE
+        ),
+        combined AS (
+          SELECT * FROM landing_filter_options
+          UNION ALL
+          SELECT * FROM download_filter_options
+        )
+        SELECT
+          ARRAY(SELECT DISTINCT country FROM combined ORDER BY country ASC LIMIT ${B2B_FILTER_OPTION_LIMIT}) AS countries,
+          ARRAY(SELECT DISTINCT city FROM combined ORDER BY city ASC LIMIT ${B2B_FILTER_OPTION_LIMIT}) AS cities,
+          ARRAY(SELECT DISTINCT source FROM combined ORDER BY source ASC LIMIT ${B2B_FILTER_OPTION_LIMIT}) AS sources,
+          ARRAY(SELECT DISTINCT medium FROM combined ORDER BY medium ASC LIMIT ${B2B_FILTER_OPTION_LIMIT}) AS mediums,
+          ARRAY(SELECT DISTINCT campaign FROM combined ORDER BY campaign ASC LIMIT ${B2B_FILTER_OPTION_LIMIT}) AS campaigns,
+          ARRAY(SELECT DISTINCT operating_system FROM combined ORDER BY operating_system ASC LIMIT ${B2B_FILTER_OPTION_LIMIT}) AS operating_systems,
+          ARRAY(SELECT DISTINCT browser FROM combined ORDER BY browser ASC LIMIT ${B2B_FILTER_OPTION_LIMIT}) AS browsers
+      `,
+      [DEFAULT_TIMEZONE, filters.startDate, filters.endDate, B2B_LEAD_ZONE_ROUTE, B2B_LEAD_ZONE_PROJECT_KEY]
     ),
   ]);
 
-  const summaryRow = summaryResult.rows[0] ?? {};
-  const totalDownloads = Number(summaryRow.total_downloads ?? 0);
-  const knownLocationDownloads = Number(summaryRow.known_location_downloads ?? 0);
+  const landingSummaryRow = landingSummaryResult.rows[0] ?? {};
+  const downloadSummaryRow = downloadSummaryResult.rows[0] ?? {};
+
+  const landingSessions = Number(landingSummaryRow.landing_sessions ?? 0);
+  const uniqueVisitors = Number(landingSummaryRow.unique_visitors ?? 0);
+  const mobileVisitors = Number(landingSummaryRow.mobile_visitors ?? 0);
+  const windowsDesktopVisitors = Number(landingSummaryRow.windows_desktop_visitors ?? 0);
+  const otherDesktopVisitors = Number(landingSummaryRow.other_desktop_visitors ?? 0);
+  const unknownDeviceVisitors = Number(landingSummaryRow.unknown_device_visitors ?? 0);
+  const mobileLandingViews = Number(landingSummaryRow.mobile_landing_views ?? 0);
+
+  const totalDownloads = Number(downloadSummaryRow.total_downloads ?? 0);
+  const uniqueDownloadVisitors = Number(downloadSummaryRow.unique_visitors ?? 0);
+  const uniqueDownloadSessions = Number(downloadSummaryRow.unique_sessions ?? 0);
+  const windowsDownloads = Number(downloadSummaryRow.windows_downloads ?? 0);
+  const uniqueWindowsDownloaders = Number(downloadSummaryRow.unique_windows_downloaders ?? 0);
+  const mobileExeDownloads = Number(downloadSummaryRow.mobile_exe_downloads ?? 0);
+  const otherNonWindowsDownloads = Number(downloadSummaryRow.other_non_windows_downloads ?? 0);
+  const unknownDeviceDownloads = Number(downloadSummaryRow.unknown_device_downloads ?? 0);
+  const knownLocationDownloads = Number(downloadSummaryRow.known_location_downloads ?? 0);
+
+  const timelineMap = new Map<string, {
+    day: string;
+    allDownloads: number;
+    uniqueDownloaders: number;
+    windowsDownloads: number;
+    mobileExeDownloads: number;
+    otherNonWindowsDownloads: number;
+    unknownDeviceDownloads: number;
+    mobileLandingViews: number;
+  }>();
+
+  for (const row of downloadsByDayResult.rows) {
+    const day = String(row.day);
+    const current = timelineMap.get(day) ?? {
+      day,
+      allDownloads: 0,
+      uniqueDownloaders: 0,
+      windowsDownloads: 0,
+      mobileExeDownloads: 0,
+      otherNonWindowsDownloads: 0,
+      unknownDeviceDownloads: 0,
+      mobileLandingViews: 0,
+    };
+    const classification = String(row.download_classification);
+    const downloads = Number(row.downloads ?? 0);
+    current.allDownloads += downloads;
+    current.uniqueDownloaders += Number(row.unique_downloaders ?? 0);
+    if (classification === "Valid Windows download") current.windowsDownloads += downloads;
+    if (classification === "Mobile .exe download") current.mobileExeDownloads += downloads;
+    if (classification === "Other non-Windows download") current.otherNonWindowsDownloads += downloads;
+    if (classification === "Unknown device") current.unknownDeviceDownloads += downloads;
+    timelineMap.set(day, current);
+  }
+
+  for (const row of landingByDayResult.rows) {
+    const day = String(row.day);
+    const current = timelineMap.get(day) ?? {
+      day,
+      allDownloads: 0,
+      uniqueDownloaders: 0,
+      windowsDownloads: 0,
+      mobileExeDownloads: 0,
+      otherNonWindowsDownloads: 0,
+      unknownDeviceDownloads: 0,
+      mobileLandingViews: 0,
+    };
+    current.mobileLandingViews = Number(row.mobile_landing_views ?? 0);
+    timelineMap.set(day, current);
+  }
+
+  const downloadsOverTime = Array.from(timelineMap.values()).sort((a, b) => a.day.localeCompare(b.day));
+
+  const deviceBreakdownMap = new Map<string, {
+    segment: string;
+    uniqueVisitors: number;
+    downloadEvents: number;
+    uniqueDownloaders: number;
+    windowsDownloads: number;
+    linkSaveActions: number;
+  }>();
+
+  for (const row of landingDeviceBreakdownResult.rows) {
+    const segment = String(row.device_segment);
+    deviceBreakdownMap.set(segment, {
+      segment,
+      uniqueVisitors: Number(row.unique_visitors ?? 0),
+      downloadEvents: 0,
+      uniqueDownloaders: 0,
+      windowsDownloads: 0,
+      linkSaveActions: 0,
+    });
+  }
+
+  for (const row of downloadDeviceBreakdownResult.rows) {
+    const segment = String(row.device_segment);
+    const current = deviceBreakdownMap.get(segment) ?? {
+      segment,
+      uniqueVisitors: 0,
+      downloadEvents: 0,
+      uniqueDownloaders: 0,
+      windowsDownloads: 0,
+      linkSaveActions: 0,
+    };
+    current.downloadEvents = Number(row.download_events ?? 0);
+    current.uniqueDownloaders = Number(row.unique_downloaders ?? 0);
+    current.windowsDownloads = Number(row.windows_downloads ?? 0);
+    deviceBreakdownMap.set(segment, current);
+  }
+
+  const orderedDeviceSegments = ["Windows desktop", "Android", "iPhone/iPad", "macOS", "Linux", "Other / Unknown"];
+  const deviceBreakdown = orderedDeviceSegments.map((segment) => deviceBreakdownMap.get(segment) ?? {
+    segment,
+    uniqueVisitors: 0,
+    downloadEvents: 0,
+    uniqueDownloaders: 0,
+    windowsDownloads: 0,
+    linkSaveActions: 0,
+  });
+
+  const classificationBreakdownMap = new Map<string, { classification: string; downloadEvents: number; uniqueDownloaders: number }>();
+  for (const row of downloadClassificationResult.rows) {
+    const classification = String(row.download_classification);
+    classificationBreakdownMap.set(classification, {
+      classification,
+      downloadEvents: Number(row.download_events ?? 0),
+      uniqueDownloaders: Number(row.unique_downloaders ?? 0),
+    });
+  }
+
+  const downloadClassification = [
+    "Valid Windows download",
+    "Mobile .exe download",
+    "Other non-Windows download",
+    "Unknown device",
+  ].map((classification) => classificationBreakdownMap.get(classification) ?? {
+    classification,
+    downloadEvents: 0,
+    uniqueDownloaders: 0,
+  });
+
+  const sourcePerformanceMap = new Map<string, {
+    source: string;
+    medium: string;
+    campaign: string;
+    referrerDomain: string | null;
+    label: string;
+    uniqueVisitors: number;
+    mobileVisitors: number;
+    linkSaveConversions: number;
+    windowsDownloads: number;
+    appFirstOpens: number;
+    firstExtractions: number;
+    checkoutStarts: number;
+    payments: number;
+  }>();
+
+  for (const row of sourceLandingResult.rows) {
+    const source = String(row.source);
+    const medium = String(row.medium);
+    const campaign = String(row.campaign);
+    const key = `${source}__${medium}__${campaign}`;
+    sourcePerformanceMap.set(key, {
+      source,
+      medium,
+      campaign,
+      referrerDomain: row.referrer_domain ? String(row.referrer_domain) : null,
+      label: formatCampaignLabel(source, medium, campaign),
+      uniqueVisitors: Number(row.unique_visitors ?? 0),
+      mobileVisitors: Number(row.mobile_visitors ?? 0),
+      linkSaveConversions: 0,
+      windowsDownloads: 0,
+      appFirstOpens: 0,
+      firstExtractions: 0,
+      checkoutStarts: 0,
+      payments: 0,
+    });
+  }
+
+  for (const row of sourceDownloadResult.rows) {
+    const source = String(row.source);
+    const medium = String(row.medium);
+    const campaign = String(row.campaign);
+    const key = `${source}__${medium}__${campaign}`;
+    const current = sourcePerformanceMap.get(key) ?? {
+      source,
+      medium,
+      campaign,
+      referrerDomain: row.referrer_domain ? String(row.referrer_domain) : null,
+      label: formatCampaignLabel(source, medium, campaign),
+      uniqueVisitors: 0,
+      mobileVisitors: 0,
+      linkSaveConversions: 0,
+      windowsDownloads: 0,
+      appFirstOpens: 0,
+      firstExtractions: 0,
+      checkoutStarts: 0,
+      payments: 0,
+    };
+    current.windowsDownloads = Number(row.windows_downloads ?? 0);
+    sourcePerformanceMap.set(key, current);
+  }
+
+  const sourcePerformance = Array.from(sourcePerformanceMap.values())
+    .map((row) => ({
+      ...row,
+      visitorToPaymentRate: 0,
+      visitorToPaymentRateAvailable: false,
+    }))
+    .sort((a, b) => (b.windowsDownloads + b.uniqueVisitors) - (a.windowsDownloads + a.uniqueVisitors))
+    .slice(0, 25);
+
+  const countryMetricsMap = new Map<string, {
+    country: string;
+    uniqueVisitors: number;
+    mobileVisitors: number;
+    linkRequests: number;
+    windowsDownloads: number;
+    appFirstOpens: number;
+    payments: number;
+  }>();
+
+  for (const row of countryLandingResult.rows) {
+    const country = String(row.country);
+    countryMetricsMap.set(country, {
+      country,
+      uniqueVisitors: Number(row.unique_visitors ?? 0),
+      mobileVisitors: Number(row.mobile_visitors ?? 0),
+      linkRequests: 0,
+      windowsDownloads: 0,
+      appFirstOpens: 0,
+      payments: 0,
+    });
+  }
+
+  for (const row of countryDownloadResult.rows) {
+    const country = String(row.country);
+    const current = countryMetricsMap.get(country) ?? {
+      country,
+      uniqueVisitors: 0,
+      mobileVisitors: 0,
+      linkRequests: 0,
+      windowsDownloads: 0,
+      appFirstOpens: 0,
+      payments: 0,
+    };
+    current.windowsDownloads = Number(row.windows_downloads ?? 0);
+    countryMetricsMap.set(country, current);
+  }
+
+  const topCountries = Array.from(countryMetricsMap.values())
+    .sort((a, b) => (b.uniqueVisitors + b.windowsDownloads) - (a.uniqueVisitors + a.windowsDownloads))
+    .slice(0, 10);
+
+  const cityMetricsMap = new Map<string, {
+    city: string;
+    country: string;
+    uniqueVisitors: number;
+    mobileVisitors: number;
+    linkRequests: number;
+    windowsDownloads: number;
+    appFirstOpens: number;
+    payments: number;
+  }>();
+
+  for (const row of cityLandingResult.rows) {
+    const city = String(row.city);
+    const country = String(row.country);
+    const key = `${city}__${country}`;
+    cityMetricsMap.set(key, {
+      city,
+      country,
+      uniqueVisitors: Number(row.unique_visitors ?? 0),
+      mobileVisitors: Number(row.mobile_visitors ?? 0),
+      linkRequests: 0,
+      windowsDownloads: 0,
+      appFirstOpens: 0,
+      payments: 0,
+    });
+  }
+
+  for (const row of cityDownloadResult.rows) {
+    const city = String(row.city);
+    const country = String(row.country);
+    const key = `${city}__${country}`;
+    const current = cityMetricsMap.get(key) ?? {
+      city,
+      country,
+      uniqueVisitors: 0,
+      mobileVisitors: 0,
+      linkRequests: 0,
+      windowsDownloads: 0,
+      appFirstOpens: 0,
+      payments: 0,
+    };
+    current.windowsDownloads = Number(row.windows_downloads ?? 0);
+    cityMetricsMap.set(key, current);
+  }
+
+  const topCities = Array.from(cityMetricsMap.values())
+    .sort((a, b) => (b.uniqueVisitors + b.windowsDownloads) - (a.uniqueVisitors + a.windowsDownloads))
+    .slice(0, 10);
+
+  const recentMobileActionsTotal =
+    Number(landingMobileActionsCountResult.rows[0]?.total ?? 0) +
+    Number(downloadMobileActionsCountResult.rows[0]?.total ?? 0);
+  const recentDownloadsTotal = Number(recentDownloadsCountResult.rows[0]?.total ?? 0);
+
+  const recentMobileActionsItems = [
+    ...landingMobileActionsResult.rows,
+    ...downloadMobileActionsResult.rows,
+  ]
+    .map((row: AnalyticsRow) => ({
+      occurredAt: String(row.occurred_at),
+      action: String(row.action_label),
+      device: row.device_category ? String(row.device_category) : "unknown",
+      operatingSystem: row.operating_system ? String(row.operating_system) : "Other / Unknown",
+      browser: row.browser ? String(row.browser) : "Other / Unknown",
+      location: formatLocationLabel(row.city, row.region, row.country_name),
+      sourceCampaign: formatCampaignLabel(row.source, "Unknown", row.campaign),
+      page: String(row.page_path ?? "Unknown"),
+      visitorId: String(row.anonymous_visitor_id),
+      attributionStatus: String(row.attribution_status),
+    }))
+    .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt))
+    .slice(recentMobileActionsOffset, recentMobileActionsOffset + B2B_TABLE_PAGE_SIZE);
+
+  const availability = {
+    emailLinkRequests: false,
+    linkShares: false,
+    linkCopies: false,
+    failedLinkRequests: false,
+    appFirstOpen: false,
+    firstExtraction: false,
+    freeLimitReached: false,
+    plansOpened: false,
+    checkoutStarted: false,
+    paymentCompleted: false,
+    crossDeviceAttribution: false,
+    appVersion: false,
+    authenticationStatus: false,
+  };
+
+  const filterOptionsRow = filterOptionsResult.rows[0] ?? {};
+  const filterOptions = {
+    deviceCategories: [
+      { value: "mobile_or_tablet", label: "Mobile / Tablet", available: true },
+      { value: "desktop", label: "Desktop", available: true },
+      { value: "mobile", label: "Mobile only", available: true },
+      { value: "tablet", label: "Tablet only", available: true },
+      { value: "unknown", label: "Unknown", available: true },
+    ],
+    operatingSystems: Array.isArray(filterOptionsRow.operating_systems) ? filterOptionsRow.operating_systems.map((value: unknown) => String(value)) : [],
+    browsers: Array.isArray(filterOptionsRow.browsers) ? filterOptionsRow.browsers.map((value: unknown) => String(value)) : [],
+    countries: Array.isArray(filterOptionsRow.countries) ? filterOptionsRow.countries.map((value: unknown) => String(value)) : [],
+    cities: Array.isArray(filterOptionsRow.cities) ? filterOptionsRow.cities.map((value: unknown) => String(value)) : [],
+    sources: Array.isArray(filterOptionsRow.sources) ? filterOptionsRow.sources.map((value: unknown) => String(value)) : [],
+    mediums: Array.isArray(filterOptionsRow.mediums) ? filterOptionsRow.mediums.map((value: unknown) => String(value)) : [],
+    campaigns: Array.isArray(filterOptionsRow.campaigns) ? filterOptionsRow.campaigns.map((value: unknown) => String(value)) : [],
+    actionTypes: [
+      { value: "all", label: "All activity", available: true },
+      { value: "landing_view", label: "Landing page views", available: true },
+      { value: "mobile_landing_view", label: "Mobile landing views", available: true },
+      { value: "valid_windows_download", label: "Valid Windows downloads", available: true },
+      { value: "mobile_exe_download", label: "Mobile .exe downloads", available: true },
+      { value: "other_non_windows_download", label: "Other non-Windows downloads", available: true },
+      { value: "unknown_device_download", label: "Unknown-device downloads", available: true },
+      { value: "email_link_request", label: "Email link requests", available: false },
+      { value: "link_shared", label: "Successful link shares", available: false },
+      { value: "link_copied", label: "Download-link copies", available: false },
+      { value: "failed_link_request", label: "Failed link requests", available: false },
+      { value: "app_first_open", label: "App first open", available: false },
+      { value: "first_extraction", label: "First extraction", available: false },
+      { value: "free_limit_reached", label: "Free 30-limit reached", available: false },
+      { value: "plans_opened", label: "Plans opened", available: false },
+      { value: "checkout_started", label: "Checkout started", available: false },
+      { value: "payment_completed", label: "Payment completed", available: false },
+    ],
+    applicationVersions: [] as string[],
+    authenticationStatuses: [] as string[],
+  };
 
   return {
     timezone: DEFAULT_TIMEZONE,
     generatedAt: new Date().toISOString(),
-    range,
+    range: {
+      startDate: filters.startDate,
+      endDate: filters.endDate,
+    },
     summary: {
       totalDownloads,
-      uniqueVisitors: Number(summaryRow.unique_visitors ?? 0),
-      uniqueSessions: Number(summaryRow.unique_sessions ?? 0),
-      downloadsToday: Number(summaryRow.downloads_today ?? 0),
-      downloadsLast7Days: Number(summaryRow.downloads_last7_days ?? 0),
-      downloadsLast30Days: Number(summaryRow.downloads_last30_days ?? 0),
+      uniqueVisitors: uniqueDownloadVisitors,
+      uniqueSessions: uniqueDownloadSessions,
+      downloadsToday: Number(downloadSummaryRow.downloads_today ?? 0),
+      downloadsLast7Days: Number(downloadSummaryRow.downloads_last7_days ?? 0),
+      downloadsLast30Days: Number(downloadSummaryRow.downloads_last30_days ?? 0),
       knownLocationDownloads,
-      locationCoverageRate: totalDownloads > 0 ? (knownLocationDownloads / totalDownloads) * 100 : 0,
+      locationCoverageRate: calculateSafeRate(knownLocationDownloads, totalDownloads),
     },
     charts: {
-      downloadsOverTime: downloadsOverTimeResult.rows.map((row: AnalyticsRow) => ({
-        day: String(row.day),
-        downloads: Number(row.downloads ?? 0),
-        uniqueVisitors: Number(row.unique_visitors ?? 0),
+      downloadsOverTime: downloadsOverTime.map((row) => ({
+        day: row.day,
+        downloads: row.allDownloads,
+        uniqueVisitors: row.uniqueDownloaders,
       })),
-      topCountries: topCountriesResult.rows.map((row: AnalyticsRow) => ({
-        country: String(row.country),
-        downloads: Number(row.downloads ?? 0),
-        uniqueVisitors: Number(row.unique_visitors ?? 0),
+      topCountries: topCountries.map((row) => ({
+        country: row.country,
+        downloads: row.windowsDownloads,
+        uniqueVisitors: row.uniqueVisitors,
       })),
-      topCities: topCitiesResult.rows.map((row: AnalyticsRow) => ({
-        city: String(row.city),
-        country: String(row.country),
-        downloads: Number(row.downloads ?? 0),
-        uniqueVisitors: Number(row.unique_visitors ?? 0),
+      topCities: topCities.map((row) => ({
+        city: row.city,
+        country: row.country,
+        downloads: row.windowsDownloads,
+        uniqueVisitors: row.uniqueVisitors,
       })),
-      sourceBreakdown: sourceBreakdownResult.rows.map((row: AnalyticsRow) => ({
-        source: String(row.source),
-        downloads: Number(row.downloads ?? 0),
+      sourceBreakdown: sourcePerformance.map((row) => ({
+        source: row.label,
+        downloads: row.windowsDownloads,
       })),
       pageBreakdown: pageBreakdownResult.rows.map((row: AnalyticsRow) => ({
         path: String(row.path),
         downloads: Number(row.downloads ?? 0),
         uniqueVisitors: Number(row.unique_visitors ?? 0),
       })),
-      deviceBreakdown: deviceBreakdownResult.rows.map((row: AnalyticsRow) => ({
-        device: String(row.device),
-        downloads: Number(row.downloads ?? 0),
+      deviceBreakdown: deviceBreakdown.map((row) => ({
+        device: row.segment,
+        downloads: row.downloadEvents,
       })),
     },
     recentDownloads: recentDownloadsResult.rows.map((row: AnalyticsRow) => ({
@@ -665,8 +1803,8 @@ export async function getB2BLeadZoneDownloadAnalytics(input: Pick<VisitorsFilter
       anonymousVisitorId: String(row.anonymous_visitor_id),
       sessionId: String(row.session_id),
       assetLabel: row.asset_label ? String(row.asset_label) : null,
-      downloadUrl: row.download_url ? String(row.download_url) : null,
-      pagePath: row.page_path ? String(row.page_path) : null,
+      downloadUrl: null,
+      pagePath: row.route_template ? String(row.route_template) : row.page_path ? String(row.page_path) : null,
       referrer: row.referrer ? String(row.referrer) : null,
       utmSource: row.utm_source ? String(row.utm_source) : null,
       browser: row.browser ? String(row.browser) : null,
@@ -674,6 +1812,171 @@ export async function getB2BLeadZoneDownloadAnalytics(input: Pick<VisitorsFilter
       location: formatLocationLabel(row.city, row.region, row.country_name),
       createdAt: String(row.created_at),
     })),
+    insights: {
+      availability,
+      trackedEvents: [
+        {
+          eventName: "landing_view",
+          status: "available",
+          table: "analytics_visitor_page_views",
+          timestampColumn: "viewed_at",
+          visitorIdColumn: "anonymous_visitor_id",
+          sessionIdColumn: "session_id",
+        },
+        {
+          eventName: "windows_installer_downloaded",
+          status: "available",
+          table: "analytics_download_events",
+          timestampColumn: "created_at",
+          visitorIdColumn: "anonymous_visitor_id",
+          sessionIdColumn: "session_id",
+        },
+        {
+          eventName: "mobile_landing_view",
+          status: "derived",
+          table: "analytics_visitor_page_views",
+          timestampColumn: "viewed_at",
+          visitorIdColumn: "anonymous_visitor_id",
+          sessionIdColumn: "session_id",
+        },
+        ...Array.from(B2B_UNAVAILABLE_EVENT_KEYS).map((eventName) => ({
+          eventName,
+          status: "not_available",
+          table: null,
+          timestampColumn: null,
+          visitorIdColumn: null,
+          sessionIdColumn: null,
+        })),
+      ],
+      traffic: {
+        totalLandingPageVisitors: landingSessions,
+        uniqueVisitors,
+        mobileTabletVisitors: mobileVisitors,
+        windowsDesktopVisitors,
+        otherDesktopVisitors,
+        unknownDeviceVisitors,
+        mobileVisitorPercentage: calculateSafeRate(mobileVisitors, uniqueVisitors),
+        mobileLandingViews,
+      },
+      mobileActions: {
+        mobileLandingViews,
+        emailLinkRequests: 0,
+        successfulLinkShares: 0,
+        downloadLinkCopies: 0,
+        mobileExeDownloads,
+        mobileLinkSaveConversionRate: null,
+      },
+      windowsFunnel: {
+        windowsInstallerDownloads: windowsDownloads,
+        uniqueWindowsDownloaders,
+        appFirstOpens: null,
+        firstExtractionsCompleted: null,
+        free30LimitReached: null,
+        plansOpened: null,
+        checkoutStarted: null,
+        paymentsCompleted: null,
+      },
+      conversionRates: {
+        visitorToWindowsDownloadRate: calculateSafeRate(uniqueWindowsDownloaders, uniqueVisitors),
+        windowsDownloadToFirstOpenRate: null,
+        firstOpenToFirstExtractionRate: null,
+        firstExtractionToFreeLimitRate: null,
+        freeLimitToPlansOpenedRate: null,
+        plansOpenedToCheckoutRate: null,
+        checkoutToPaymentRate: null,
+        overallVisitorToPaymentRate: null,
+      },
+      deviceBreakdown,
+      downloadClassification,
+      downloadsOverTime: downloadsOverTime.map((row) => ({
+        day: row.day,
+        allDownloads: row.allDownloads,
+        uniqueDownloaders: row.uniqueDownloaders,
+        windowsDownloads: row.windowsDownloads,
+        mobileExeDownloads: row.mobileExeDownloads,
+        emailLinkRequests: 0,
+        successfulLinkShares: 0,
+        downloadLinkCopies: 0,
+        appFirstOpens: 0,
+        firstExtractions: 0,
+        payments: 0,
+      })),
+      sourcePerformance,
+      topCountries,
+      topCities,
+      mobileFunnel: {
+        crossDeviceAttributionAvailable: false,
+        note: "Cross-device attribution is not yet available. Mobile visitors and later Windows/app stages are shown separately.",
+        stages: [
+          { key: "unique_mobile_visitors", label: "Unique mobile visitors", value: mobileVisitors, available: true },
+          { key: "link_saved_or_requested", label: "Link saved/requested", value: 0, available: false },
+          { key: "later_windows_download", label: "Later Windows download", value: windowsDownloads, available: false },
+          { key: "app_first_open", label: "App first open", value: 0, available: false },
+          { key: "first_extraction", label: "First extraction", value: 0, available: false },
+          { key: "free_limit_reached", label: "Free limit reached", value: 0, available: false },
+          { key: "checkout_started", label: "Checkout started", value: 0, available: false },
+          { key: "payment_completed", label: "Payment completed", value: 0, available: false },
+        ],
+      },
+      failedLinkRequests: {
+        available: false,
+        total: 0,
+        breakdown: [
+          { category: "Validation rejected", count: 0 },
+          { category: "Rate limited", count: 0 },
+          { category: "Email provider failure", count: 0 },
+          { category: "Network/server failure", count: 0 },
+          { category: "Unknown safe category", count: 0 },
+        ],
+      },
+      recentMobileActions: {
+        items: recentMobileActionsItems,
+        pagination: {
+          page: filters.recentMobileActionsPage,
+          limit: B2B_TABLE_PAGE_SIZE,
+          total: recentMobileActionsTotal,
+          totalPages: Math.max(1, Math.ceil(recentMobileActionsTotal / B2B_TABLE_PAGE_SIZE)),
+        },
+      },
+      recentDownloadTable: {
+        items: recentDownloadsResult.rows.map((row: AnalyticsRow) => {
+          const classification = classifyB2BDownload(
+            row.device_category ? String(row.device_category) : null,
+            row.operating_system ? String(row.operating_system) : null
+          );
+          return {
+            downloadedAt: String(row.created_at),
+            deviceCategory: row.device_category ? String(row.device_category) : "unknown",
+            operatingSystem: row.operating_system ? String(row.operating_system) : "Other / Unknown",
+            browser: row.browser ? String(row.browser) : "Other / Unknown",
+            location: formatLocationLabel(row.city, row.region, row.country_name),
+            sourceCampaign: formatCampaignLabel(
+              row.utm_source ? String(row.utm_source) : null,
+              row.utm_medium ? String(row.utm_medium) : null,
+              row.utm_campaign ? String(row.utm_campaign) : null
+            ),
+            downloadClassification: classification,
+            installerVersion: null,
+            isRepeatDownload: Number(row.visitor_download_index ?? 1) > 1,
+            visitorId: String(row.anonymous_visitor_id),
+            laterAppFirstOpen: null,
+            laterFirstExtraction: null,
+            paymentStatus: null,
+            pagePath: row.route_template ? String(row.route_template) : row.page_path ? String(row.page_path) : "Unknown",
+            assetLabel: row.asset_label ? String(row.asset_label) : "Installer",
+          };
+        }),
+        pagination: {
+          page: filters.recentDownloadsPage,
+          limit: B2B_TABLE_PAGE_SIZE,
+          total: recentDownloadsTotal,
+          totalPages: Math.max(1, Math.ceil(recentDownloadsTotal / B2B_TABLE_PAGE_SIZE)),
+        },
+      },
+      filterOptions,
+      historicalNote:
+        "Some funnel events became available after tracking was introduced; earlier activity may not contain every stage. App lifecycle and link-save events are not yet being received in this Admin dataset.",
+    },
   };
 }
 
