@@ -87,9 +87,9 @@ export type UserPortalAccessDetails = {
 };
 
 export type UpdateUserPortalAccessInput = {
-  unlimitedAccess: boolean;
-  expiresAt: string | null;
-  featureLimits: Partial<Record<FeatureLimitKey, number>>;
+  unlimitedAccess?: boolean;
+  expiresAt?: string | null;
+  featureLimits?: Partial<Record<FeatureLimitKey, number>>;
 };
 
 const NO_PLAN_ACCESS: PlanAccessTemplate = {
@@ -545,11 +545,17 @@ export const updateUserPortalAccessDetails = async (
 
   await ensureUserAccessSchema();
 
-  const currentActiveSubscription = await getActiveSubscriptionRow(normalizedUserId);
+  const [currentActiveSubscription, currentAccessOverride] = await Promise.all([
+    getActiveSubscriptionRow(normalizedUserId),
+    getAccessOverrideRow(normalizedUserId),
+  ]);
   const template = resolvePlanTemplate(currentActiveSubscription);
-  const unlimitedAccess = Boolean(input.unlimitedAccess);
+  const unlimitedAccess =
+    typeof input.unlimitedAccess === "boolean"
+      ? input.unlimitedAccess
+      : Boolean(currentAccessOverride?.unlimited_access);
   const normalizedFeatureLimits = normalizeFeatureLimits(
-    input.featureLimits,
+    input.featureLimits ?? currentAccessOverride?.feature_limits,
     template,
     unlimitedAccess
   );
@@ -577,7 +583,7 @@ export const updateUserPortalAccessDetails = async (
     ]
   );
 
-  if (input.expiresAt) {
+  if (typeof input.expiresAt !== "undefined" && input.expiresAt !== null) {
     const parsedExpiresAt = new Date(input.expiresAt);
 
     if (Number.isNaN(parsedExpiresAt.getTime())) {

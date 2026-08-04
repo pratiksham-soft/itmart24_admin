@@ -74,10 +74,11 @@ const formatDateTime = (value: string | null | undefined) => {
 
 const formatDuration = (seconds: number) => {
   if (!Number.isFinite(seconds) || seconds <= 0) return "0s";
-  if (seconds < 60) return `${seconds}s`;
+  const formatSecondsPart = (value: number) => value.toFixed(2).replace(/\.00$/, "");
+  if (seconds < 60) return `${formatSecondsPart(seconds)}s`;
   const minutes = Math.floor(seconds / 60);
   const remainingSeconds = seconds % 60;
-  if (minutes < 60) return `${minutes}m ${remainingSeconds}s`;
+  if (minutes < 60) return `${minutes}m ${formatSecondsPart(remainingSeconds)}s`;
   const hours = Math.floor(minutes / 60);
   return `${hours}h ${minutes % 60}m`;
 };
@@ -579,10 +580,10 @@ export default function VisitorsPage() {
       ) : null}
 
       {currentTab !== "b2bLeadZone" ? (
-        <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-4">
+        <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
           {summaryCards.map(([label, value, kind]) => (
             <ComponentCard key={label} title={String(label)}>
-              <p className="text-3xl font-semibold text-gray-900 dark:text-white/90">
+              <p className="text-2xl font-semibold text-gray-900 dark:text-white/90 xl:text-[30px]">
                 {loading
                   ? "..."
                   : kind === "duration"
@@ -602,7 +603,7 @@ export default function VisitorsPage() {
             title="Filters"
             desc="Keep tab-specific filters in the URL while preserving the current date range and Asia/Kolkata reporting."
           >
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-6">
               <B2BFilterField label="Start date">
                 <input
                   type="date"
@@ -784,29 +785,31 @@ export default function VisitorsPage() {
                     title="Downloads Over Time"
                     desc="Default view compares valid Windows downloads, mobile .exe downloads, and link-save actions."
                     headerAction={
-                      <div className="flex flex-wrap justify-end gap-2">
-                        {b2bTimeSeriesOptions.map((option) => (
-                          <button
-                            key={option.key}
-                            type="button"
-                            onClick={() =>
-                              setB2BSelectedSeries((current) =>
-                                current.includes(option.key)
-                                  ? current.length === 1
-                                    ? current
-                                    : current.filter((item) => item !== option.key)
-                                  : [...current, option.key]
-                              )
-                            }
-                            className={`rounded-full border px-3 py-1.5 text-xs font-medium ${
-                              b2bSelectedSeries.includes(option.key)
-                                ? "border-brand-500 bg-brand-500 text-white"
-                                : "border-gray-200 text-gray-600 dark:border-gray-800 dark:text-gray-300"
-                            }`}
-                          >
-                            {option.label}
-                          </button>
-                        ))}
+                      <div className="max-w-full overflow-x-auto pb-1">
+                        <div className="flex min-w-max flex-wrap justify-end gap-2">
+                          {b2bTimeSeriesOptions.map((option) => (
+                            <button
+                              key={option.key}
+                              type="button"
+                              onClick={() =>
+                                setB2BSelectedSeries((current) =>
+                                  current.includes(option.key)
+                                    ? current.length === 1
+                                      ? current
+                                      : current.filter((item) => item !== option.key)
+                                    : [...current, option.key]
+                                )
+                              }
+                              className={`rounded-full border px-3 py-1.5 text-xs font-medium ${
+                                b2bSelectedSeries.includes(option.key)
+                                  ? "border-brand-500 bg-brand-500 text-white"
+                                  : "border-gray-200 text-gray-600 dark:border-gray-800 dark:text-gray-300"
+                              }`}
+                            >
+                              {option.label}
+                            </button>
+                          ))}
+                        </div>
                       </div>
                     }
                   >
@@ -1725,7 +1728,7 @@ function B2BMetricSection({ title, children }: { title: string; children: React.
   return (
     <section className="space-y-3">
       <p className={sectionTitleClassName}>{title}</p>
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">{children}</div>
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">{children}</div>
     </section>
   );
 }
@@ -1776,7 +1779,7 @@ function TablePagination({
   onNext: () => void;
 }) {
   return (
-    <div className="flex items-center justify-between gap-3 text-sm text-gray-500 dark:text-gray-400">
+    <div className="flex flex-col gap-3 text-sm text-gray-500 sm:flex-row sm:items-center sm:justify-between dark:text-gray-400">
       <span>
         Page {page} of {Math.max(1, totalPages)} · {formatNumber(totalItems)} records
       </span>

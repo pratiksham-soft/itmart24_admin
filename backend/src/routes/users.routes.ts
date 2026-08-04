@@ -215,18 +215,35 @@ router.get("/:userId/access", async (req, res) => {
 
 router.put("/:userId/access", async (req, res) => {
   try {
+    const hasUnlimitedAccess = Object.prototype.hasOwnProperty.call(
+      req.body ?? {},
+      "unlimitedAccess"
+    );
+    const hasExpiresAt = Object.prototype.hasOwnProperty.call(
+      req.body ?? {},
+      "expiresAt"
+    );
+    const hasFeatureLimits = Object.prototype.hasOwnProperty.call(
+      req.body ?? {},
+      "featureLimits"
+    );
+
     const accessDetails = await updateUserPortalAccessDetails(
       String(req.params.userId ?? ""),
       {
-        unlimitedAccess: Boolean(req.body?.unlimitedAccess),
-        expiresAt:
-          typeof req.body?.expiresAt === "string" && req.body.expiresAt.trim()
+        unlimitedAccess: hasUnlimitedAccess
+          ? Boolean(req.body?.unlimitedAccess)
+          : undefined,
+        expiresAt: hasExpiresAt
+          ? typeof req.body?.expiresAt === "string" && req.body.expiresAt.trim()
             ? req.body.expiresAt
-            : null,
-        featureLimits:
-          req.body?.featureLimits && typeof req.body.featureLimits === "object"
-            ? req.body.featureLimits
-            : {},
+            : null
+          : undefined,
+        featureLimits: hasFeatureLimits &&
+          req.body?.featureLimits &&
+          typeof req.body.featureLimits === "object"
+          ? req.body.featureLimits
+          : undefined,
       }
     );
 
