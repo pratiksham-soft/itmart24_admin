@@ -1,192 +1,156 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import type { FirestoreError } from "firebase/firestore";
+import { useEffect, useMemo, useState } from "react";
 import PageMeta from "../../components/common/PageMeta";
 import ComponentCard from "../../components/common/ComponentCard";
 import Badge from "../../components/ui/badge/Badge";
 import Button from "../../components/ui/button/Button";
-import { Modal } from "../../components/ui/modal";
-import { MoreDotIcon } from "../../icons";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHeader,
-  TableRow,
-} from "../../components/ui/table";
 import ProductSearchBar from "../Products/ProductSearchBar";
 import {
-  type MessageSenderRole,
-  type SupportTicket,
-  type SupportTicketMessage,
-  type TicketStatus,
-  type VendorProfileSummary,
-  listenToSupportTicketMessages,
-  listenToSupportTickets,
-  loadVendorProfiles,
-  resolveSupportAgentId,
-  sendSupportTicketMessage,
-  updateSupportTicketStatus,
-} from "../../services/supportTickets.service";
+  fetchUserSupportTicket,
+  fetchUserSupportTickets,
+  fetchVendorSupportTicket,
+  fetchVendorSupportTickets,
+  sendUserSupportReply,
+  sendVendorSupportReply,
+  updateUserSupportTicketStatus,
+  updateVendorSupportTicketStatus,
+  type UserSupportAttachment,
+  type UserSupportEvent,
+  type UserSupportTicket,
+  type VendorSupportTicket,
+  type VendorSupportTicketMessage,
+  type VendorTicketStatus,
+} from "../../services/adminSupport.service";
 
-type DerivedTicketState =
-  | "Awaiting Support Reply"
-  | "Awaiting Vendor Reply"
-  | "Resolved"
-  | "Closed";
+type SupportChannel = "vendor" | "user";
+type SupportTicketStatusFilter = "all" | "open" | "resolved" | "closed";
 
-type TicketStatusFilter = "all" | TicketStatus;
-type SelectedTicketTab = "conversation" | "details";
-
-type TicketThreadMessage = {
-  id: string;
-  message: string;
-  senderRole: MessageSenderRole;
-  senderId: string;
-  createdAt: Date | null;
-  isOriginal?: boolean;
-};
-
-type ModalSection = {
-  id: string;
-  title: string;
-  summary?: string;
-  tab?: SelectedTicketTab;
-  hiddenFromStandard?: boolean;
-  renderContent: (options: { isMaximized: boolean }) => React.ReactNode;
-};
-
-const PAGE_SIZE = 12;
-const MESSAGE_MAX_LENGTH = 500;
+const PAGE_SIZE = 10;
 
 const Support = () => {
-  const [tickets, setTickets] = useState<SupportTicket[]>([]);
-  const [vendorProfiles, setVendorProfiles] = useState<
-    Record<string, VendorProfileSummary>
-  >({});
-  const [isLoadingTickets, setIsLoadingTickets] = useState(true);
-  const [ticketError, setTicketError] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<TicketStatusFilter>("all");
-  const [page, setPage] = useState(1);
+  const [activeChannel, setActiveChannel] = useState<SupportChannel>("vendor");
+  const [vendorTickets, setVendorTickets] = useState<VendorSupportTicket[]>([]);
+  const [userTickets, setUserTickets] = useState<UserSupportTicket[]>([]);
+  const [vendorError, setVendorError] = useState<string | null>(null);
+  const [userError, setUserError] = useState<string | null>(null);
+  const [isLoadingVendorTickets, setIsLoadingVendorTickets] = useState(true);
+  const [isLoadingUserTickets, setIsLoadingUserTickets] = useState(true);
+  const [selectedVendorTicket, setSelectedVendorTicket] = useState<{
+    ticket: VendorSupportTicket;
+    messages: VendorSupportTicketMessage[];
+  } | null>(null);
+  const [selectedUserTicket, setSelectedUserTicket] =
+    useState<UserSupportTicket | null>(null);
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
-  const [selectedTab, setSelectedTab] =
-    useState<SelectedTicketTab>("conversation");
-  const [messages, setMessages] = useState<SupportTicketMessage[]>([]);
-  const [isLoadingMessages, setIsLoadingMessages] = useState(false);
-  const [messageError, setMessageError] = useState<string | null>(null);
+  const [isLoadingDetail, setIsLoadingDetail] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
   const [replyDraft, setReplyDraft] = useState("");
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [isSendingReply, setIsSendingReply] = useState(false);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
-  const [actionMessage, setActionMessage] = useState<string | null>(null);
-
-  const supportAgentId = useMemo(() => resolveSupportAgentId(), []);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] =
+    useState<SupportTicketStatusFilter>("all");
+  const [page, setPage] = useState(1);
 
   useEffect(() => {
-    const unsubscribe = listenToSupportTickets(
-      (nextTickets) => {
-        setTickets(nextTickets);
-        setIsLoadingTickets(false);
-        setTicketError(null);
-      },
-      (error) => {
-        setTicketError(toFirestoreErrorMessage(error));
-        setIsLoadingTickets(false);
+    const loadVendorTickets = async () => {
+      try {
+        setIsLoadingVendorTickets(true);
+        setVendorError(null);
+        setVendorTickets(await fetchVendorSupportTickets());
+      } catch (error) {
+        setVendorError(
+          error instanceof Error
+            ? error.message
+            : "Failed to load vendor support tickets."
+        );
+      } finally {
+        setIsLoadingVendorTickets(false);
       }
-    );
-
-    return () => {
-      unsubscribe();
     };
+
+    const loadUserTickets = async () => {
+      try {
+        setIsLoadingUserTickets(true);
+        setUserError(null);
+        setUserTickets(await fetchUserSupportTickets());
+      } catch (error) {
+        setUserError(
+          error instanceof Error
+            ? error.message
+            : "Failed to load user support tickets."
+        );
+      } finally {
+        setIsLoadingUserTickets(false);
+      }
+    };
+
+    void loadVendorTickets();
+    void loadUserTickets();
   }, []);
 
   useEffect(() => {
-    let cancelled = false;
+    setSelectedTicketId(null);
+    setSelectedVendorTicket(null);
+    setSelectedUserTicket(null);
+    setDetailError(null);
+    setReplyDraft("");
+    setActionMessage(null);
+    setPage(1);
+  }, [activeChannel]);
 
-    const syncVendorProfiles = async () => {
+  useEffect(() => {
+    setPage(1);
+  }, [searchQuery, statusFilter]);
+
+  useEffect(() => {
+    const loadDetail = async () => {
+      if (!selectedTicketId) {
+        return;
+      }
+
       try {
-        const profiles = await loadVendorProfiles(
-          tickets.map((ticket) => ticket.vendorId)
-        );
+        setIsLoadingDetail(true);
+        setDetailError(null);
+        setReplyDraft("");
+        setActionMessage(null);
 
-        if (!cancelled) {
-          setVendorProfiles(profiles);
+        if (activeChannel === "vendor") {
+          setSelectedVendorTicket(await fetchVendorSupportTicket(selectedTicketId));
+          setSelectedUserTicket(null);
+        } else {
+          setSelectedUserTicket(await fetchUserSupportTicket(selectedTicketId));
+          setSelectedVendorTicket(null);
         }
       } catch (error) {
-        if (!cancelled) {
-          console.error("Failed to load vendor profiles", error);
-        }
+        setDetailError(
+          error instanceof Error
+            ? error.message
+            : "Failed to load ticket details."
+        );
+      } finally {
+        setIsLoadingDetail(false);
       }
     };
 
-    void syncVendorProfiles();
+    void loadDetail();
+  }, [activeChannel, selectedTicketId]);
 
-    return () => {
-      cancelled = true;
-    };
-  }, [tickets]);
-
-  const selectedTicket = useMemo(
-    () => tickets.find((ticket) => ticket.id === selectedTicketId) ?? null,
-    [selectedTicketId, tickets]
-  );
-
-  useEffect(() => {
-    if (!selectedTicket?.id) {
-      setMessages([]);
-      setMessageError(null);
-      setReplyDraft("");
-      setActionMessage(null);
-      return undefined;
-    }
-
-    setSelectedTab("conversation");
-    setIsLoadingMessages(true);
-    setMessageError(null);
-
-    const unsubscribe = listenToSupportTicketMessages(
-      selectedTicket.id,
-      (nextMessages) => {
-        setMessages(nextMessages);
-        setIsLoadingMessages(false);
-      },
-      (error) => {
-        setMessageError(toFirestoreErrorMessage(error));
-        setIsLoadingMessages(false);
-      }
-    );
-
-    return () => {
-      unsubscribe();
-    };
-  }, [selectedTicket?.id]);
-
-  const categories = useMemo(
-    () =>
-      [...new Set(tickets.map((ticket) => ticket.category).filter(Boolean))].sort(
-        (left, right) => left.localeCompare(right)
-      ),
-    [tickets]
-  );
-  const [categoryFilter, setCategoryFilter] = useState("all");
-
-  useEffect(() => {
-    if (
-      categoryFilter !== "all" &&
-      !categories.some((category) => category === categoryFilter)
-    ) {
-      setCategoryFilter("all");
-    }
-  }, [categories, categoryFilter]);
+  const activeTickets = activeChannel === "vendor" ? vendorTickets : userTickets;
+  const isLoadingTickets =
+    activeChannel === "vendor" ? isLoadingVendorTickets : isLoadingUserTickets;
+  const ticketError = activeChannel === "vendor" ? vendorError : userError;
 
   const filteredTickets = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
 
-    return tickets.filter((ticket) => {
-      if (statusFilter !== "all" && ticket.status !== statusFilter) {
-        return false;
-      }
+    return activeTickets.filter((ticket) => {
+      const normalizedStatus =
+        activeChannel === "vendor"
+          ? normalizeVendorStatus(ticket.status as VendorTicketStatus)
+          : normalizeUserStatus(ticket.status);
 
-      if (categoryFilter !== "all" && ticket.category !== categoryFilter) {
+      if (statusFilter !== "all" && normalizedStatus !== statusFilter) {
         return false;
       }
 
@@ -194,37 +158,40 @@ const Support = () => {
         return true;
       }
 
-      const vendor = vendorProfiles[ticket.vendorId];
-      const derivedState = getDerivedTicketState(ticket);
+      const searchableValues =
+        activeChannel === "vendor"
+          ? [
+              (ticket as VendorSupportTicket).ticketCode,
+              ticket.category,
+              ticket.description,
+              (ticket as VendorSupportTicket).vendor?.businessName,
+              (ticket as VendorSupportTicket).vendor?.email,
+              ticket.status,
+            ]
+          : [
+              (ticket as UserSupportTicket).ticketNumber,
+              (ticket as UserSupportTicket).subject,
+              ticket.category,
+              ticket.description,
+              (ticket as UserSupportTicket).user?.fullName,
+              (ticket as UserSupportTicket).user?.email,
+              ticket.status,
+              (ticket as UserSupportTicket).source,
+            ];
 
-      return [
-        ticket.ticketCode,
-        ticket.category,
-        ticket.description,
-        ticket.vendorId,
-        vendor?.businessName,
-        vendor?.email,
-        vendor?.contactName,
-        vendor?.contactEmail,
-        vendor?.website,
-        vendor?.country,
-        ticket.status,
-        derivedState,
-      ]
+      return searchableValues
         .filter(Boolean)
         .some((value) => String(value).toLowerCase().includes(query));
     });
-  }, [categoryFilter, searchQuery, statusFilter, tickets, vendorProfiles]);
+  }, [activeChannel, activeTickets, searchQuery, statusFilter]);
 
-  const totalPages = Math.max(1, Math.ceil(filteredTickets.length / PAGE_SIZE));
-  const paginatedTickets = filteredTickets.slice(
-    (page - 1) * PAGE_SIZE,
-    page * PAGE_SIZE
+  const paginatedTickets = useMemo(
+    () =>
+      filteredTickets.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
+    [filteredTickets, page]
   );
 
-  useEffect(() => {
-    setPage(1);
-  }, [searchQuery, statusFilter, categoryFilter]);
+  const totalPages = Math.max(1, Math.ceil(filteredTickets.length / PAGE_SIZE));
 
   useEffect(() => {
     if (page > totalPages) {
@@ -233,96 +200,138 @@ const Support = () => {
   }, [page, totalPages]);
 
   const stats = useMemo(() => {
-    const total = tickets.length;
-    const open = tickets.filter((ticket) => ticket.status === "Open");
-    const awaitingVendor = open.filter(
-      (ticket) => ticket.lastMessageSenderRole === "support"
-    ).length;
-
-    return {
-      total,
-      open: open.length,
-      awaitingSupport: open.length - awaitingVendor,
-      awaitingVendor,
-      resolved: tickets.filter((ticket) => ticket.status === "Resolved").length,
-      closed: tickets.filter((ticket) => ticket.status === "Closed").length,
+    const counts = {
+      total: activeTickets.length,
+      open: 0,
+      resolved: 0,
+      closed: 0,
     };
-  }, [tickets]);
 
-  const threadMessages = useMemo<TicketThreadMessage[]>(() => {
-    if (!selectedTicket) {
-      return [];
+    activeTickets.forEach((ticket) => {
+      const normalizedStatus =
+        activeChannel === "vendor"
+          ? normalizeVendorStatus(ticket.status as VendorTicketStatus)
+          : normalizeUserStatus(ticket.status);
+
+      counts[normalizedStatus] += 1;
+    });
+
+    return counts;
+  }, [activeChannel, activeTickets]);
+
+  const detailMeta = useMemo(() => {
+    if (activeChannel === "vendor" && selectedVendorTicket) {
+      return {
+        title: selectedVendorTicket.ticket.ticketCode,
+        subtitle:
+          selectedVendorTicket.ticket.vendor?.businessName ||
+          selectedVendorTicket.ticket.vendor?.email ||
+          selectedVendorTicket.ticket.vendorId,
+        status: selectedVendorTicket.ticket.status,
+      };
     }
 
-    const originalMessage: TicketThreadMessage = {
-      id: `original-${selectedTicket.id}`,
-      message: selectedTicket.description,
-      senderRole: "vendor",
-      senderId: selectedTicket.vendorId,
-      createdAt: asDate(selectedTicket.createdAt),
-      isOriginal: true,
-    };
+    if (activeChannel === "user" && selectedUserTicket) {
+      return {
+        title: selectedUserTicket.ticketNumber,
+        subtitle:
+          selectedUserTicket.user?.fullName ||
+          selectedUserTicket.user?.email ||
+          "Registered user",
+        status: selectedUserTicket.status,
+      };
+    }
 
-    return [
-      originalMessage,
-      ...messages.map((message) => ({
-        id: message.id,
-        message: message.message,
-        senderRole: message.senderRole,
-        senderId: message.senderId,
-        createdAt: asDate(message.createdAt),
-      })),
-    ];
-  }, [messages, selectedTicket]);
+    return null;
+  }, [activeChannel, selectedUserTicket, selectedVendorTicket]);
+
+  const canReply = useMemo(() => {
+    if (activeChannel === "vendor" && selectedVendorTicket) {
+      return selectedVendorTicket.ticket.status === "Open";
+    }
+
+    if (activeChannel === "user" && selectedUserTicket) {
+      return normalizeUserStatus(selectedUserTicket.status) === "open";
+    }
+
+    return false;
+  }, [activeChannel, selectedUserTicket, selectedVendorTicket]);
+
+  const handleRefresh = async () => {
+    try {
+      setActionMessage(null);
+      if (activeChannel === "vendor") {
+        setVendorTickets(await fetchVendorSupportTickets());
+      } else {
+        setUserTickets(await fetchUserSupportTickets());
+      }
+    } catch (error) {
+      setDetailError(
+        error instanceof Error ? error.message : "Failed to refresh tickets."
+      );
+    }
+  };
 
   const handleSendReply = async () => {
-    if (!selectedTicket || !replyDraft.trim()) {
+    const message = replyDraft.trim();
+    if (!selectedTicketId || !message) {
       return;
     }
 
     try {
       setIsSendingReply(true);
-      setMessageError(null);
+      setDetailError(null);
       setActionMessage(null);
 
-      await sendSupportTicketMessage({
-        ticketDocId: selectedTicket.id,
-        message: replyDraft,
-        senderId: supportAgentId,
-      });
+      if (activeChannel === "vendor") {
+        await sendVendorSupportReply(selectedTicketId, message);
+        setSelectedVendorTicket(await fetchVendorSupportTicket(selectedTicketId));
+        setVendorTickets(await fetchVendorSupportTickets());
+      } else {
+        await sendUserSupportReply(selectedTicketId, message);
+        setSelectedUserTicket(await fetchUserSupportTicket(selectedTicketId));
+        setUserTickets(await fetchUserSupportTickets());
+      }
 
       setReplyDraft("");
       setActionMessage("Reply sent successfully.");
     } catch (error) {
-      setMessageError(
-        error instanceof Error ? error.message : "Failed to send support reply."
+      setDetailError(
+        error instanceof Error ? error.message : "Failed to send reply."
       );
     } finally {
       setIsSendingReply(false);
     }
   };
 
-  const handleUpdateStatus = async (status: TicketStatus) => {
-    if (!selectedTicket) {
+  const handleUpdateStatus = async (nextStatus: "resolved" | "closed") => {
+    if (!selectedTicketId) {
       return;
     }
 
     try {
       setIsUpdatingStatus(true);
-      setMessageError(null);
+      setDetailError(null);
       setActionMessage(null);
 
-      await updateSupportTicketStatus({
-        ticketDocId: selectedTicket.id,
-        status,
-      });
+      if (activeChannel === "vendor") {
+        const mappedStatus: VendorTicketStatus =
+          nextStatus === "resolved" ? "Resolved" : "Closed";
+        await updateVendorSupportTicketStatus(selectedTicketId, mappedStatus);
+        setSelectedVendorTicket(await fetchVendorSupportTicket(selectedTicketId));
+        setVendorTickets(await fetchVendorSupportTickets());
+      } else {
+        await updateUserSupportTicketStatus(selectedTicketId, nextStatus);
+        setSelectedUserTicket(await fetchUserSupportTicket(selectedTicketId));
+        setUserTickets(await fetchUserSupportTickets());
+      }
 
-      setActionMessage(`Ticket marked as ${status}.`);
+      setActionMessage(
+        `Ticket marked as ${nextStatus === "resolved" ? "resolved" : "closed"}.`
+      );
     } catch (error) {
-      setMessageError(
-        error instanceof Error
-          ? error.message
-          : `Failed to mark ticket as ${status}.`
+      setDetailError(
+        error instanceof Error ? error.message : "Failed to update ticket status."
       );
     } finally {
       setIsUpdatingStatus(false);
@@ -332,889 +341,743 @@ const Support = () => {
   return (
     <>
       <PageMeta
-        title="Support Tickets | ITMart24 Admin"
-        description="Review, respond to, and resolve vendor support tickets."
+        title="Support | ITMart24 Admin"
+        description="Manage vendor and user support tickets from one professional workspace."
       />
 
       <div className="space-y-6">
-        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <StatsCard
-            title="All tickets"
+            title="Active channel"
+            value={activeChannel === "vendor" ? "Vendor Support" : "User Support"}
+            description="Switch between marketplace-side and demand-side ticket queues."
+          />
+          <StatsCard
+            title="Total tickets"
             value={stats.total}
-            description="Realtime support workload across all vendors."
+            description="Current workload for the selected support channel."
           />
           <StatsCard
             title="Open tickets"
             value={stats.open}
-            description={`${stats.awaitingSupport} awaiting support, ${stats.awaitingVendor} awaiting vendor.`}
+            description="Tickets that still need action or a follow-up reply."
           />
           <StatsCard
             title="Resolved / Closed"
             value={`${stats.resolved} / ${stats.closed}`}
-            description="Status changes here stay compatible with Vendor_Portal notifications."
+            description="Completed support outcomes for the selected queue."
           />
         </section>
 
         <ComponentCard
-          title="Support"
-          desc="Realtime ticket operations for the shared Vendor_Portal Firestore workspace."
+          title="Support Workspace"
+          desc="Manage vendor and demand-side support from a cleaner shared operations view."
         >
-          <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-            <ProductSearchBar
-              id="support-ticket-search"
-              label="Search support tickets"
-              value={searchQuery}
-              onChange={setSearchQuery}
-              placeholder="Search by ticket, vendor, category, status, or email"
-            />
+          <div className="space-y-4">
+            <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+              <div className="flex flex-wrap gap-2">
+                <ChannelButton
+                  isActive={activeChannel === "vendor"}
+                  label="Vendor support"
+                  count={vendorTickets.length}
+                  onClick={() => setActiveChannel("vendor")}
+                />
+                <ChannelButton
+                  isActive={activeChannel === "user"}
+                  label="User support"
+                  count={userTickets.length}
+                  onClick={() => setActiveChannel("user")}
+                />
+              </div>
 
-            <div className="flex flex-col gap-3 sm:flex-row">
-              <select
-                value={statusFilter}
-                onChange={(event) =>
-                  setStatusFilter(event.target.value as TicketStatusFilter)
-                }
-                className={filterClassName}
-              >
-                <option value="all">All statuses</option>
-                <option value="Open">Open</option>
-                <option value="Resolved">Resolved</option>
-                <option value="Closed">Closed</option>
-              </select>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                <ProductSearchBar
+                  id="support-search"
+                  value={searchQuery}
+                  onChange={setSearchQuery}
+                  label="Search support tickets"
+                  placeholder={
+                    activeChannel === "vendor"
+                      ? "Search by ticket, vendor, email, category, or status"
+                      : "Search by ticket, user, subject, category, source, or status"
+                  }
+                />
 
-              <select
-                value={categoryFilter}
-                onChange={(event) => setCategoryFilter(event.target.value)}
-                className={filterClassName}
-              >
-                <option value="all">All categories</option>
-                {categories.map((category) => (
-                  <option key={category} value={category}>
-                    {category}
-                  </option>
-                ))}
-              </select>
+                <select
+                  value={statusFilter}
+                  onChange={(event) =>
+                    setStatusFilter(event.target.value as SupportTicketStatusFilter)
+                  }
+                  className={filterClassName}
+                >
+                  <option value="all">All statuses</option>
+                  <option value="open">Open</option>
+                  <option value="resolved">Resolved</option>
+                  <option value="closed">Closed</option>
+                </select>
+              </div>
+            </div>
+
+            {ticketError ? (
+              <InlineNotice tone="error">{ticketError}</InlineNotice>
+            ) : null}
+
+            <div className="grid gap-6 xl:grid-cols-[minmax(0,1.1fr),minmax(360px,0.9fr)]">
+              <section className="rounded-3xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900/60">
+                <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4 dark:border-gray-800">
+                  <div>
+                    <h3 className="text-base font-semibold text-gray-900 dark:text-white">
+                      Ticket Queue
+                    </h3>
+                    <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                      {filteredTickets.length} matching ticket
+                      {filteredTickets.length === 1 ? "" : "s"}.
+                    </p>
+                  </div>
+
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={handleRefresh}
+                  >
+                    Refresh
+                  </Button>
+                </div>
+
+                <div className="divide-y divide-gray-100 dark:divide-gray-800">
+                  {isLoadingTickets ? (
+                    <EmptyState label="Loading support tickets..." />
+                  ) : paginatedTickets.length === 0 ? (
+                    <EmptyState label="No support tickets match the current filters." />
+                  ) : (
+                    paginatedTickets.map((ticket) => {
+                      const isSelected = selectedTicketId === ticket.id;
+                      return (
+                        <button
+                          key={ticket.id}
+                          type="button"
+                          onClick={() => setSelectedTicketId(ticket.id)}
+                          className={`w-full px-5 py-4 text-left transition ${
+                            isSelected
+                              ? "bg-brand-50/70 dark:bg-brand-500/10"
+                              : "hover:bg-gray-50 dark:hover:bg-gray-800/40"
+                          }`}
+                        >
+                          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                            <div className="min-w-0 space-y-2">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                                  {activeChannel === "vendor"
+                                    ? (ticket as VendorSupportTicket).ticketCode
+                                    : (ticket as UserSupportTicket).ticketNumber}
+                                </p>
+                                <StatusBadge
+                                  channel={activeChannel}
+                                  status={ticket.status}
+                                />
+                                {activeChannel === "vendor" &&
+                                (ticket as VendorSupportTicket).attachment ? (
+                                  <Badge size="sm" color="info">
+                                    Attachment
+                                  </Badge>
+                                ) : null}
+                                {activeChannel === "user" &&
+                                (ticket as UserSupportTicket).source !== "portal" ? (
+                                  <Badge size="sm" color="warning">
+                                    {(ticket as UserSupportTicket).source}
+                                  </Badge>
+                                ) : null}
+                              </div>
+
+                              <p className="text-sm text-gray-700 dark:text-gray-200">
+                                {activeChannel === "vendor"
+                                  ? (ticket as VendorSupportTicket).vendor?.businessName ||
+                                    (ticket as VendorSupportTicket).vendor?.email ||
+                                    "Unknown vendor"
+                                  : (ticket as UserSupportTicket).subject}
+                              </p>
+
+                              <p className="line-clamp-2 text-sm text-gray-500 dark:text-gray-400">
+                                {ticket.description || "No description available."}
+                              </p>
+                            </div>
+
+                            <div className="space-y-1 text-sm text-gray-500 dark:text-gray-400 lg:min-w-[170px] lg:text-right">
+                              <p>{ticket.category}</p>
+                              <p>{formatDateTime(ticket.updatedAt)}</p>
+                              <p className="text-xs">
+                                {activeChannel === "vendor"
+                                  ? (ticket as VendorSupportTicket).vendor?.email ||
+                                    (ticket as VendorSupportTicket).vendorId
+                                  : (ticket as UserSupportTicket).user?.email ||
+                                    "No email"}
+                              </p>
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+
+                <div className="flex items-center justify-between border-t border-gray-100 px-5 py-4 dark:border-gray-800">
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                    {filteredTickets.length === 0
+                      ? "0 results"
+                      : `${(page - 1) * PAGE_SIZE + 1}-${Math.min(
+                          page * PAGE_SIZE,
+                          filteredTickets.length
+                        )} of ${filteredTickets.length}`}
+                  </p>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setPage((current) => Math.max(1, current - 1))}
+                      disabled={page === 1}
+                      className={pagerButtonClassName}
+                    >
+                      Previous
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setPage((current) => Math.min(totalPages, current + 1))
+                      }
+                      disabled={page === totalPages}
+                      className={pagerButtonClassName}
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+              </section>
+
+              <section className="rounded-3xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900/60">
+                <div className="border-b border-gray-100 px-5 py-4 dark:border-gray-800">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <h3 className="text-base font-semibold text-gray-900 dark:text-white">
+                        Ticket Details
+                      </h3>
+                      <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                        Review the conversation, context, and next action in one place.
+                      </p>
+                    </div>
+
+                    {detailMeta ? (
+                      <div className="text-right">
+                        <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                          {detailMeta.title}
+                        </p>
+                        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                          {detailMeta.subtitle}
+                        </p>
+                      </div>
+                    ) : null}
+                  </div>
+
+                  {detailMeta ? (
+                    <div className="mt-3">
+                      <StatusBadge
+                        channel={activeChannel}
+                        status={detailMeta.status}
+                      />
+                    </div>
+                  ) : null}
+
+                  {actionMessage ? (
+                    <div className="mt-4">
+                      <InlineNotice tone="success">{actionMessage}</InlineNotice>
+                    </div>
+                  ) : null}
+                  {detailError ? (
+                    <div className="mt-4">
+                      <InlineNotice tone="error">{detailError}</InlineNotice>
+                    </div>
+                  ) : null}
+                </div>
+
+                {isLoadingDetail ? (
+                  <EmptyState label="Loading ticket details..." />
+                ) : !selectedTicketId ? (
+                  <EmptyState label="Select a ticket to open the conversation and details." />
+                ) : activeChannel === "vendor" && selectedVendorTicket ? (
+                  <VendorDetailPanel
+                    ticket={selectedVendorTicket.ticket}
+                    messages={selectedVendorTicket.messages}
+                    replyDraft={replyDraft}
+                    onReplyChange={setReplyDraft}
+                    onSendReply={handleSendReply}
+                    onResolve={() => handleUpdateStatus("resolved")}
+                    onClose={() => handleUpdateStatus("closed")}
+                    isSendingReply={isSendingReply}
+                    isUpdatingStatus={isUpdatingStatus}
+                    canReply={canReply}
+                  />
+                ) : activeChannel === "user" && selectedUserTicket ? (
+                  <UserDetailPanel
+                    ticket={selectedUserTicket}
+                    replyDraft={replyDraft}
+                    onReplyChange={setReplyDraft}
+                    onSendReply={handleSendReply}
+                    onResolve={() => handleUpdateStatus("resolved")}
+                    onClose={() => handleUpdateStatus("closed")}
+                    isSendingReply={isSendingReply}
+                    isUpdatingStatus={isUpdatingStatus}
+                    canReply={canReply}
+                  />
+                ) : (
+                  <EmptyState label="Ticket details are unavailable right now." />
+                )}
+              </section>
             </div>
           </div>
-
-          <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
-            <p className="text-sm text-gray-500 dark:text-gray-400">
-              Replies will be sent with sender ID{" "}
-              <span className="font-medium text-gray-700 dark:text-gray-200">
-                {supportAgentId}
-              </span>
-              .
-            </p>
-            <p className="text-sm text-gray-500 dark:text-gray-400">
-              {filteredTickets.length} matching ticket
-              {filteredTickets.length === 1 ? "" : "s"}.
-            </p>
-          </div>
-
-          {ticketError ? (
-            <InlineNotice tone="error">{ticketError}</InlineNotice>
-          ) : null}
-
-          {isLoadingTickets ? (
-            <p className="text-sm text-gray-500 dark:text-gray-400">
-              Loading support tickets...
-            </p>
-          ) : filteredTickets.length === 0 ? (
-            <p className="text-sm text-gray-500 dark:text-gray-400">
-              {searchQuery || statusFilter !== "all" || categoryFilter !== "all"
-                ? "No support tickets match the current filters."
-                : "No support tickets found."}
-            </p>
-          ) : (
-            <>
-              <div className="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-white/[0.05] dark:bg-white/[0.03]">
-                <div className="max-w-full overflow-x-auto">
-                  <Table>
-                    <TableHeader className="border-b border-gray-100 dark:border-white/[0.05]">
-                      <TableRow>
-                        <TableCell
-                          isHeader
-                          className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400"
-                        >
-                          Ticket
-                        </TableCell>
-                        <TableCell
-                          isHeader
-                          className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400"
-                        >
-                          Vendor
-                        </TableCell>
-                        <TableCell
-                          isHeader
-                          className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400"
-                        >
-                          Category
-                        </TableCell>
-                        <TableCell
-                          isHeader
-                          className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400"
-                        >
-                          Updated
-                        </TableCell>
-                        <TableCell
-                          isHeader
-                          className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400"
-                        >
-                          Status
-                        </TableCell>
-                        <TableCell
-                          isHeader
-                          className="px-5 py-3 text-start text-theme-xs font-medium text-gray-500 dark:text-gray-400"
-                        >
-                          Action
-                        </TableCell>
-                      </TableRow>
-                    </TableHeader>
-
-                    <TableBody className="divide-y divide-gray-100 dark:divide-white/[0.05]">
-                      {paginatedTickets.map((ticket) => {
-                        const vendor = vendorProfiles[ticket.vendorId];
-                        const derivedState = getDerivedTicketState(ticket);
-
-                        return (
-                          <TableRow key={ticket.id}>
-                            <TableCell className="px-5 py-4 text-start align-top">
-                              <div className="space-y-1">
-                                <div className="flex flex-wrap items-center gap-2">
-                                  <span className="font-medium text-gray-800 dark:text-white/90">
-                                    {ticket.ticketCode}
-                                  </span>
-                                  {ticket.attachment?.url ? (
-                                    <Badge size="sm" color="info">
-                                      Attachment
-                                    </Badge>
-                                  ) : null}
-                                </div>
-                                <p className="max-w-xl text-sm text-gray-500 dark:text-gray-400">
-                                  {truncate(ticket.description, 130)}
-                                </p>
-                              </div>
-                            </TableCell>
-
-                            <TableCell className="px-5 py-4 align-top">
-                              <div className="space-y-1">
-                                <p className="text-sm font-medium text-gray-800 dark:text-white/90">
-                                  {vendor?.businessName || "Unknown vendor"}
-                                </p>
-                                <p className="text-sm text-gray-500 dark:text-gray-400">
-                                  {vendor?.email ||
-                                    vendor?.contactEmail ||
-                                    ticket.vendorId}
-                                </p>
-                              </div>
-                            </TableCell>
-
-                            <TableCell className="px-5 py-4 align-top text-sm text-gray-500 dark:text-gray-400">
-                              {ticket.category}
-                            </TableCell>
-
-                            <TableCell className="px-5 py-4 align-top text-sm text-gray-500 dark:text-gray-400">
-                              <div className="space-y-1">
-                                <p>{formatDateTime(ticket.updatedAt)}</p>
-                                <p className="text-xs text-gray-400 dark:text-gray-500">
-                                  Created {formatDate(ticket.createdAt)}
-                                </p>
-                              </div>
-                            </TableCell>
-
-                            <TableCell className="px-5 py-4 align-top">
-                              <div className="space-y-2">
-                                <TicketStateBadge state={derivedState} />
-                                <p className="text-xs text-gray-400 dark:text-gray-500">
-                                  Stored status: {ticket.status}
-                                </p>
-                              </div>
-                            </TableCell>
-
-                            <TableCell className="px-5 py-4 align-top">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => setSelectedTicketId(ticket.id)}
-                              >
-                                Open ticket
-                              </Button>
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
-                    </TableBody>
-                  </Table>
-                </div>
-              </div>
-
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <span className="text-sm text-gray-500 dark:text-gray-400">
-                  {(page - 1) * PAGE_SIZE + 1}-
-                  {Math.min(page * PAGE_SIZE, filteredTickets.length)} /{" "}
-                  {filteredTickets.length}
-                </span>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    disabled={page === 1}
-                    onClick={() => setPage((current) => current - 1)}
-                    className="rounded-md border border-gray-300 px-3 py-1 text-sm text-gray-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:text-gray-200"
-                  >
-                    Previous
-                  </button>
-
-                  <span className="text-sm text-gray-500 dark:text-gray-400">
-                    Page {page} of {totalPages}
-                  </span>
-
-                  <button
-                    type="button"
-                    disabled={page === totalPages}
-                    onClick={() => setPage((current) => current + 1)}
-                    className="rounded-md bg-brand-500 px-3 py-1 text-sm text-white disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    Next
-                  </button>
-                </div>
-              </div>
-            </>
-          )}
         </ComponentCard>
       </div>
-
-      <SupportTicketModal
-        isOpen={selectedTicket !== null}
-        ticket={selectedTicket}
-        vendor={selectedTicket ? vendorProfiles[selectedTicket.vendorId] : undefined}
-        messages={threadMessages}
-        isLoadingMessages={isLoadingMessages}
-        messageError={messageError}
-        replyDraft={replyDraft}
-        onReplyDraftChange={setReplyDraft}
-        onClose={() => setSelectedTicketId(null)}
-        onSendReply={() => void handleSendReply()}
-        onMarkResolved={() => void handleUpdateStatus("Resolved")}
-        onMarkClosed={() => void handleUpdateStatus("Closed")}
-        selectedTab={selectedTab}
-        onTabChange={setSelectedTab}
-        isSendingReply={isSendingReply}
-        isUpdatingStatus={isUpdatingStatus}
-        actionMessage={actionMessage}
-      />
     </>
   );
 };
 
-const SupportTicketModal = ({
-  isOpen,
+const VendorDetailPanel = ({
   ticket,
-  vendor,
   messages,
-  isLoadingMessages,
-  messageError,
   replyDraft,
-  onReplyDraftChange,
-  onClose,
+  onReplyChange,
   onSendReply,
-  onMarkResolved,
-  onMarkClosed,
-  selectedTab,
-  onTabChange,
+  onResolve,
+  onClose,
   isSendingReply,
   isUpdatingStatus,
-  actionMessage,
+  canReply,
 }: {
-  isOpen: boolean;
-  ticket: SupportTicket | null;
-  vendor?: VendorProfileSummary;
-  messages: TicketThreadMessage[];
-  isLoadingMessages: boolean;
-  messageError: string | null;
+  ticket: VendorSupportTicket;
+  messages: VendorSupportTicketMessage[];
   replyDraft: string;
-  onReplyDraftChange: (value: string) => void;
-  onClose: () => void;
+  onReplyChange: (value: string) => void;
   onSendReply: () => void;
-  onMarkResolved: () => void;
-  onMarkClosed: () => void;
-  selectedTab: SelectedTicketTab;
-  onTabChange: (tab: SelectedTicketTab) => void;
+  onResolve: () => void;
+  onClose: () => void;
   isSendingReply: boolean;
   isUpdatingStatus: boolean;
-  actionMessage: string | null;
+  canReply: boolean;
 }) => {
-  if (!ticket) {
-    return null;
-  }
-
-  const isOpenTicket = ticket.status === "Open";
-  const derivedState = getDerivedTicketState(ticket);
-  const canReply = isOpenTicket;
-  const attachmentUrl = ticket.attachment?.url || "";
-  const [isFeatureMenuOpen, setIsFeatureMenuOpen] = useState(false);
-  const [focusedSectionId, setFocusedSectionId] = useState<string | null>(null);
-  const featureMenuRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    if (!isOpen) {
-      setIsFeatureMenuOpen(false);
-      setFocusedSectionId(null);
-      return;
-    }
-
-    setIsFeatureMenuOpen(false);
-    setFocusedSectionId("conversation-thread");
-  }, [isOpen, ticket.id]);
-
-  const sidebarSections: ModalSection[] = [
+  const thread = [
     {
-      id: "ticket-metadata",
-      title: "Ticket metadata",
-      summary: "Status, timing, and routing details.",
-      hiddenFromStandard: true,
-      renderContent: () => (
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
-          <MetaRow label="Stored status" value={ticket.status} />
-          <MetaRow
-            label="Raised on"
-            value={formatDateTime(ticket.createdAt) || "-"}
-          />
-          <MetaRow
-            label="Last updated"
-            value={formatDateTime(ticket.updatedAt) || "-"}
-          />
-          <MetaRow
-            label="Last sender"
-            value={ticket.lastMessageSenderRole || "Unknown"}
-          />
-        </div>
-      ),
+      id: `original-${ticket.id}`,
+      senderRole: "vendor" as const,
+      senderId: ticket.vendorId,
+      message: ticket.description,
+      createdAt: ticket.createdAt,
+      isOriginal: true,
     },
-    {
-      id: "vendor-context",
-      title: "Vendor",
-      summary: vendor?.businessName || "Vendor contact context.",
-      renderContent: () => (
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
-          <MetaRow
-            label="Business"
-            value={vendor?.businessName || "Unknown vendor"}
-          />
-          <MetaRow label="Email" value={vendor?.email || "-"} />
-          <MetaRow label="Contact" value={vendor?.contactName || "-"} />
-          <MetaRow label="Contact email" value={vendor?.contactEmail || "-"} />
-          <MetaRow label="Phone" value={vendor?.phone || "-"} />
-          <MetaRow label="Contact phone" value={vendor?.contactPhone || "-"} />
-          <MetaRow label="Website" value={vendor?.website || "-"} />
-          <MetaRow label="Country" value={vendor?.country || "-"} />
-        </div>
-      ),
-    },
+    ...messages.map((message) => ({
+      ...message,
+      isOriginal: false,
+    })),
   ];
 
-  if (attachmentUrl) {
-    sidebarSections.push({
-      id: "attachment-preview",
-      title: "Attachment",
-      summary: ticket.attachment?.originalName || "Uploaded image",
-      renderContent: ({ isMaximized }) => (
-        <div className="space-y-4">
-          <a
-            href={attachmentUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex text-sm font-medium text-brand-600 hover:text-brand-700 dark:text-brand-400 dark:hover:text-brand-300"
-          >
-            Open uploaded image
-          </a>
-          <div className="overflow-hidden rounded-3xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
-            <img
-              src={attachmentUrl}
-              alt={ticket.attachment?.originalName || "Ticket attachment"}
-              className={`w-full object-contain ${
-                isMaximized ? "max-h-[70vh]" : "max-h-80"
-              }`}
-            />
-          </div>
-        </div>
-      ),
-    });
-  }
+  return (
+    <DetailLayout
+      primaryMeta={[
+        ["Vendor", ticket.vendor?.businessName || "Unknown vendor"],
+        ["Email", ticket.vendor?.email || ticket.vendor?.contactEmail || ticket.vendorId],
+        ["Category", ticket.category],
+        ["Updated", formatDateTime(ticket.updatedAt)],
+      ]}
+      secondaryMeta={[
+        ["Ticket ID", ticket.id],
+        ["Created", formatDateTime(ticket.createdAt)],
+        ["Country", ticket.vendor?.country || "-"],
+        ["Website", ticket.vendor?.website || "-"],
+      ]}
+      attachments={
+        ticket.attachment
+          ? [
+              {
+                key: ticket.attachment.url,
+                label: ticket.attachment.originalName || "Attachment",
+                href: ticket.attachment.url,
+                meta: `${formatBytes(ticket.attachment.size)} • ${
+                  ticket.attachment.mimeType || "file"
+                }`,
+              },
+            ]
+          : []
+      }
+      conversation={thread.map((message) => ({
+        id: message.id,
+        speaker:
+          message.senderRole === "support"
+            ? "Support Team"
+            : ticket.vendor?.businessName || "Vendor",
+        role: message.senderRole,
+        message: message.message,
+        createdAt: message.createdAt,
+        badge: message.isOriginal ? "Original message" : null,
+      }))}
+      replyDraft={replyDraft}
+      onReplyChange={onReplyChange}
+      onSendReply={onSendReply}
+      onResolve={onResolve}
+      onClose={onClose}
+      isSendingReply={isSendingReply}
+      isUpdatingStatus={isUpdatingStatus}
+      canReply={canReply}
+    />
+  );
+};
 
-  const renderReplyComposer = () => (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-sm text-gray-500 dark:text-gray-400">
-          {canReply
-            ? "Replies create a support message doc and update the parent ticket metadata."
-            : "Resolved and closed tickets remain visible in read-only mode."}
-        </p>
-        <span className="text-xs text-gray-400 dark:text-gray-500">
-          {replyDraft.length}/{MESSAGE_MAX_LENGTH}
-        </span>
+const UserDetailPanel = ({
+  ticket,
+  replyDraft,
+  onReplyChange,
+  onSendReply,
+  onResolve,
+  onClose,
+  isSendingReply,
+  isUpdatingStatus,
+  canReply,
+}: {
+  ticket: UserSupportTicket;
+  replyDraft: string;
+  onReplyChange: (value: string) => void;
+  onSendReply: () => void;
+  onResolve: () => void;
+  onClose: () => void;
+  isSendingReply: boolean;
+  isUpdatingStatus: boolean;
+  canReply: boolean;
+}) => {
+  const conversation = (ticket.messages ?? []).map((message) => ({
+    id: message.id,
+    speaker:
+      message.senderType === "support"
+        ? "Support Team"
+        : ticket.user?.fullName || ticket.user?.email || "User",
+    role: (message.senderType === "support" ? "support" : "vendor") as
+      | "support"
+      | "vendor",
+    message: message.message,
+    createdAt: message.createdAt,
+    badge: message.messageType !== "message" ? message.messageType : null,
+  }));
+
+  return (
+    <DetailLayout
+      primaryMeta={[
+        ["User", ticket.user?.fullName || "Registered user"],
+        ["Email", ticket.user?.email || "-"],
+        ["Subject", ticket.subject],
+        ["Category", ticket.category],
+      ]}
+      secondaryMeta={[
+        ["Source", ticket.source || "portal"],
+        ["Priority", ticket.priority || "-"],
+        ["Conversation", humanizeSupportValue(ticket.conversationStatus)],
+        ["Updated", formatDateTime(ticket.updatedAt)],
+      ]}
+      attachments={(ticket.attachments ?? []).map((attachment) =>
+        mapUserAttachmentToCard(attachment)
+      )}
+      conversation={conversation}
+      events={ticket.events ?? []}
+      replyDraft={replyDraft}
+      onReplyChange={onReplyChange}
+      onSendReply={onSendReply}
+      onResolve={onResolve}
+      onClose={onClose}
+      isSendingReply={isSendingReply}
+      isUpdatingStatus={isUpdatingStatus}
+      canReply={canReply}
+    />
+  );
+};
+
+const DetailLayout = ({
+  primaryMeta,
+  secondaryMeta,
+  attachments,
+  conversation,
+  events = [],
+  replyDraft,
+  onReplyChange,
+  onSendReply,
+  onResolve,
+  onClose,
+  isSendingReply,
+  isUpdatingStatus,
+  canReply,
+}: {
+  primaryMeta: Array<[string, string]>;
+  secondaryMeta: Array<[string, string]>;
+  attachments: Array<{ key: string; label: string; href: string; meta: string }>;
+  conversation: Array<{
+    id: string;
+    speaker: string;
+    role: "vendor" | "support";
+    message: string;
+    createdAt: string | null;
+    badge: string | null;
+  }>;
+  events?: UserSupportEvent[];
+  replyDraft: string;
+  onReplyChange: (value: string) => void;
+  onSendReply: () => void;
+  onResolve: () => void;
+  onClose: () => void;
+  isSendingReply: boolean;
+  isUpdatingStatus: boolean;
+  canReply: boolean;
+}) => (
+  <div className="space-y-6 px-5 py-5">
+    <div className="grid gap-4 xl:grid-cols-2">
+      <MetaCard title="Profile & Ticket" items={primaryMeta} />
+      <MetaCard title="Operational Details" items={secondaryMeta} />
+    </div>
+
+    {attachments.length > 0 ? (
+      <section className="space-y-3">
+        <SectionTitle title="Attachments" description="Reference files shared in this ticket." />
+        <div className="space-y-3">
+          {attachments.map((attachment) => (
+            <a
+              key={attachment.key}
+              href={attachment.href}
+              target="_blank"
+              rel="noreferrer"
+              className="block rounded-2xl border border-gray-200 px-4 py-3 text-sm transition hover:border-brand-300 hover:bg-brand-50/40 dark:border-gray-800 dark:hover:border-brand-500 dark:hover:bg-brand-500/10"
+            >
+              <p className="font-medium text-gray-900 dark:text-white">
+                {attachment.label}
+              </p>
+              <p className="mt-1 text-gray-500 dark:text-gray-400">
+                {attachment.meta}
+              </p>
+            </a>
+          ))}
+        </div>
+      </section>
+    ) : null}
+
+    <section className="space-y-3">
+      <SectionTitle
+        title="Conversation"
+        description="Review the full reply flow before responding."
+      />
+      <div className="space-y-3">
+        {conversation.length === 0 ? (
+          <EmptyState label="No conversation messages are available for this ticket." />
+        ) : (
+          conversation.map((message) => (
+            <article
+              key={message.id}
+              className={`rounded-2xl border px-4 py-4 ${
+                message.role === "support"
+                  ? "border-brand-200 bg-brand-50/50 dark:border-brand-500/20 dark:bg-brand-500/10"
+                  : "border-gray-200 bg-gray-50 dark:border-gray-800 dark:bg-gray-900/40"
+              }`}
+            >
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                  {message.speaker}
+                </p>
+                {message.badge ? (
+                  <Badge size="sm" color="info">
+                    {message.badge}
+                  </Badge>
+                ) : null}
+              </div>
+              <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-gray-700 dark:text-gray-200">
+                {message.message || "No message content."}
+              </p>
+              <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">
+                {formatDateTime(message.createdAt)}
+              </p>
+            </article>
+          ))
+        )}
       </div>
+    </section>
+
+    {events.length > 0 ? (
+      <section className="space-y-3">
+        <SectionTitle
+          title="Activity Timeline"
+          description="Important ticket events recorded in the support system."
+        />
+        <div className="space-y-3">
+          {events.map((event, index) => (
+            <div
+              key={`${event.eventType}-${event.createdAt}-${index}`}
+              className="rounded-2xl border border-gray-200 px-4 py-3 dark:border-gray-800"
+            >
+              <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                {event.eventTitle}
+              </p>
+              {event.eventDescription ? (
+                <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
+                  {event.eventDescription}
+                </p>
+              ) : null}
+              <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                {formatDateTime(event.createdAt)}
+              </p>
+            </div>
+          ))}
+        </div>
+      </section>
+    ) : null}
+
+    <section className="space-y-3">
+      <SectionTitle
+        title="Reply & Actions"
+        description={
+          canReply
+            ? "Respond clearly and move the ticket to the right outcome."
+            : "This ticket is closed for replies. You can still review the history above."
+        }
+      />
 
       <textarea
         value={replyDraft}
-        onChange={(event) =>
-          onReplyDraftChange(event.target.value.slice(0, MESSAGE_MAX_LENGTH))
-        }
-        rows={6}
+        onChange={(event) => onReplyChange(event.target.value)}
+        rows={5}
         disabled={!canReply || isSendingReply}
-        placeholder={
-          canReply
-            ? "Write a clear, customer-facing support reply..."
-            : "Replies are disabled for resolved and closed tickets."
-        }
-        className="w-full resize-y rounded-2xl border border-gray-300 bg-white px-4 py-3 text-sm text-gray-800 outline-none transition focus:border-brand-300 focus:ring-4 focus:ring-brand-500/10 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-400 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90 dark:disabled:bg-gray-950/40"
+        placeholder="Write a clear, professional reply for the customer or vendor."
+        className="w-full rounded-2xl border border-gray-300 bg-white px-4 py-3 text-sm text-gray-800 shadow-theme-xs outline-none transition focus:border-brand-300 focus:ring-3 focus:ring-brand-500/20 disabled:cursor-not-allowed disabled:bg-gray-100 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90 dark:disabled:bg-gray-800"
       />
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-sm text-gray-500 dark:text-gray-400">
-          Keep replies concise and operational. Vendor notifications are
-          triggered by the shared backend watcher.
-        </p>
+      <div className="flex flex-wrap gap-3">
         <Button
+          type="button"
           size="sm"
           onClick={onSendReply}
           disabled={!canReply || !replyDraft.trim() || isSendingReply}
         >
           {isSendingReply ? "Sending..." : "Send reply"}
         </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={onResolve}
+          disabled={!canReply || isUpdatingStatus}
+        >
+          {isUpdatingStatus ? "Updating..." : "Mark resolved"}
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={onClose}
+          disabled={!canReply || isUpdatingStatus}
+        >
+          {isUpdatingStatus ? "Updating..." : "Close ticket"}
+        </Button>
       </div>
+    </section>
+  </div>
+);
+
+const MetaCard = ({
+  title,
+  items,
+}: {
+  title: string;
+  items: Array<[string, string]>;
+}) => (
+  <section className="rounded-2xl border border-gray-200 bg-gray-50/60 p-4 dark:border-gray-800 dark:bg-gray-950/20">
+    <h4 className="text-sm font-semibold text-gray-900 dark:text-white">
+      {title}
+    </h4>
+    <div className="mt-4 grid gap-3">
+      {items.map(([label, value]) => (
+        <div key={label}>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-400">
+            {label}
+          </p>
+          <p className="mt-1 break-words text-sm text-gray-700 dark:text-gray-200">
+            {value || "-"}
+          </p>
+        </div>
+      ))}
     </div>
-  );
+  </section>
+);
 
-  const conversationSections: ModalSection[] = [
-    {
-      id: "original-message-note",
-      title: "Original message note",
-      summary: "The first thread item comes from the parent ticket document.",
-      tab: "conversation",
-      renderContent: () => (
-        <div className="rounded-2xl border border-brand-100 bg-brand-50/70 px-4 py-3 text-sm text-brand-700 dark:border-brand-500/20 dark:bg-brand-500/10 dark:text-brand-300">
-          The first bubble below is the original ticket description from the
-          parent Firestore document.
-        </div>
-      ),
-    },
-    {
-      id: "conversation-thread",
-      title: "Conversation thread",
-      summary: `${messages.length} reply${messages.length === 1 ? "" : "ies"} in the live ticket thread.`,
-      tab: "conversation",
-      renderContent: ({ isMaximized }) => (
-        <div className={`space-y-6 ${isMaximized ? "min-h-[70vh]" : ""}`}>
-          <div className="space-y-4">
-            {isLoadingMessages ? (
-              <p className="text-sm text-gray-500 dark:text-gray-400">
-                Loading conversation...
-              </p>
-            ) : (
-              messages.map((message) => (
-                <article
-                  key={message.id}
-                  className={`max-w-3xl rounded-3xl border px-5 py-4 shadow-sm ${
-                    message.senderRole === "support"
-                      ? "ml-auto border-brand-100 bg-brand-50 text-brand-950 dark:border-brand-500/20 dark:bg-brand-500/10 dark:text-white"
-                      : "border-gray-200 bg-white text-gray-900 dark:border-gray-800 dark:bg-gray-900/60 dark:text-white"
-                  }`}
-                >
-                  <div className="mb-2 flex flex-wrap items-center gap-2">
-                    <span className="text-sm font-semibold">
-                      {message.senderRole === "support"
-                        ? "Support Team"
-                        : vendor?.businessName || "Vendor"}
-                    </span>
-                    {message.isOriginal ? (
-                      <Badge size="sm" color="info">
-                        Original message
-                      </Badge>
-                    ) : null}
-                  </div>
-                  <p className="whitespace-pre-wrap text-sm leading-6">
-                    {message.message || "No message content."}
-                  </p>
-                  <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">
-                    {formatDateTime(message.createdAt)} | {message.senderId}
-                  </p>
-                </article>
-              ))
-            )}
-          </div>
+const SectionTitle = ({
+  title,
+  description,
+}: {
+  title: string;
+  description: string;
+}) => (
+  <div>
+    <h4 className="text-sm font-semibold text-gray-900 dark:text-white">
+      {title}
+    </h4>
+    <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+      {description}
+    </p>
+  </div>
+);
 
-          {isMaximized ? (
-            <div className="rounded-3xl border border-gray-200 bg-gray-50/70 p-5 dark:border-gray-800 dark:bg-gray-950/30">
-              {renderReplyComposer()}
-            </div>
-          ) : null}
-        </div>
-      ),
-    },
-    {
-      id: "reply-composer",
-      title: "Reply as support",
-      summary: canReply
-        ? "Send a support reply and update the ticket in place."
-        : "Read-only because this ticket is not open.",
-      tab: "conversation",
-      renderContent: () => renderReplyComposer(),
-    },
-  ];
+const ChannelButton = ({
+  isActive,
+  label,
+  count,
+  onClick,
+}: {
+  isActive: boolean;
+  label: string;
+  count: number;
+  onClick: () => void;
+}) => (
+  <button
+    type="button"
+    onClick={onClick}
+    className={`inline-flex items-center gap-2 rounded-2xl border px-4 py-3 text-sm font-semibold transition ${
+      isActive
+        ? "border-brand-500 bg-brand-50 text-brand-700 dark:border-brand-500 dark:bg-brand-500/10 dark:text-brand-300"
+        : "border-gray-200 text-gray-600 hover:bg-gray-50 dark:border-gray-800 dark:text-gray-300 dark:hover:bg-gray-800/40"
+    }`}
+  >
+    {label}
+    <span className="rounded-full bg-white/80 px-2 py-0.5 text-xs dark:bg-white/10">
+      {count}
+    </span>
+  </button>
+);
 
-  const detailSections: ModalSection[] = [
-    {
-      id: "ticket-record",
-      title: "Ticket record",
-      summary: "Raw support ticket fields stored in Firestore.",
-      tab: "details",
-      renderContent: () => (
-        <div className="space-y-4">
-          <DetailField label="Ticket ID" value={ticket.id} />
-          <DetailField label="Ticket code" value={ticket.ticketCode} />
-          <DetailField label="Vendor ID" value={ticket.vendorId} />
-          <DetailField label="Category" value={ticket.category} />
-          <DetailField label="Status" value={ticket.status} />
-          <DetailField
-            label="Derived state"
-            value={getDerivedTicketState(ticket)}
-          />
-          <DetailField
-            label="Created"
-            value={formatDateTime(ticket.createdAt) || "-"}
-          />
-          <DetailField
-            label="Updated"
-            value={formatDateTime(ticket.updatedAt) || "-"}
-          />
-          <DetailField
-            label="Attachment URL"
-            value={ticket.attachment?.url || "-"}
-          />
-        </div>
-      ),
-    },
-    {
-      id: "vendor-snapshot",
-      title: "Vendor snapshot",
-      summary: vendor?.businessName || "Vendor identity and contact fields.",
-      tab: "details",
-      renderContent: () => (
-        <div className="space-y-4">
-          <DetailField
-            label="Business name"
-            value={vendor?.businessName || "-"}
-          />
-          <DetailField label="Email" value={vendor?.email || "-"} />
-          <DetailField label="Contact name" value={vendor?.contactName || "-"} />
-          <DetailField
-            label="Contact email"
-            value={vendor?.contactEmail || "-"}
-          />
-          <DetailField label="Phone" value={vendor?.phone || "-"} />
-          <DetailField
-            label="Contact phone"
-            value={vendor?.contactPhone || "-"}
-          />
-          <DetailField label="Website" value={vendor?.website || "-"} />
-          <DetailField label="Country" value={vendor?.country || "-"} />
-        </div>
-      ),
-    },
-  ];
+const StatusBadge = ({
+  channel,
+  status,
+}: {
+  channel: SupportChannel;
+  status: string;
+}) => {
+  const normalizedStatus =
+    channel === "vendor"
+      ? normalizeVendorStatus(status as VendorTicketStatus)
+      : normalizeUserStatus(status);
 
-  const mainSections =
-    selectedTab === "conversation" ? conversationSections : detailSections;
-  const visibleSidebarSections = sidebarSections.filter(
-    (section) => !section.hiddenFromStandard
-  );
-  const allSections = [
-    ...sidebarSections,
-    ...conversationSections,
-    ...detailSections,
-  ];
-  const focusableSections = allSections.filter(
-    (section) => !section.tab || section.tab === selectedTab
-  );
-  const focusedSection =
-    allSections.find((section) => section.id === focusedSectionId) ?? null;
-
-  useEffect(() => {
-    if (focusedSectionId && !allSections.some((section) => section.id === focusedSectionId)) {
-      setFocusedSectionId(null);
-    }
-  }, [allSections, focusedSectionId]);
-
-  useEffect(() => {
-    if (!isFeatureMenuOpen) {
-      return undefined;
-    }
-
-    const handleClickOutside = (event: MouseEvent) => {
-      if (
-        featureMenuRef.current &&
-        !featureMenuRef.current.contains(event.target as Node)
-      ) {
-        setIsFeatureMenuOpen(false);
-      }
-    };
-
-    document.addEventListener("mousedown", handleClickOutside);
-
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, [isFeatureMenuOpen]);
-
-  const handleOpenFocusedSection = (sectionId: string) => {
-    const selectedSection = allSections.find((section) => section.id === sectionId);
-
-    if (!selectedSection) {
-      return;
-    }
-
-    if (selectedSection.tab) {
-      onTabChange(selectedSection.tab);
-    }
-
-    setFocusedSectionId(sectionId);
-    setIsFeatureMenuOpen(false);
-  };
+  const color =
+    normalizedStatus === "resolved"
+      ? "success"
+      : normalizedStatus === "closed"
+        ? "light"
+        : "warning";
 
   return (
-    <Modal
-      isOpen={isOpen}
-      onClose={onClose}
-      showCloseButton={false}
-      className="m-4 h-[calc(100vh-2rem)] w-[calc(100vw-2rem)] max-w-[1400px]"
-    >
-      <div className="flex h-full flex-col overflow-hidden rounded-[28px] bg-white dark:bg-gray-900">
-        <div className="border-b border-gray-200 px-5 py-4 dark:border-gray-800 lg:px-7">
-          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-            <div className="min-w-0 space-y-3">
-              <div className="flex flex-wrap items-center gap-3">
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-400">
-                  Support Ticket
-                </p>
-                <TicketStateBadge state={derivedState} />
-                <Badge size="sm" color="light">
-                  {ticket.category}
-                </Badge>
-              </div>
-
-              <div>
-                <h3 className="truncate text-xl font-semibold text-gray-900 dark:text-white">
-                  {ticket.ticketCode}
-                </h3>
-                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                  {vendor?.businessName || "Unknown vendor"} •{" "}
-                  {vendor?.email || vendor?.contactEmail || ticket.vendorId}
-                </p>
-              </div>
-
-              <div className="flex flex-wrap gap-3 text-xs text-gray-500 dark:text-gray-400">
-                <span>Updated {formatDateTime(ticket.updatedAt) || "-"}</span>
-                <span>Raised {formatDate(ticket.createdAt)}</span>
-                {ticket.attachment?.url ? <span>1 attachment</span> : null}
-              </div>
-            </div>
-
-            <div className="flex flex-wrap gap-3 xl:justify-end">
-              <button
-                type="button"
-                onClick={onClose}
-                className="rounded-xl border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
-              >
-                Close
-              </button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={onMarkResolved}
-                disabled={!isOpenTicket || isUpdatingStatus}
-              >
-                {isUpdatingStatus ? "Updating..." : "Mark Resolved"}
-              </Button>
-              <Button
-                size="sm"
-                onClick={onMarkClosed}
-                disabled={!isOpenTicket || isUpdatingStatus}
-              >
-                {isUpdatingStatus ? "Updating..." : "Mark Closed"}
-              </Button>
-            </div>
-          </div>
-
-          {actionMessage ? (
-            <div className="mt-4">
-              <InlineNotice tone="success">{actionMessage}</InlineNotice>
-            </div>
-          ) : null}
-          {messageError ? (
-            <div className="mt-4">
-              <InlineNotice tone="error">{messageError}</InlineNotice>
-            </div>
-          ) : null}
-        </div>
-
-        <div className="border-b border-gray-200 px-5 dark:border-gray-800 lg:px-7">
-          <div className="flex items-center gap-2 py-3">
-            <div className="custom-scrollbar flex min-w-0 flex-1 gap-2 overflow-x-auto">
-              {[
-                { id: "conversation" as const, label: "Conversation" },
-                { id: "details" as const, label: "Vendor & Ticket Details" },
-              ].map((tab) => (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => {
-                    onTabChange(tab.id);
-                    if (tab.id === "conversation") {
-                      setFocusedSectionId("conversation-thread");
-                    } else {
-                      setFocusedSectionId(null);
-                    }
-                  }}
-                  className={`shrink-0 rounded-2xl border px-4 py-3 text-sm font-semibold transition ${
-                    selectedTab === tab.id
-                      ? "border-brand-500 bg-brand-50 text-brand-700 dark:border-brand-500 dark:bg-brand-500/10 dark:text-brand-300"
-                      : "border-gray-200 text-gray-600 hover:bg-gray-50 dark:border-gray-800 dark:text-gray-300 dark:hover:bg-gray-800/40"
-                  }`}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </div>
-
-            <div className="relative ml-auto shrink-0" ref={featureMenuRef}>
-              <button
-                type="button"
-                onClick={() => setIsFeatureMenuOpen((current) => !current)}
-                className="flex h-11 w-11 items-center justify-center rounded-2xl border border-gray-200 text-gray-600 transition hover:bg-gray-50 dark:border-gray-800 dark:text-gray-300 dark:hover:bg-gray-800/40"
-                aria-label="Open section menu"
-              >
-                <MoreDotIcon className="h-5 w-5" />
-              </button>
-
-              {isFeatureMenuOpen ? (
-                <div className="absolute right-0 top-14 z-[100000] w-72 rounded-2xl border border-gray-200 bg-white p-2 shadow-2xl dark:border-gray-800 dark:bg-gray-900">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setFocusedSectionId(null);
-                      setIsFeatureMenuOpen(false);
-                    }}
-                    className={`flex w-full items-start rounded-xl px-3 py-3 text-left text-sm transition ${
-                      focusedSectionId === null
-                        ? "bg-brand-50 text-brand-700 dark:bg-brand-500/10 dark:text-brand-300"
-                        : "text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-800"
-                    }`}
-                  >
-                    Standard layout
-                  </button>
-
-                  <div className="my-2 border-t border-gray-100 dark:border-gray-800" />
-
-                  {focusableSections.map((section) => (
-                    <button
-                      key={section.id}
-                      type="button"
-                      onClick={() => handleOpenFocusedSection(section.id)}
-                      className={`flex w-full flex-col rounded-xl px-3 py-3 text-left transition ${
-                        focusedSectionId === section.id
-                          ? "bg-brand-50 text-brand-700 dark:bg-brand-500/10 dark:text-brand-300"
-                          : "text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-800"
-                      }`}
-                    >
-                      <span className="text-sm font-medium">{section.title}</span>
-                      {section.summary ? (
-                        <span className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                          {section.summary}
-                        </span>
-                      ) : null}
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-            </div>
-          </div>
-        </div>
-
-        {focusedSection ? (
-          <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto px-5 py-5 lg:px-7">
-            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-400">
-                  Focused view
-                </p>
-                <h4 className="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
-                  {focusedSection.title}
-                </h4>
-                {focusedSection.summary ? (
-                  <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                    {focusedSection.summary}
-                  </p>
-                ) : null}
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setFocusedSectionId(null)}
-                className="rounded-xl border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
-              >
-                Back to standard layout
-              </button>
-            </div>
-
-            <FeatureSection
-              title={focusedSection.title}
-              summary={focusedSection.summary}
-              className="h-full"
-              bodyClassName="h-full"
-            >
-              {focusedSection.renderContent({ isMaximized: true })}
-            </FeatureSection>
-          </div>
-        ) : (
-          <div className="grid min-h-0 flex-1 gap-0 xl:grid-cols-[390px,minmax(0,1fr)]">
-            <aside className="custom-scrollbar overflow-y-auto border-b border-gray-200 bg-gray-50/80 px-5 py-5 dark:border-gray-800 dark:bg-gray-950/20 xl:border-b-0 xl:border-r lg:px-7">
-              <div className="space-y-6">
-                {visibleSidebarSections.map((section) => (
-                  <FeatureSection
-                    key={section.id}
-                    title={section.title}
-                    summary={section.summary}
-                  >
-                    {section.renderContent({ isMaximized: false })}
-                  </FeatureSection>
-                ))}
-              </div>
-            </aside>
-
-            <div className="custom-scrollbar min-h-0 overflow-y-auto px-5 py-5 lg:px-7">
-              <div
-                className={
-                  selectedTab === "conversation"
-                    ? "flex min-h-full flex-col gap-6"
-                    : "grid gap-6 xl:grid-cols-2"
-                }
-              >
-                {mainSections.map((section) => (
-                  <FeatureSection
-                    key={section.id}
-                    title={section.title}
-                    summary={section.summary}
-                  >
-                    {section.renderContent({ isMaximized: false })}
-                  </FeatureSection>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    </Modal>
+    <Badge size="sm" color={color}>
+      {normalizedStatus === "open"
+        ? "Open"
+        : normalizedStatus === "resolved"
+          ? "Resolved"
+          : "Closed"}
+    </Badge>
   );
 };
 
@@ -1224,7 +1087,7 @@ const StatsCard = ({
   description,
 }: {
   title: string;
-  value: number | string;
+  value: string | number;
   description: string;
 }) => (
   <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">
@@ -1239,23 +1102,6 @@ const StatsCard = ({
     </p>
   </div>
 );
-
-const TicketStateBadge = ({ state }: { state: DerivedTicketState }) => {
-  const color =
-    state === "Resolved"
-      ? "success"
-      : state === "Closed"
-        ? "light"
-        : state === "Awaiting Vendor Reply"
-          ? "info"
-          : "warning";
-
-  return (
-    <Badge size="sm" color={color}>
-      {state}
-    </Badge>
-  );
-};
 
 const InlineNotice = ({
   children,
@@ -1275,96 +1121,91 @@ const InlineNotice = ({
   </div>
 );
 
-const FeatureSection = ({
-  title,
-  summary,
-  className = "",
-  bodyClassName = "",
-  children,
-}: {
-  title: string;
-  summary?: string;
-  className?: string;
-  bodyClassName?: string;
-  children: React.ReactNode;
-}) => (
-  <section
-    className={`rounded-3xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900/60 ${className}`}
-  >
-    <div className="border-b border-gray-100 px-5 py-4 dark:border-gray-800">
-      <div className="min-w-0">
-        <h4 className="text-base font-semibold text-gray-900 dark:text-white">
-          {title}
-        </h4>
-        {summary ? (
-          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            {summary}
-          </p>
-        ) : null}
-      </div>
-    </div>
-    <div className={`p-5 ${bodyClassName}`}>{children}</div>
-  </section>
-);
-
-const MetaRow = ({ label, value }: { label: string; value: string }) => (
-  <div className="rounded-2xl border border-gray-200 bg-white px-4 py-3 dark:border-gray-800 dark:bg-gray-900/70">
-    <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-gray-400">
-      {label}
-    </p>
-    <p className="mt-1 break-words text-sm text-gray-700 dark:text-gray-200">
-      {value}
-    </p>
+const EmptyState = ({ label }: { label: string }) => (
+  <div className="px-5 py-8 text-sm text-gray-500 dark:text-gray-400">
+    {label}
   </div>
 );
 
-const DetailField = ({ label, value }: { label: string; value: string }) => (
-  <div className="space-y-1">
-    <p className="text-xs font-semibold uppercase tracking-[0.12em] text-gray-400">
-      {label}
-    </p>
-    <p className="break-words text-sm text-gray-700 dark:text-gray-200">
-      {value}
-    </p>
-  </div>
-);
+const mapUserAttachmentToCard = (attachment: UserSupportAttachment) => ({
+  key: attachment.id,
+  label: attachment.fileName || "Attachment",
+  href: attachment.publicUrl || "#",
+  meta: `${formatBytes(attachment.fileSizeBytes)} • ${
+    attachment.mimeType || "file"
+  }`,
+});
 
-const getDerivedTicketState = (ticket: SupportTicket): DerivedTicketState => {
-  if (ticket.status === "Resolved" || ticket.status === "Closed") {
-    return ticket.status;
+const normalizeVendorStatus = (status: VendorTicketStatus) => {
+  if (status === "Resolved") {
+    return "resolved";
   }
 
-  return ticket.lastMessageSenderRole === "support"
-    ? "Awaiting Vendor Reply"
-    : "Awaiting Support Reply";
+  if (status === "Closed") {
+    return "closed";
+  }
+
+  return "open";
 };
 
-const asDate = (value: Date | null) => value;
+const normalizeUserStatus = (status: string) => {
+  const normalized = status.trim().toLowerCase();
 
-const formatDate = (value: Date | null) =>
-  value
-    ? new Intl.DateTimeFormat("en-IN", {
-        day: "2-digit",
-        month: "short",
-        year: "numeric",
-      }).format(value)
-    : "-";
+  if (normalized === "resolved") {
+    return "resolved";
+  }
 
-const formatDateTime = (value: Date | null) =>
-  value
-    ? new Intl.DateTimeFormat("en-IN", {
-        dateStyle: "medium",
-        timeStyle: "short",
-      }).format(value)
-    : "";
+  if (normalized === "closed") {
+    return "closed";
+  }
 
-const truncate = (value: string, maxLength: number) =>
-  value.length > maxLength ? `${value.slice(0, maxLength)}...` : value;
+  return "open";
+};
 
-const toFirestoreErrorMessage = (error: FirestoreError) =>
-  error.message || "An unexpected Firestore error occurred.";
+const humanizeSupportValue = (value: string | null | undefined) =>
+  String(value ?? "-")
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (segment) => segment.toUpperCase());
+
+const formatDateTime = (value: string | null) => {
+  if (!value) {
+    return "-";
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return "-";
+  }
+
+  return new Intl.DateTimeFormat("en-IN", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(parsed);
+};
+
+const formatBytes = (bytes: number) => {
+  if (!Number.isFinite(bytes) || bytes <= 0) {
+    return "0 B";
+  }
+
+  const units = ["B", "KB", "MB", "GB"];
+  let value = bytes;
+  let unitIndex = 0;
+
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+
+  return `${value.toFixed(value >= 10 || unitIndex === 0 ? 0 : 1)} ${
+    units[unitIndex]
+  }`;
+};
 
 const filterClassName =
   "h-11 rounded-lg border border-gray-300 bg-white px-4 text-sm text-gray-700 shadow-theme-xs outline-none transition focus:border-brand-300 focus:ring-3 focus:ring-brand-500/20 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90";
+
+const pagerButtonClassName =
+  "rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800";
 
 export default Support;

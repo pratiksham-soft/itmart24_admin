@@ -22,6 +22,7 @@ import usersRoutes from "./routes/users.routes";
 import userPortalPlansRoutes from "./routes/userPortalPlans.routes";
 import userOneTimeReportPlansRoutes from "./routes/userOneTimeReportPlans.routes";
 import visitorAnalyticsRoutes from "./routes/visitorAnalytics.routes";
+import adminSupportRoutes from "./routes/adminSupport.routes";
 
 
 
@@ -54,6 +55,7 @@ app.use("/api/users/settings", userSettingsRoutes);
 app.use("/api/user-plans", userPortalPlansRoutes);
 app.use("/api/user-one-time-report-plans", userOneTimeReportPlansRoutes);
 app.use("/api/admin/visitors", visitorAnalyticsRoutes);
+app.use("/api/admin/support", adminSupportRoutes);
 
 
 

@@ -32,6 +32,19 @@ const readApiError = async (response: Response, fallbackMessage: string) => {
     const parsed = JSON.parse(raw) as { message?: string; error?: string };
     return parsed.message || parsed.error || fallbackMessage;
   } catch {
+    const normalized = raw.trim().toLowerCase();
+
+    if (
+      response.status === 429 ||
+      normalized.includes("error code: 1015") ||
+      normalized.includes("you are being rate limited") ||
+      normalized.includes("access denied") ||
+      normalized.includes("<!doctype html") ||
+      normalized.includes("<html")
+    ) {
+      return "Too many attempts or a temporary access limit was detected. Please wait a minute and try again.";
+    }
+
     return raw || fallbackMessage;
   }
 };
