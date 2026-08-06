@@ -44,6 +44,24 @@ router.get("/summary", withRouteErrorLogging("summary", async (_req, res) => {
   });
 }));
 
+router.get("/stream", withRouteErrorLogging("stream", async (_req, res) => {
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+  res.setHeader("Connection", "keep-alive");
+  res.flushHeaders?.();
+
+  res.write(`event: visitors-updated\ndata: ${JSON.stringify({ refreshedAt: new Date().toISOString() })}\n\n`);
+
+  const heartbeatHandle = setInterval(() => {
+    res.write(`event: visitors-heartbeat\ndata: ${JSON.stringify({ refreshedAt: new Date().toISOString() })}\n\n`);
+  }, 5000);
+
+  _req.on("close", () => {
+    clearInterval(heartbeatHandle);
+    res.end();
+  });
+}));
+
 router.get("/live", withRouteErrorLogging("live", async (_req, res) => {
   res.json({
     success: true,

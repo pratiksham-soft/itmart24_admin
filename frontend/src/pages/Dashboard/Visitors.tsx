@@ -18,6 +18,10 @@ import {
   fetchVisitors,
   fetchVisitorSummary,
 } from "../../services/visitorAnalytics.service";
+import {
+  ensureVisitorAnalyticsStream,
+  subscribeToVisitorAnalyticsChanged,
+} from "../../services/visitorAnalyticsRealtime.service";
 import type {
   B2BLeadZoneDownloadAnalyticsResponse,
   LiveVisitor,
@@ -184,6 +188,7 @@ export default function VisitorsPage() {
   const [b2bSourceMetric, setB2BSourceMetric] = useState<B2BSourceMetric>("windowsDownloads");
   const [b2bSelectedSeries, setB2BSelectedSeries] = useState<string[]>([...defaultB2BTimeSeriesKeys]);
   const currentTab = (searchParams.get("tab") as VisitorsTab) || "overview";
+  const [analyticsRefreshTick, setAnalyticsRefreshTick] = useState(0);
   const filters = useMemo<VisitorFilters>(() => {
     const baseRange = getDateRangeDefaults(currentTab);
     return {
@@ -212,6 +217,32 @@ export default function VisitorsPage() {
       endDate: searchParams.get("endDate") || baseRange.endDate,
     };
   }, [currentTab, searchParams]);
+
+  useEffect(() => {
+    ensureVisitorAnalyticsStream();
+    const unsubscribe = subscribeToVisitorAnalyticsChanged(() => {
+      setAnalyticsRefreshTick((value) => value + 1);
+    });
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        setAnalyticsRefreshTick((value) => value + 1);
+      }
+    };
+
+    const handleWindowFocus = () => {
+      setAnalyticsRefreshTick((value) => value + 1);
+    };
+
+    window.addEventListener("focus", handleWindowFocus);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      unsubscribe();
+      window.removeEventListener("focus", handleWindowFocus);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -250,7 +281,7 @@ export default function VisitorsPage() {
       isMounted = false;
       window.clearInterval(intervalId);
     };
-  }, []);
+  }, [analyticsRefreshTick]);
 
   useEffect(() => {
     let isMounted = true;
@@ -334,7 +365,7 @@ export default function VisitorsPage() {
       isMounted = false;
       window.clearInterval(intervalId);
     };
-  }, [currentTab, filters]);
+  }, [analyticsRefreshTick, currentTab, filters]);
 
   const visitorsSeries = useMemo(
     () => [
