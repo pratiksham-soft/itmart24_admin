@@ -583,7 +583,7 @@ function buildB2BGuestEventFilterClause(filters: ParsedB2BLeadZoneFilters): Quer
   const conditions = [
     `timezone($1, e.created_at)::date BETWEEN $2::date AND $3::date`,
     `e.source_tool = 'guest_map_scraper'`,
-    `e.event_name IN ('MapScraperWindowsLinkRequested', 'MapScraperDownloadLinkShared', 'MapScraperDownloadLinkCopied', 'MapScraperWindowsLinkRequestFailed')`,
+    `e.event_name IN ('MapScraperEmailLinkDialogOpened', 'MapScraperWindowsLinkRequested', 'MapScraperWindowsLinkRequestFailed', 'MapScraperDownloadLinkShareStarted', 'MapScraperDownloadLinkShared', 'MapScraperDownloadLinkShareCancelled', 'MapScraperDownloadLinkCopied', 'MapScraperMobileExeDownloadConfirmed')`,
   ];
   const values: unknown[] = [DEFAULT_TIMEZONE, filters.startDate, filters.endDate];
 
@@ -594,22 +594,22 @@ function buildB2BGuestEventFilterClause(filters: ParsedB2BLeadZoneFilters): Quer
 
   if (filters.device) {
     if (filters.device === "unknown") {
-      conditions.push(`COALESCE(NULLIF(LOWER(e.device_type), ''), 'unknown') = 'unknown'`);
+      conditions.push(`COALESCE(NULLIF(LOWER(e.device_type), ''), NULLIF(LOWER(s.device_category), ''), 'unknown') = 'unknown'`);
     } else if (filters.device === "mobile_or_tablet") {
-      conditions.push(`COALESCE(LOWER(e.device_type), '') IN ('mobile', 'tablet')`);
+      conditions.push(`COALESCE(LOWER(e.device_type), LOWER(s.device_category), '') IN ('mobile', 'tablet')`);
     } else {
-      push(`COALESCE(LOWER(e.device_type), 'unknown') = ?`, filters.device.toLowerCase());
+      push(`COALESCE(LOWER(e.device_type), LOWER(s.device_category), 'unknown') = ?`, filters.device.toLowerCase());
     }
   }
 
   if (filters.operatingSystem) {
     push(
       `CASE
-        WHEN COALESCE(e.os, '') ILIKE 'windows%%' THEN 'Windows'
-        WHEN COALESCE(e.os, '') ILIKE 'android%%' THEN 'Android'
-        WHEN COALESCE(e.os, '') ILIKE 'ios%%' OR COALESCE(e.os, '') ILIKE 'ipad%%' THEN 'iOS / iPadOS'
-        WHEN COALESCE(e.os, '') ILIKE 'mac%%' THEN 'macOS'
-        WHEN COALESCE(e.os, '') ILIKE 'linux%%' THEN 'Linux'
+        WHEN COALESCE(e.os, s.operating_system, '') ILIKE 'windows%%' THEN 'Windows'
+        WHEN COALESCE(e.os, s.operating_system, '') ILIKE 'android%%' THEN 'Android'
+        WHEN COALESCE(e.os, s.operating_system, '') ILIKE 'ios%%' OR COALESCE(e.os, s.operating_system, '') ILIKE 'ipad%%' THEN 'iOS / iPadOS'
+        WHEN COALESCE(e.os, s.operating_system, '') ILIKE 'mac%%' THEN 'macOS'
+        WHEN COALESCE(e.os, s.operating_system, '') ILIKE 'linux%%' THEN 'Linux'
         ELSE 'Other / Unknown'
       END = ?`,
       filters.operatingSystem
@@ -619,27 +619,33 @@ function buildB2BGuestEventFilterClause(filters: ParsedB2BLeadZoneFilters): Quer
   if (filters.browser) {
     push(
       `CASE
-        WHEN COALESCE(e.browser, '') ILIKE '%%instagram%%' THEN 'Instagram in-app browser'
-        WHEN COALESCE(e.browser, '') ILIKE '%%facebook%%' THEN 'Facebook in-app browser'
-        WHEN COALESCE(e.browser, '') ILIKE '%%edge%%' THEN 'Edge'
-        WHEN COALESCE(e.browser, '') ILIKE '%%chrome%%' THEN 'Chrome'
-        WHEN COALESCE(e.browser, '') ILIKE '%%safari%%' THEN 'Safari'
-        WHEN COALESCE(e.browser, '') ILIKE '%%firefox%%' THEN 'Firefox'
+        WHEN COALESCE(e.browser, s.browser, '') ILIKE '%%instagram%%' THEN 'Instagram in-app browser'
+        WHEN COALESCE(e.browser, s.browser, '') ILIKE '%%facebook%%' THEN 'Facebook in-app browser'
+        WHEN COALESCE(e.browser, s.browser, '') ILIKE '%%edge%%' THEN 'Edge'
+        WHEN COALESCE(e.browser, s.browser, '') ILIKE '%%chrome%%' THEN 'Chrome'
+        WHEN COALESCE(e.browser, s.browser, '') ILIKE '%%safari%%' THEN 'Safari'
+        WHEN COALESCE(e.browser, s.browser, '') ILIKE '%%firefox%%' THEN 'Firefox'
         ELSE 'Other / Unknown'
       END = ?`,
       filters.browser
     );
   }
 
-  if (filters.source) push(`COALESCE(NULLIF(e.utm_source, ''), 'Direct / Unknown') = ?`, filters.source);
-  if (filters.medium) push(`COALESCE(NULLIF(e.utm_medium, ''), 'Unknown') = ?`, filters.medium);
-  if (filters.campaign) push(`COALESCE(NULLIF(e.utm_campaign, ''), 'Unknown') = ?`, filters.campaign);
-
-  if (filters.country || filters.city) {
-    conditions.push(`1 = 0`);
+  if (filters.country) push(`COALESCE(e.metadata->>'country_name', s.country_name, '') ILIKE ?`, `%${filters.country}%`);
+  if (filters.city) push(`COALESCE(e.metadata->>'city', s.city, '') ILIKE ?`, `%${filters.city}%`);
+  if (filters.source) {
+    push(
+      `COALESCE(NULLIF(e.utm_source, ''), NULLIF(s.utm_source, ''), NULLIF(REGEXP_REPLACE(COALESCE(e.referrer, s.referrer, ''), '^https?://([^/?#]+).*$', '\\1'), ''), 'Direct / Unknown') = ?`,
+      filters.source
+    );
   }
+  if (filters.medium) push(`COALESCE(NULLIF(e.utm_medium, ''), NULLIF(s.utm_medium, ''), 'Unknown') = ?`, filters.medium);
+  if (filters.campaign) push(`COALESCE(NULLIF(e.utm_campaign, ''), NULLIF(s.utm_campaign, ''), 'Unknown') = ?`, filters.campaign);
 
   if (filters.actionType !== "all") {
+    if (filters.actionType === "mobile_exe_download") {
+      conditions.push(`e.event_name = 'MapScraperMobileExeDownloadConfirmed'`);
+    } else
     if (filters.actionType === "email_link_request") {
       conditions.push(`e.event_name = 'MapScraperWindowsLinkRequested'`);
     } else if (filters.actionType === "link_shared") {
@@ -652,7 +658,6 @@ function buildB2BGuestEventFilterClause(filters: ParsedB2BLeadZoneFilters): Quer
       filters.actionType === "landing_view" ||
       filters.actionType === "mobile_landing_view" ||
       filters.actionType === "valid_windows_download" ||
-      filters.actionType === "mobile_exe_download" ||
       filters.actionType === "other_non_windows_download" ||
       filters.actionType === "unknown_device_download" ||
       B2B_UNAVAILABLE_EVENT_KEYS.has(filters.actionType)
@@ -1498,15 +1503,18 @@ export async function getB2BLeadZoneDownloadAnalytics(input: VisitorsFilterInput
     userPortalPool.query(
       `
         SELECT
+          COUNT(*) FILTER (WHERE e.event_name = 'MapScraperEmailLinkDialogOpened') AS email_link_dialog_opened,
           COUNT(*) FILTER (WHERE e.event_name = 'MapScraperWindowsLinkRequested') AS email_link_requests,
           COUNT(*) FILTER (WHERE e.event_name = 'MapScraperDownloadLinkShared') AS successful_link_shares,
           COUNT(*) FILTER (WHERE e.event_name = 'MapScraperDownloadLinkCopied') AS download_link_copies,
+          COUNT(*) FILTER (WHERE e.event_name = 'MapScraperMobileExeDownloadConfirmed') AS mobile_exe_confirmed,
           COUNT(*) FILTER (WHERE e.event_name = 'MapScraperWindowsLinkRequestFailed') AS failed_link_requests,
           COUNT(DISTINCT e.anonymous_visitor_id) FILTER (
             WHERE e.event_name IN ('MapScraperWindowsLinkRequested', 'MapScraperDownloadLinkShared', 'MapScraperDownloadLinkCopied')
-              AND COALESCE(LOWER(e.device_type), '') IN ('mobile', 'tablet')
+              AND COALESCE(LOWER(e.device_type), LOWER(s.device_category), '') IN ('mobile', 'tablet')
           ) AS unique_mobile_link_save_visitors
         FROM guest_activity_events e
+        LEFT JOIN analytics_visitor_sessions s ON s.id = e.session_id
         WHERE ${guestEventFilters.whereClause}
       `,
       guestEventFilters.values
@@ -1515,11 +1523,14 @@ export async function getB2BLeadZoneDownloadAnalytics(input: VisitorsFilterInput
       `
         SELECT
           timezone($1, e.created_at)::date AS day,
+          COUNT(*) FILTER (WHERE e.event_name = 'MapScraperEmailLinkDialogOpened') AS email_link_dialog_opened,
           COUNT(*) FILTER (WHERE e.event_name = 'MapScraperWindowsLinkRequested') AS email_link_requests,
           COUNT(*) FILTER (WHERE e.event_name = 'MapScraperDownloadLinkShared') AS successful_link_shares,
           COUNT(*) FILTER (WHERE e.event_name = 'MapScraperDownloadLinkCopied') AS download_link_copies,
+          COUNT(*) FILTER (WHERE e.event_name = 'MapScraperMobileExeDownloadConfirmed') AS mobile_exe_confirmed,
           COUNT(*) FILTER (WHERE e.event_name = 'MapScraperWindowsLinkRequestFailed') AS failed_link_requests
         FROM guest_activity_events e
+        LEFT JOIN analytics_visitor_sessions s ON s.id = e.session_id
         WHERE ${guestEventFilters.whereClause}
         GROUP BY day
         ORDER BY day ASC
@@ -1529,9 +1540,9 @@ export async function getB2BLeadZoneDownloadAnalytics(input: VisitorsFilterInput
     userPortalPool.query(
       `
         SELECT
-          COALESCE(NULLIF(e.utm_source, ''), 'Direct / Unknown') AS source,
-          COALESCE(NULLIF(e.utm_medium, ''), 'Unknown') AS medium,
-          COALESCE(NULLIF(e.utm_campaign, ''), 'Unknown') AS campaign,
+          COALESCE(NULLIF(e.utm_source, ''), NULLIF(s.utm_source, ''), 'Direct / Unknown') AS source,
+          COALESCE(NULLIF(e.utm_medium, ''), NULLIF(s.utm_medium, ''), 'Unknown') AS medium,
+          COALESCE(NULLIF(e.utm_campaign, ''), NULLIF(s.utm_campaign, ''), 'Unknown') AS campaign,
           COUNT(DISTINCT e.anonymous_visitor_id) FILTER (
             WHERE e.event_name IN ('MapScraperWindowsLinkRequested', 'MapScraperDownloadLinkShared', 'MapScraperDownloadLinkCopied')
           ) AS unique_link_save_visitors,
@@ -1539,6 +1550,7 @@ export async function getB2BLeadZoneDownloadAnalytics(input: VisitorsFilterInput
           COUNT(*) FILTER (WHERE e.event_name = 'MapScraperDownloadLinkShared') AS successful_link_shares,
           COUNT(*) FILTER (WHERE e.event_name = 'MapScraperDownloadLinkCopied') AS download_link_copies
         FROM guest_activity_events e
+        LEFT JOIN analytics_visitor_sessions s ON s.id = e.session_id
         WHERE ${guestEventFilters.whereClause}
         GROUP BY source, medium, campaign
         ORDER BY unique_link_save_visitors DESC, successful_link_shares DESC
@@ -1550,17 +1562,18 @@ export async function getB2BLeadZoneDownloadAnalytics(input: VisitorsFilterInput
       `
         SELECT
           CASE
-            WHEN COALESCE(LOWER(e.device_type), '') = 'desktop' AND COALESCE(e.os, '') ILIKE 'windows%' THEN 'Windows desktop'
-            WHEN COALESCE(e.os, '') ILIKE 'android%' THEN 'Android'
-            WHEN COALESCE(e.os, '') ILIKE 'ios%' OR COALESCE(e.os, '') ILIKE 'ipad%' THEN 'iPhone/iPad'
-            WHEN COALESCE(e.os, '') ILIKE 'mac%' THEN 'macOS'
-            WHEN COALESCE(e.os, '') ILIKE 'linux%' THEN 'Linux'
+            WHEN COALESCE(LOWER(e.device_type), LOWER(s.device_category), '') = 'desktop' AND COALESCE(e.os, s.operating_system, '') ILIKE 'windows%' THEN 'Windows desktop'
+            WHEN COALESCE(e.os, s.operating_system, '') ILIKE 'android%' THEN 'Android'
+            WHEN COALESCE(e.os, s.operating_system, '') ILIKE 'ios%' OR COALESCE(e.os, s.operating_system, '') ILIKE 'ipad%' THEN 'iPhone/iPad'
+            WHEN COALESCE(e.os, s.operating_system, '') ILIKE 'mac%' THEN 'macOS'
+            WHEN COALESCE(e.os, s.operating_system, '') ILIKE 'linux%' THEN 'Linux'
             ELSE 'Other / Unknown'
           END AS device_segment,
           COUNT(*) FILTER (
-            WHERE e.event_name IN ('MapScraperWindowsLinkRequested', 'MapScraperDownloadLinkShared', 'MapScraperDownloadLinkCopied')
+            WHERE e.event_name IN ('MapScraperWindowsLinkRequested', 'MapScraperDownloadLinkShared', 'MapScraperDownloadLinkCopied', 'MapScraperMobileExeDownloadConfirmed')
           ) AS link_save_actions
         FROM guest_activity_events e
+        LEFT JOIN analytics_visitor_sessions s ON s.id = e.session_id
         WHERE ${guestEventFilters.whereClause}
         GROUP BY device_segment
       `,
@@ -1570,6 +1583,7 @@ export async function getB2BLeadZoneDownloadAnalytics(input: VisitorsFilterInput
       `
         SELECT COUNT(*) AS total
         FROM guest_activity_events e
+        LEFT JOIN analytics_visitor_sessions s ON s.id = e.session_id
         WHERE ${guestEventFilters.whereClause}
       `,
       guestEventFilters.values
@@ -1579,24 +1593,29 @@ export async function getB2BLeadZoneDownloadAnalytics(input: VisitorsFilterInput
         SELECT
           e.created_at AS occurred_at,
           CASE
+            WHEN e.event_name = 'MapScraperEmailLinkDialogOpened' THEN 'Email dialog opened'
             WHEN e.event_name = 'MapScraperWindowsLinkRequested' THEN 'Email link requested'
+            WHEN e.event_name = 'MapScraperDownloadLinkShareStarted' THEN 'Link share started'
             WHEN e.event_name = 'MapScraperDownloadLinkShared' THEN 'Link shared'
+            WHEN e.event_name = 'MapScraperDownloadLinkShareCancelled' THEN 'Link share cancelled'
             WHEN e.event_name = 'MapScraperDownloadLinkCopied' THEN 'Link copied'
+            WHEN e.event_name = 'MapScraperMobileExeDownloadConfirmed' THEN 'Mobile .exe confirmed'
             WHEN e.event_name = 'MapScraperWindowsLinkRequestFailed' THEN 'Link request failed'
             ELSE e.event_name
           END AS action_label,
-          COALESCE(e.device_type, 'unknown') AS device_category,
-          e.os AS operating_system,
-          e.browser,
-          NULL::text AS country_name,
-          NULL::text AS region,
-          NULL::text AS city,
-          COALESCE(NULLIF(e.utm_source, ''), 'Direct / Unknown') AS source,
-          COALESCE(NULLIF(e.utm_campaign, ''), 'Unknown') AS campaign,
+          COALESCE(e.device_type, s.device_category, 'unknown') AS device_category,
+          COALESCE(e.os, s.operating_system) AS operating_system,
+          COALESCE(e.browser, s.browser) AS browser,
+          COALESCE(e.metadata->>'country_name', s.country_name) AS country_name,
+          COALESCE(e.metadata->>'region', s.region) AS region,
+          COALESCE(e.metadata->>'city', s.city) AS city,
+          COALESCE(NULLIF(e.utm_source, ''), NULLIF(s.utm_source, ''), 'Direct / Unknown') AS source,
+          COALESCE(NULLIF(e.utm_campaign, ''), NULLIF(s.utm_campaign, ''), 'Unknown') AS campaign,
           COALESCE(NULLIF(e.page_path, ''), '${B2B_LEAD_ZONE_ROUTE}') AS page_path,
           COALESCE(NULLIF(e.anonymous_visitor_id, ''), 'unknown_visitor') AS anonymous_visitor_id,
           'First-party visitor ID' AS attribution_status
         FROM guest_activity_events e
+        LEFT JOIN analytics_visitor_sessions s ON s.id = e.session_id
         WHERE ${guestEventFilters.whereClause}
         ORDER BY e.created_at DESC
         LIMIT 100
@@ -1649,11 +1668,12 @@ export async function getB2BLeadZoneDownloadAnalytics(input: VisitorsFilterInput
   const uniqueDownloadSessions = Number(downloadSummaryRow.unique_sessions ?? 0);
   const windowsDownloads = Number(downloadSummaryRow.windows_downloads ?? 0);
   const uniqueWindowsDownloaders = Number(downloadSummaryRow.unique_windows_downloaders ?? 0);
-  const mobileExeDownloads = Number(downloadSummaryRow.mobile_exe_downloads ?? 0);
+  const guestEventSummaryRow = guestEventSummaryResult.rows[0] ?? {};
+  const guestMobileExeConfirmed = Number(guestEventSummaryRow.mobile_exe_confirmed ?? 0);
+  const mobileExeDownloads = Math.max(Number(downloadSummaryRow.mobile_exe_downloads ?? 0), guestMobileExeConfirmed);
   const otherNonWindowsDownloads = Number(downloadSummaryRow.other_non_windows_downloads ?? 0);
   const unknownDeviceDownloads = Number(downloadSummaryRow.unknown_device_downloads ?? 0);
   const knownLocationDownloads = Number(downloadSummaryRow.known_location_downloads ?? 0);
-  const guestEventSummaryRow = guestEventSummaryResult.rows[0] ?? {};
   const emailLinkRequests = Number(guestEventSummaryRow.email_link_requests ?? 0);
   const successfulLinkShares = Number(guestEventSummaryRow.successful_link_shares ?? 0);
   const downloadLinkCopies = Number(guestEventSummaryRow.download_link_copies ?? 0);
@@ -1734,25 +1754,31 @@ export async function getB2BLeadZoneDownloadAnalytics(input: VisitorsFilterInput
       successfulLinkShares?: number;
       downloadLinkCopies?: number;
       failedLinkRequests?: number;
+      mobileExeConfirmed?: number;
     }).emailLinkRequests = Number(row.email_link_requests ?? 0);
     (current as typeof current & {
       emailLinkRequests?: number;
       successfulLinkShares?: number;
       downloadLinkCopies?: number;
       failedLinkRequests?: number;
+      mobileExeConfirmed?: number;
     }).successfulLinkShares = Number(row.successful_link_shares ?? 0);
     (current as typeof current & {
       emailLinkRequests?: number;
       successfulLinkShares?: number;
       downloadLinkCopies?: number;
       failedLinkRequests?: number;
+      mobileExeConfirmed?: number;
     }).downloadLinkCopies = Number(row.download_link_copies ?? 0);
     (current as typeof current & {
       emailLinkRequests?: number;
       successfulLinkShares?: number;
       downloadLinkCopies?: number;
       failedLinkRequests?: number;
+      mobileExeConfirmed?: number;
     }).failedLinkRequests = Number(row.failed_link_requests ?? 0);
+    const mobileExeConfirmed = Number(row.mobile_exe_confirmed ?? 0);
+    current.mobileExeDownloads = Math.max(Number(current.mobileExeDownloads ?? 0), mobileExeConfirmed);
     timelineMap.set(day, current);
   }
 
