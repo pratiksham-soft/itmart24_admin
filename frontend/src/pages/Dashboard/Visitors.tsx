@@ -176,6 +176,7 @@ export default function VisitorsPage() {
   const [detailError, setDetailError] = useState<string | null>(null);
   const [totalVisitors, setTotalVisitors] = useState(0);
   const [isLiveAutoRefreshPaused, setIsLiveAutoRefreshPaused] = useState(false);
+  const [b2bFiltersExpanded, setB2BFiltersExpanded] = useState(false);
   const [b2bDeviceMetric, setB2BDeviceMetric] = useState<B2BDeviceMetric>("uniqueVisitors");
   const [b2bDownloadMetric, setB2BDownloadMetric] = useState<B2BDownloadMetric>("downloadEvents");
   const [b2bLocationMetric, setB2BLocationMetric] = useState<B2BLocationMetric>("uniqueVisitors");
@@ -602,7 +603,17 @@ export default function VisitorsPage() {
           <ComponentCard
             title="Filters"
             desc="Keep tab-specific filters in the URL while preserving the current date range and Asia/Kolkata reporting."
+            headerAction={(
+              <button
+                type="button"
+                onClick={() => setB2BFiltersExpanded((current) => !current)}
+                className="rounded-full border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 transition hover:border-brand-200 hover:text-brand-600 dark:border-gray-800 dark:text-gray-300"
+              >
+                {b2bFiltersExpanded ? "Collapse" : "Expand"}
+              </button>
+            )}
           >
+            {b2bFiltersExpanded ? (
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-6">
               <B2BFilterField label="Start date">
                 <input
@@ -721,6 +732,11 @@ export default function VisitorsPage() {
                 </select>
               </B2BFilterField>
             </div>
+            ) : (
+              <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600 dark:border-gray-800 dark:bg-white/[0.02] dark:text-gray-300">
+                Filters are collapsed by default. Expand to refine device, source, campaign, and event reporting for this tab.
+              </div>
+            )}
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"

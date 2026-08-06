@@ -667,6 +667,38 @@ function buildB2BGuestEventFilterClause(filters: ParsedB2BLeadZoneFilters): Quer
   };
 }
 
+function buildB2BAppEventFilterClause(filters: ParsedB2BLeadZoneFilters): QueryFilterClause {
+  const conditions = [
+    `timezone($1, e.created_at)::date BETWEEN $2::date AND $3::date`,
+    `e.source_tool = 'b2b_lead_zone_app'`,
+    `e.event_name IN ('B2BLeadZoneAppFirstOpen', 'B2BLeadZoneFirstExtractionCompleted', 'B2BLeadZoneFree30LimitReached', 'B2BLeadZonePlansOpened', 'B2BLeadZoneCheckoutStarted', 'B2BLeadZonePaymentCompleted')`,
+  ];
+  const values: unknown[] = [DEFAULT_TIMEZONE, filters.startDate, filters.endDate];
+
+  if (filters.actionType !== "all") {
+    if (filters.actionType === "app_first_open") {
+      conditions.push(`e.event_name = 'B2BLeadZoneAppFirstOpen'`);
+    } else if (filters.actionType === "first_extraction") {
+      conditions.push(`e.event_name = 'B2BLeadZoneFirstExtractionCompleted'`);
+    } else if (filters.actionType === "free_limit_reached") {
+      conditions.push(`e.event_name = 'B2BLeadZoneFree30LimitReached'`);
+    } else if (filters.actionType === "plans_opened") {
+      conditions.push(`e.event_name = 'B2BLeadZonePlansOpened'`);
+    } else if (filters.actionType === "checkout_started") {
+      conditions.push(`e.event_name = 'B2BLeadZoneCheckoutStarted'`);
+    } else if (filters.actionType === "payment_completed") {
+      conditions.push(`e.event_name = 'B2BLeadZonePaymentCompleted'`);
+    } else {
+      conditions.push(`1 = 0`);
+    }
+  }
+
+  return {
+    whereClause: conditions.join(" AND "),
+    values,
+  };
+}
+
 function buildSessionFilterClause(filters: ParsedVisitorsFilters) {
   const conditions = [
     `timezone($1, s.last_activity_at)::date BETWEEN $2::date AND $3::date`,
@@ -919,6 +951,7 @@ export async function getB2BLeadZoneDownloadAnalytics(input: VisitorsFilterInput
   const landingFilters = buildB2BLandingFilterClause(filters);
   const downloadFilters = buildB2BDownloadFilterClause(filters);
   const guestEventFilters = buildB2BGuestEventFilterClause(filters);
+  const appEventFilters = buildB2BAppEventFilterClause(filters);
   const recentMobileActionsOffset = (filters.recentMobileActionsPage - 1) * B2B_TABLE_PAGE_SIZE;
   const recentDownloadsOffset = (filters.recentDownloadsPage - 1) * B2B_TABLE_PAGE_SIZE;
   const userPortalPool = getUserPortalPool();
@@ -951,6 +984,8 @@ export async function getB2BLeadZoneDownloadAnalytics(input: VisitorsFilterInput
     guestEventDeviceBreakdownResult,
     guestRecentActionsCountResult,
     guestRecentActionsResult,
+    appEventSummaryResult,
+    appEventsByDayResult,
   ] = await Promise.all([
     queryAnalytics(
       `
@@ -1568,6 +1603,34 @@ export async function getB2BLeadZoneDownloadAnalytics(input: VisitorsFilterInput
       `,
       guestEventFilters.values
     ),
+    userPortalPool.query(
+      `
+        SELECT
+          COUNT(*) FILTER (WHERE e.event_name = 'B2BLeadZoneAppFirstOpen') AS app_first_opens,
+          COUNT(*) FILTER (WHERE e.event_name = 'B2BLeadZoneFirstExtractionCompleted') AS first_extractions_completed,
+          COUNT(*) FILTER (WHERE e.event_name = 'B2BLeadZoneFree30LimitReached') AS free_30_limit_reached,
+          COUNT(*) FILTER (WHERE e.event_name = 'B2BLeadZonePlansOpened') AS plans_opened,
+          COUNT(*) FILTER (WHERE e.event_name = 'B2BLeadZoneCheckoutStarted') AS checkout_started,
+          COUNT(*) FILTER (WHERE e.event_name = 'B2BLeadZonePaymentCompleted') AS payments_completed
+        FROM guest_activity_events e
+        WHERE ${appEventFilters.whereClause}
+      `,
+      appEventFilters.values
+    ),
+    userPortalPool.query(
+      `
+        SELECT
+          timezone($1, e.created_at)::date AS day,
+          COUNT(*) FILTER (WHERE e.event_name = 'B2BLeadZoneAppFirstOpen') AS app_first_opens,
+          COUNT(*) FILTER (WHERE e.event_name = 'B2BLeadZoneFirstExtractionCompleted') AS first_extractions_completed,
+          COUNT(*) FILTER (WHERE e.event_name = 'B2BLeadZonePaymentCompleted') AS payments_completed
+        FROM guest_activity_events e
+        WHERE ${appEventFilters.whereClause}
+        GROUP BY day
+        ORDER BY day ASC
+      `,
+      appEventFilters.values
+    ),
   ]);
 
   const landingSummaryRow = landingSummaryResult.rows[0] ?? {};
@@ -1596,6 +1659,13 @@ export async function getB2BLeadZoneDownloadAnalytics(input: VisitorsFilterInput
   const downloadLinkCopies = Number(guestEventSummaryRow.download_link_copies ?? 0);
   const failedLinkRequests = Number(guestEventSummaryRow.failed_link_requests ?? 0);
   const uniqueMobileLinkSaveVisitors = Number(guestEventSummaryRow.unique_mobile_link_save_visitors ?? 0);
+  const appEventSummaryRow = appEventSummaryResult.rows[0] ?? {};
+  const appFirstOpens = Number(appEventSummaryRow.app_first_opens ?? 0);
+  const firstExtractionsCompleted = Number(appEventSummaryRow.first_extractions_completed ?? 0);
+  const free30LimitReached = Number(appEventSummaryRow.free_30_limit_reached ?? 0);
+  const plansOpened = Number(appEventSummaryRow.plans_opened ?? 0);
+  const checkoutStarted = Number(appEventSummaryRow.checkout_started ?? 0);
+  const paymentsCompleted = Number(appEventSummaryRow.payments_completed ?? 0);
 
   const timelineMap = new Map<string, {
     day: string;
@@ -1683,6 +1753,24 @@ export async function getB2BLeadZoneDownloadAnalytics(input: VisitorsFilterInput
       downloadLinkCopies?: number;
       failedLinkRequests?: number;
     }).failedLinkRequests = Number(row.failed_link_requests ?? 0);
+    timelineMap.set(day, current);
+  }
+
+  for (const row of appEventsByDayResult.rows) {
+    const day = String(row.day);
+    const current = timelineMap.get(day) ?? {
+      day,
+      allDownloads: 0,
+      uniqueDownloaders: 0,
+      windowsDownloads: 0,
+      mobileExeDownloads: 0,
+      otherNonWindowsDownloads: 0,
+      unknownDeviceDownloads: 0,
+      mobileLandingViews: 0,
+    };
+    (current as typeof current & { appFirstOpens?: number }).appFirstOpens = Number(row.app_first_opens ?? 0);
+    (current as typeof current & { firstExtractions?: number }).firstExtractions = Number(row.first_extractions_completed ?? 0);
+    (current as typeof current & { payments?: number }).payments = Number(row.payments_completed ?? 0);
     timelineMap.set(day, current);
   }
 
@@ -1987,12 +2075,12 @@ export async function getB2BLeadZoneDownloadAnalytics(input: VisitorsFilterInput
     linkShares: true,
     linkCopies: true,
     failedLinkRequests: true,
-    appFirstOpen: false,
-    firstExtraction: false,
-    freeLimitReached: false,
-    plansOpened: false,
-    checkoutStarted: false,
-    paymentCompleted: false,
+    appFirstOpen: true,
+    firstExtraction: true,
+    freeLimitReached: true,
+    plansOpened: true,
+    checkoutStarted: true,
+    paymentCompleted: true,
     crossDeviceAttribution: false,
     appVersion: false,
     authenticationStatus: false,
@@ -2026,12 +2114,12 @@ export async function getB2BLeadZoneDownloadAnalytics(input: VisitorsFilterInput
       { value: "link_shared", label: "Successful link shares", available: true },
       { value: "link_copied", label: "Download-link copies", available: true },
       { value: "failed_link_request", label: "Failed link requests", available: true },
-      { value: "app_first_open", label: "App first open", available: false },
-      { value: "first_extraction", label: "First extraction", available: false },
-      { value: "free_limit_reached", label: "Free 30-limit reached", available: false },
-      { value: "plans_opened", label: "Plans opened", available: false },
-      { value: "checkout_started", label: "Checkout started", available: false },
-      { value: "payment_completed", label: "Payment completed", available: false },
+      { value: "app_first_open", label: "App first open", available: true },
+      { value: "first_extraction", label: "First extraction", available: true },
+      { value: "free_limit_reached", label: "Free 30-limit reached", available: true },
+      { value: "plans_opened", label: "Plans opened", available: true },
+      { value: "checkout_started", label: "Checkout started", available: true },
+      { value: "payment_completed", label: "Payment completed", available: true },
     ],
     applicationVersions: [] as string[],
     authenticationStatuses: [] as string[],
@@ -2150,6 +2238,54 @@ export async function getB2BLeadZoneDownloadAnalytics(input: VisitorsFilterInput
           visitorIdColumn: "anonymous_visitor_id",
           sessionIdColumn: "session_id",
         },
+        {
+          eventName: "app_first_open",
+          status: "available",
+          table: "guest_activity_events",
+          timestampColumn: "created_at",
+          visitorIdColumn: "anonymous_visitor_id",
+          sessionIdColumn: "session_id",
+        },
+        {
+          eventName: "first_extraction_completed",
+          status: "available",
+          table: "guest_activity_events",
+          timestampColumn: "created_at",
+          visitorIdColumn: "anonymous_visitor_id",
+          sessionIdColumn: "session_id",
+        },
+        {
+          eventName: "free_30_limit_reached",
+          status: "available",
+          table: "guest_activity_events",
+          timestampColumn: "created_at",
+          visitorIdColumn: "anonymous_visitor_id",
+          sessionIdColumn: "session_id",
+        },
+        {
+          eventName: "plans_opened",
+          status: "available",
+          table: "guest_activity_events",
+          timestampColumn: "created_at",
+          visitorIdColumn: "anonymous_visitor_id",
+          sessionIdColumn: "session_id",
+        },
+        {
+          eventName: "checkout_started",
+          status: "available",
+          table: "guest_activity_events",
+          timestampColumn: "created_at",
+          visitorIdColumn: "anonymous_visitor_id",
+          sessionIdColumn: "session_id",
+        },
+        {
+          eventName: "payment_completed",
+          status: "available",
+          table: "guest_activity_events",
+          timestampColumn: "created_at",
+          visitorIdColumn: "anonymous_visitor_id",
+          sessionIdColumn: "session_id",
+        },
         ...Array.from(B2B_UNAVAILABLE_EVENT_KEYS).map((eventName) => ({
           eventName,
           status: "not_available",
@@ -2180,22 +2316,22 @@ export async function getB2BLeadZoneDownloadAnalytics(input: VisitorsFilterInput
       windowsFunnel: {
         windowsInstallerDownloads: windowsDownloads,
         uniqueWindowsDownloaders,
-        appFirstOpens: null,
-        firstExtractionsCompleted: null,
-        free30LimitReached: null,
-        plansOpened: null,
-        checkoutStarted: null,
-        paymentsCompleted: null,
+        appFirstOpens,
+        firstExtractionsCompleted,
+        free30LimitReached,
+        plansOpened,
+        checkoutStarted,
+        paymentsCompleted,
       },
       conversionRates: {
         visitorToWindowsDownloadRate: calculateSafeRate(uniqueWindowsDownloaders, uniqueVisitors),
-        windowsDownloadToFirstOpenRate: null,
-        firstOpenToFirstExtractionRate: null,
-        firstExtractionToFreeLimitRate: null,
-        freeLimitToPlansOpenedRate: null,
-        plansOpenedToCheckoutRate: null,
-        checkoutToPaymentRate: null,
-        overallVisitorToPaymentRate: null,
+        windowsDownloadToFirstOpenRate: calculateSafeRate(appFirstOpens, uniqueWindowsDownloaders),
+        firstOpenToFirstExtractionRate: calculateSafeRate(firstExtractionsCompleted, appFirstOpens),
+        firstExtractionToFreeLimitRate: calculateSafeRate(free30LimitReached, firstExtractionsCompleted),
+        freeLimitToPlansOpenedRate: calculateSafeRate(plansOpened, free30LimitReached),
+        plansOpenedToCheckoutRate: calculateSafeRate(checkoutStarted, plansOpened),
+        checkoutToPaymentRate: calculateSafeRate(paymentsCompleted, checkoutStarted),
+        overallVisitorToPaymentRate: calculateSafeRate(paymentsCompleted, uniqueVisitors),
       },
       deviceBreakdown,
       downloadClassification,
@@ -2208,9 +2344,9 @@ export async function getB2BLeadZoneDownloadAnalytics(input: VisitorsFilterInput
         emailLinkRequests: Number((row as AnalyticsRow).emailLinkRequests ?? 0),
         successfulLinkShares: Number((row as AnalyticsRow).successfulLinkShares ?? 0),
         downloadLinkCopies: Number((row as AnalyticsRow).downloadLinkCopies ?? 0),
-        appFirstOpens: 0,
-        firstExtractions: 0,
-        payments: 0,
+        appFirstOpens: Number((row as AnalyticsRow).appFirstOpens ?? 0),
+        firstExtractions: Number((row as AnalyticsRow).firstExtractions ?? 0),
+        payments: Number((row as AnalyticsRow).payments ?? 0),
       })),
       sourcePerformance,
       topCountries,
@@ -2222,11 +2358,11 @@ export async function getB2BLeadZoneDownloadAnalytics(input: VisitorsFilterInput
           { key: "unique_mobile_visitors", label: "Unique mobile visitors", value: mobileVisitors, available: true },
           { key: "link_saved_or_requested", label: "Link saved/requested", value: uniqueMobileLinkSaveVisitors, available: true },
           { key: "later_windows_download", label: "Later Windows download", value: windowsDownloads, available: false },
-          { key: "app_first_open", label: "App first open", value: 0, available: false },
-          { key: "first_extraction", label: "First extraction", value: 0, available: false },
-          { key: "free_limit_reached", label: "Free limit reached", value: 0, available: false },
-          { key: "checkout_started", label: "Checkout started", value: 0, available: false },
-          { key: "payment_completed", label: "Payment completed", value: 0, available: false },
+          { key: "app_first_open", label: "App first open", value: appFirstOpens, available: true },
+          { key: "first_extraction", label: "First extraction", value: firstExtractionsCompleted, available: true },
+          { key: "free_limit_reached", label: "Free limit reached", value: free30LimitReached, available: true },
+          { key: "checkout_started", label: "Checkout started", value: checkoutStarted, available: true },
+          { key: "payment_completed", label: "Payment completed", value: paymentsCompleted, available: true },
         ],
       },
       failedLinkRequests: {
