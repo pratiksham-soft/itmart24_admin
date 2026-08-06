@@ -131,6 +131,7 @@ const b2bSourceMetricOptions: Array<{ value: B2BSourceMetric; label: string }> =
   { value: "checkoutStarts", label: "Checkout starts" },
   { value: "payments", label: "Payments" },
 ];
+const ANALYTICS_REFRESH_INTERVAL_MS = 20_000;
 
 function shortId(value: string | null | undefined) {
   if (!value) return "-";
@@ -214,54 +215,94 @@ export default function VisitorsPage() {
 
   useEffect(() => {
     let isMounted = true;
-    setLoading(true);
-    setError(null);
-    void fetchVisitorSummary()
-      .then((data) => {
-        if (isMounted) setSummary(data);
-      })
-      .catch((loadError) => {
-        if (isMounted) setError(loadError instanceof Error ? loadError.message : "Unable to load visitors summary.");
-      })
-      .finally(() => {
-        if (isMounted) setLoading(false);
-      });
+
+    const loadSummary = async (isBackgroundRefresh = false) => {
+      if (!isBackgroundRefresh) {
+        setLoading(true);
+        setError(null);
+      }
+
+      try {
+        const data = await fetchVisitorSummary();
+        if (isMounted) {
+          setSummary(data);
+          if (!isBackgroundRefresh) {
+            setError(null);
+          }
+        }
+      } catch (loadError) {
+        if (isMounted && !isBackgroundRefresh) {
+          setError(loadError instanceof Error ? loadError.message : "Unable to load visitors summary.");
+        }
+      } finally {
+        if (isMounted && !isBackgroundRefresh) {
+          setLoading(false);
+        }
+      }
+    };
+
+    void loadSummary();
+    const intervalId = window.setInterval(() => {
+      void loadSummary(true);
+    }, ANALYTICS_REFRESH_INTERVAL_MS);
 
     return () => {
       isMounted = false;
+      window.clearInterval(intervalId);
     };
   }, []);
 
   useEffect(() => {
     let isMounted = true;
 
-    const loadTabData = async () => {
-      setTableLoading(true);
-      setTableError(null);
+    const loadTabData = async (isBackgroundRefresh = false) => {
+      if (!isBackgroundRefresh) {
+        setTableLoading(true);
+        setTableError(null);
+      }
+
       try {
         if (currentTab === "b2bLeadZone") {
           const data = await fetchB2BLeadZoneDownloadAnalytics(filters);
           if (isMounted) {
             setB2BDownloadAnalytics(data);
+            if (!isBackgroundRefresh) {
+              setTableError(null);
+            }
           }
           return;
         }
 
         if (currentTab === "live") {
           const data = await fetchLiveVisitors();
-          if (isMounted) setLiveVisitors(data);
+          if (isMounted) {
+            setLiveVisitors(data);
+            if (!isBackgroundRefresh) {
+              setTableError(null);
+            }
+          }
           return;
         }
 
         if (currentTab === "locations") {
           const data = await fetchVisitorLocations(filters);
-          if (isMounted) setLocationRows(data);
+          if (isMounted) {
+            setLocationRows(data);
+            if (!isBackgroundRefresh) {
+              setTableError(null);
+            }
+          }
           return;
         }
 
         if (currentTab === "pages") {
           const data = await fetchVisitorPages(filters);
-          if (isMounted) setPageRows(data);
+          if (isMounted) {
+            setPageRows(data);
+            if (!isBackgroundRefresh) {
+              setTableError(null);
+            }
+          }
           return;
         }
 
@@ -269,39 +310,31 @@ export default function VisitorsPage() {
         if (isMounted) {
           setVisitorRows(data.items);
           setTotalVisitors(data.total);
+          if (!isBackgroundRefresh) {
+            setTableError(null);
+          }
         }
       } catch (loadError) {
-        if (isMounted) {
+        if (isMounted && !isBackgroundRefresh) {
           setTableError(loadError instanceof Error ? loadError.message : "Unable to load visitors.");
         }
       } finally {
-        if (isMounted) {
+        if (isMounted && !isBackgroundRefresh) {
           setTableLoading(false);
         }
       }
     };
 
     void loadTabData();
+    const intervalId = window.setInterval(() => {
+      void loadTabData(true);
+    }, ANALYTICS_REFRESH_INTERVAL_MS);
+
     return () => {
       isMounted = false;
+      window.clearInterval(intervalId);
     };
   }, [currentTab, filters]);
-
-  useEffect(() => {
-    if (currentTab !== "live" || isLiveAutoRefreshPaused) {
-      return;
-    }
-
-    const intervalId = window.setInterval(() => {
-      void fetchLiveVisitors()
-        .then((data) => {
-          setLiveVisitors(data);
-        })
-        .catch(() => undefined);
-    }, 20_000);
-
-    return () => window.clearInterval(intervalId);
-  }, [currentTab, isLiveAutoRefreshPaused]);
 
   const visitorsSeries = useMemo(
     () => [
