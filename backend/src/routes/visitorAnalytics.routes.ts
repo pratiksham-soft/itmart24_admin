@@ -15,6 +15,12 @@ import {
 const router = Router();
 
 router.use(requireAdminAuth);
+router.use((_req, res, next) => {
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+  res.setHeader("Pragma", "no-cache");
+  res.setHeader("Expires", "0");
+  next();
+});
 
 function withRouteErrorLogging(label: string, handler: RequestHandler): RequestHandler {
   return async (req, res, next) => {

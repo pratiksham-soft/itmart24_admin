@@ -24,6 +24,9 @@ function buildUrl(path: string, filters?: VisitorFilters) {
     });
   }
 
+  // Force analytics polling to bypass browser and intermediary caches.
+  url.searchParams.set("_rt", String(Date.now()));
+
   return url.toString();
 }
 
@@ -39,6 +42,7 @@ async function readData<T>(response: Response): Promise<T> {
 export async function fetchVisitorSummary() {
   const response = await fetch(buildUrl("/api/admin/visitors/summary"), {
     headers: getAdminAuthHeaders(),
+    cache: "no-store",
   });
   return readData<VisitorSummaryResponse>(response);
 }
@@ -46,6 +50,7 @@ export async function fetchVisitorSummary() {
 export async function fetchLiveVisitors() {
   const response = await fetch(buildUrl("/api/admin/visitors/live"), {
     headers: getAdminAuthHeaders(),
+    cache: "no-store",
   });
   return readData<LiveVisitor[]>(response);
 }
@@ -53,6 +58,7 @@ export async function fetchLiveVisitors() {
 export async function fetchB2BLeadZoneDownloadAnalytics(filters: VisitorFilters) {
   const response = await fetch(buildUrl("/api/admin/visitors/downloads/b2b-lead-zone", filters), {
     headers: getAdminAuthHeaders(),
+    cache: "no-store",
   });
   return readData<B2BLeadZoneDownloadAnalyticsResponse>(response);
 }
@@ -60,6 +66,7 @@ export async function fetchB2BLeadZoneDownloadAnalytics(filters: VisitorFilters)
 export async function fetchVisitors(filters: VisitorFilters) {
   const response = await fetch(buildUrl("/api/admin/visitors", filters), {
     headers: getAdminAuthHeaders(),
+    cache: "no-store",
   });
   return readData<VisitorListResponse>(response);
 }
@@ -67,6 +74,7 @@ export async function fetchVisitors(filters: VisitorFilters) {
 export async function exportVisitorsCsv(filters: VisitorFilters) {
   const response = await fetch(buildUrl("/api/admin/visitors", { ...filters, format: "csv" }), {
     headers: getAdminAuthHeaders(),
+    cache: "no-store",
   });
   if (!response.ok) {
     throw new Error(await readApiError(response, "Unable to export visitor data."));
@@ -77,6 +85,7 @@ export async function exportVisitorsCsv(filters: VisitorFilters) {
 export async function fetchVisitorLocations(filters: VisitorFilters) {
   const response = await fetch(buildUrl("/api/admin/visitors/locations", filters), {
     headers: getAdminAuthHeaders(),
+    cache: "no-store",
   });
   return readData<VisitorLocationItem[]>(response);
 }
@@ -84,6 +93,7 @@ export async function fetchVisitorLocations(filters: VisitorFilters) {
 export async function fetchVisitorPages(filters: VisitorFilters) {
   const response = await fetch(buildUrl("/api/admin/visitors/pages", filters), {
     headers: getAdminAuthHeaders(),
+    cache: "no-store",
   });
   return readData<VisitorPageItem[]>(response);
 }
@@ -91,6 +101,7 @@ export async function fetchVisitorPages(filters: VisitorFilters) {
 export async function fetchVisitorDetails(visitorId: string) {
   const response = await fetch(buildUrl(`/api/admin/visitors/${encodeURIComponent(visitorId)}`), {
     headers: getAdminAuthHeaders(),
+    cache: "no-store",
   });
   return readData<VisitorDetails>(response);
 }
@@ -98,6 +109,7 @@ export async function fetchVisitorDetails(visitorId: string) {
 export async function fetchVisitorSessionDetails(sessionId: string) {
   const response = await fetch(buildUrl(`/api/admin/visitors/sessions/${encodeURIComponent(sessionId)}`), {
     headers: getAdminAuthHeaders(),
+    cache: "no-store",
   });
   return readData<VisitorSessionDetails>(response);
 }
