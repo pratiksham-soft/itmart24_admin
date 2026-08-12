@@ -18,10 +18,6 @@ import {
   fetchVisitors,
   fetchVisitorSummary,
 } from "../../services/visitorAnalytics.service";
-import {
-  ensureVisitorAnalyticsStream,
-  subscribeToVisitorAnalyticsChanged,
-} from "../../services/visitorAnalyticsRealtime.service";
 import type {
   B2BLeadZoneDownloadAnalyticsResponse,
   LiveVisitor,
@@ -135,8 +131,6 @@ const b2bSourceMetricOptions: Array<{ value: B2BSourceMetric; label: string }> =
   { value: "checkoutStarts", label: "Checkout starts" },
   { value: "payments", label: "Payments" },
 ];
-const ANALYTICS_REFRESH_INTERVAL_MS = 20_000;
-
 function shortId(value: string | null | undefined) {
   if (!value) return "-";
   if (value.length <= 16) return value;
@@ -188,7 +182,6 @@ export default function VisitorsPage() {
   const [b2bSourceMetric, setB2BSourceMetric] = useState<B2BSourceMetric>("windowsDownloads");
   const [b2bSelectedSeries, setB2BSelectedSeries] = useState<string[]>([...defaultB2BTimeSeriesKeys]);
   const currentTab = (searchParams.get("tab") as VisitorsTab) || "overview";
-  const [analyticsRefreshTick, setAnalyticsRefreshTick] = useState(0);
   const filters = useMemo<VisitorFilters>(() => {
     const baseRange = getDateRangeDefaults(currentTab);
     return {
@@ -219,87 +212,46 @@ export default function VisitorsPage() {
   }, [currentTab, searchParams]);
 
   useEffect(() => {
-    ensureVisitorAnalyticsStream();
-    const unsubscribe = subscribeToVisitorAnalyticsChanged(() => {
-      setAnalyticsRefreshTick((value) => value + 1);
-    });
+    let isMounted = true;
+    setLoading(true);
+    setError(null);
 
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === "visible") {
-        setAnalyticsRefreshTick((value) => value + 1);
-      }
-    };
-
-    const handleWindowFocus = () => {
-      setAnalyticsRefreshTick((value) => value + 1);
-    };
-
-    window.addEventListener("focus", handleWindowFocus);
-    document.addEventListener("visibilitychange", handleVisibilityChange);
+    void fetchVisitorSummary()
+      .then((data) => {
+        if (isMounted) {
+          setSummary(data);
+          setError(null);
+        }
+      })
+      .catch((loadError) => {
+        if (isMounted) {
+          setError(loadError instanceof Error ? loadError.message : "Unable to load visitors summary.");
+        }
+      })
+      .finally(() => {
+        if (isMounted) {
+          setLoading(false);
+        }
+      });
 
     return () => {
-      unsubscribe();
-      window.removeEventListener("focus", handleWindowFocus);
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      isMounted = false;
     };
   }, []);
 
   useEffect(() => {
     let isMounted = true;
 
-    const loadSummary = async (isBackgroundRefresh = false) => {
-      if (!isBackgroundRefresh) {
-        setLoading(true);
-        setError(null);
-      }
-
-      try {
-        const data = await fetchVisitorSummary();
-        if (isMounted) {
-          setSummary(data);
-          if (!isBackgroundRefresh) {
-            setError(null);
-          }
-        }
-      } catch (loadError) {
-        if (isMounted && !isBackgroundRefresh) {
-          setError(loadError instanceof Error ? loadError.message : "Unable to load visitors summary.");
-        }
-      } finally {
-        if (isMounted && !isBackgroundRefresh) {
-          setLoading(false);
-        }
-      }
-    };
-
-    void loadSummary();
-    const intervalId = window.setInterval(() => {
-      void loadSummary(true);
-    }, ANALYTICS_REFRESH_INTERVAL_MS);
-
-    return () => {
-      isMounted = false;
-      window.clearInterval(intervalId);
-    };
-  }, [analyticsRefreshTick]);
-
-  useEffect(() => {
-    let isMounted = true;
-
-    const loadTabData = async (isBackgroundRefresh = false) => {
-      if (!isBackgroundRefresh) {
-        setTableLoading(true);
-        setTableError(null);
-      }
+    const loadTabData = async () => {
+      setTableLoading(true);
+      setTableError(null);
 
       try {
         if (currentTab === "b2bLeadZone") {
           const data = await fetchB2BLeadZoneDownloadAnalytics(filters);
           if (isMounted) {
             setB2BDownloadAnalytics(data);
-            if (!isBackgroundRefresh) {
-              setTableError(null);
-            }
+            setTableError(null);
           }
           return;
         }
@@ -308,9 +260,7 @@ export default function VisitorsPage() {
           const data = await fetchLiveVisitors();
           if (isMounted) {
             setLiveVisitors(data);
-            if (!isBackgroundRefresh) {
-              setTableError(null);
-            }
+            setTableError(null);
           }
           return;
         }
@@ -319,9 +269,7 @@ export default function VisitorsPage() {
           const data = await fetchVisitorLocations(filters);
           if (isMounted) {
             setLocationRows(data);
-            if (!isBackgroundRefresh) {
-              setTableError(null);
-            }
+            setTableError(null);
           }
           return;
         }
@@ -330,9 +278,7 @@ export default function VisitorsPage() {
           const data = await fetchVisitorPages(filters);
           if (isMounted) {
             setPageRows(data);
-            if (!isBackgroundRefresh) {
-              setTableError(null);
-            }
+            setTableError(null);
           }
           return;
         }
@@ -341,31 +287,25 @@ export default function VisitorsPage() {
         if (isMounted) {
           setVisitorRows(data.items);
           setTotalVisitors(data.total);
-          if (!isBackgroundRefresh) {
-            setTableError(null);
-          }
+          setTableError(null);
         }
       } catch (loadError) {
-        if (isMounted && !isBackgroundRefresh) {
+        if (isMounted) {
           setTableError(loadError instanceof Error ? loadError.message : "Unable to load visitors.");
         }
       } finally {
-        if (isMounted && !isBackgroundRefresh) {
+        if (isMounted) {
           setTableLoading(false);
         }
       }
     };
 
     void loadTabData();
-    const intervalId = window.setInterval(() => {
-      void loadTabData(true);
-    }, ANALYTICS_REFRESH_INTERVAL_MS);
 
     return () => {
       isMounted = false;
-      window.clearInterval(intervalId);
     };
-  }, [analyticsRefreshTick, currentTab, filters]);
+  }, [currentTab, filters]);
 
   const visitorsSeries = useMemo(
     () => [
