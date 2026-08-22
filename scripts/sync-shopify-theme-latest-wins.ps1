@@ -46,18 +46,47 @@ function Invoke-ShopifyApi {
     [object]$Body
   )
 
-  $params = @{
-    Method  = $Method
-    Uri     = $Uri
-    Headers = $Headers
-  }
+  $attempt = 0
 
-  if ($null -ne $Body) {
-    $params.Body = ($Body | ConvertTo-Json -Depth 10 -Compress)
-    $params.ContentType = "application/json"
-  }
+  while ($true) {
+    $params = @{
+      Method  = $Method
+      Uri     = $Uri
+      Headers = $Headers
+    }
 
-  return Invoke-RestMethod @params
+    if ($null -ne $Body) {
+      $params.Body = ($Body | ConvertTo-Json -Depth 10 -Compress)
+      $params.ContentType = "application/json"
+    }
+
+    try {
+      return Invoke-RestMethod @params
+    } catch {
+      $response = $_.Exception.Response
+      $statusCode = $null
+      $retryAfterSeconds = $null
+
+      if ($response) {
+        $statusCode = [int]$response.StatusCode
+        $retryAfterHeader = $response.Headers["Retry-After"]
+        if ($retryAfterHeader) {
+          [void][int]::TryParse([string]$retryAfterHeader, [ref]$retryAfterSeconds)
+        }
+      }
+
+      if ($statusCode -ne 429 -or $attempt -ge 6) {
+        throw
+      }
+
+      $attempt += 1
+      if (-not $retryAfterSeconds -or $retryAfterSeconds -lt 1) {
+        $retryAfterSeconds = [Math]::Min(30, [Math]::Pow(2, $attempt))
+      }
+
+      Start-Sleep -Seconds $retryAfterSeconds
+    }
+  }
 }
 
 function Get-ThemeAsset {
