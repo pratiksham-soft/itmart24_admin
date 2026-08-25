@@ -81,7 +81,7 @@ const B2B_LEAD_ZONE_DEFAULT_PLANS: UserPlanPayload[] = [
     projectKey: B2B_LEAD_ZONE_PROJECT_KEY,
     name: "Free",
     slug: "free",
-    description: "Try the core extraction workflow for smaller searches.",
+    description: "Extract and work the first 30 leads with full Sales CRM access.",
     periods: [
       {
         id: "monthly-1",
@@ -95,7 +95,14 @@ const B2B_LEAD_ZONE_DEFAULT_PLANS: UserPlanPayload[] = [
     features: [
       { title: "Google Maps supported", description: "" },
       { title: "Bing Maps supported", description: "" },
-      { title: "Up to 30 leads per extraction", description: "" },
+      { title: "Extract up to 30 leads", description: "" },
+      { title: "Full Sales CRM for those first 30 leads", description: "" },
+      {
+        title: "CRM notes, tasks, pipeline, contacts, companies, and reports",
+        description: "",
+      },
+      { title: "CRM automation works for those first 30 leads", description: "" },
+      { title: "Upgrade prompt appears after the 30-lead CRM limit", description: "" },
       { title: "Business name", description: "" },
       { title: "Phone number", description: "" },
       { title: "Email address", description: "" },
@@ -111,19 +118,30 @@ const B2B_LEAD_ZONE_DEFAULT_PLANS: UserPlanPayload[] = [
     projectKey: B2B_LEAD_ZONE_PROJECT_KEY,
     name: "Pro",
     slug: "pro",
-    description: "Automate larger, multi-location lead collection.",
+    description: "Unlimited extraction plus full Sales CRM and automation growth.",
     periods: [
       {
         id: "monthly-1",
         label: "Monthly",
         durationInMonths: 1,
-        price: 599,
+        price: 129,
         discountPercentage: 0,
-        countryPricing: [],
+        countryPricing: [
+          {
+            id: "india-inr-1",
+            countryCode: "IN",
+            countryName: "India",
+            currencyCode: "INR",
+            price: 12999,
+            discountPercentage: 0,
+          },
+        ],
       },
     ],
     features: [
       { title: "Everything in Free", description: "" },
+      { title: "Unlimited Sales CRM lead growth", description: "" },
+      { title: "No 30-lead CRM lock", description: "" },
       { title: "Multiple-location support", description: "" },
       { title: "CSV location-list upload", description: "" },
       {
